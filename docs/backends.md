@@ -29,6 +29,7 @@ in software, as it does without a back end.
 | Back end | Systems | Document |
 | --- | --- | --- |
 | Chipset: Blitter clears and flat fills, chunky-to-planar with Akiko or the CPU | Amiga (OCS, ECS, AGA) | [amiga.md](amiga.md) |
+| Warp3D: triangles, lines and points on a 3D card | Amiga with a 3D graphics card | [amiga.md](amiga.md#the-warp3d-back-end) |
 
 ## How to use a back end
 
@@ -39,7 +40,9 @@ in software, as it does without a back end.
    to each entry.
 4. Call `sgl_set_buffer` as usual.
 5. After each frame, call `sgl_present(ctx)`. It waits until the work
-   of the back end is done, and then calls the `present` entry.
+   of `clear` and `fill_span` is done, and then calls the `present`
+   entry. It does not call `software`: after hardware primitives, the
+   `present` entry shows the frame of the hardware.
 
 If you call `sgl_set_backend` after `sgl_set_buffer`, softgl makes the
 depth and stencil buffers again through the new back end. Their

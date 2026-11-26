@@ -80,12 +80,18 @@ int sgl_set_backend(sgl_context *c, const sgl_backend *be, void *user) {
   return 1;
 }
 
-/* Finishes the drawing and shows the frame (see softgl.h). */
+/* Finishes the drawing and shows the frame (see softgl.h). With a
+ * present entry, only the work of clear and fill_span is waited for: a
+ * hardware back end shows the frame of the hardware itself. */
 void sgl_present(sgl_context *c) {
   if (!c) return;
-  sgl_be_wait(c);
-  if (c->be && c->be->present && c->color)
+  if (c->be && c->be->present && c->color) {
+    if ((c->be_pending & SGL_BE_ASYNC) && c->be->sync) c->be->sync(c->be_user);
+    c->be_pending &= ~SGL_BE_ASYNC;
     c->be->present(c->be_user, c, c->color, c->width, c->height, c->rowpixels);
+  } else {
+    sgl_be_wait(c);
+  }
 }
 
 /* Fills the window vertex of a back end from a vertex. side picks the

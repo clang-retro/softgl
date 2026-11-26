@@ -1,6 +1,7 @@
-/* softgl_amiga.h - the Amiga chipset back end of softgl: Blitter clears,
- * chunky-to-planar conversion with Akiko or the CPU, and an optional
- * Blitter fill of flat spans. See docs/amiga.md.
+/* softgl_amiga.h - the Amiga back ends of softgl. The chipset back end
+ * has Blitter clears, chunky-to-planar conversion with Akiko or the CPU,
+ * and an optional Blitter fill of flat spans. The Warp3D back end draws
+ * with a 3D card. See docs/amiga.md.
  *
  * The program opens graphics.library (GfxBase) and, for double
  * buffering, intuition.library (IntuitionBase) before it uses these
@@ -68,6 +69,30 @@ void sgl_amiga_free_color(uint32_t *p);
  * colors of 3 bytes (red, green, blue). Load it into the screen, for
  * example with LoadRGB32. */
 void sgl_amiga_palette(int depth, uint8_t (*rgb)[3]);
+
+/* The flags of sgl_amiga_warp3d. */
+#define SGL_AMIGA_W3D_ALLOW_CPU 1u /* also use the CPU driver of Warp3D (slower than softgl on a 68k) */
+
+/* The state of the Warp3D back end. The program sets the first fields;
+ * the other fields are for the back end. */
+typedef struct sgl_amiga_warp3d {
+  struct BitMap *bitmap;           /* the bitmap of an RTG screen to draw in */
+  struct Screen *screen;           /* with buffers: the screen to flip */
+  struct ScreenBuffer *buffers[2]; /* two buffers of screen for double buffering, or NULL */
+  unsigned flags;                  /* SGL_AMIGA_W3D_... */
+
+  void *state;
+  int back;                        /* the buffer that the card draws in */
+  int opened;                      /* the back end opened Warp3D.library */
+} sgl_amiga_warp3d;
+
+/* Opens Warp3D.library (version 2 or later), makes a Warp3D context on
+ * the bitmap (or on buffers[1]) and gives ctx the Warp3D back end. The
+ * size of the color buffer of ctx (sgl_set_buffer) must be the size of
+ * the bitmap. Gives 1 on success, and 0 when there is no 3D card, no
+ * Warp3D or a pixel format that the back end does not know: ctx then
+ * stays in software. */
+int sgl_amiga_warp3d_attach(sgl_amiga_warp3d *w, sgl_context *ctx);
 
 /* The parts without the hardware, which the tests use on any system. */
 

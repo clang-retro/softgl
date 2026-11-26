@@ -156,7 +156,9 @@ int sgl_set_backend(sgl_context *ctx, const sgl_backend *be, void *user);
 
 /* Finishes the drawing of ctx and shows the frame through the present
  * entry of its back end. Without a present entry, it only finishes the
- * drawing; the window layer then shows the color buffer itself. */
+ * drawing; the window layer then shows the color buffer itself. After a
+ * primitive in hardware, the present entry shows the frame of the
+ * hardware: softgl does not call software first. */
 void sgl_present(sgl_context *ctx);
 
 /* Gives the id of the texture object bound to the 2D target of unit u

@@ -36,10 +36,10 @@ NURBS_CXXFLAGS := -w -fno-exceptions -fno-rtti -DNDEBUG -DLIBRARYBUILD -Iinclude
 all: $(OUT)/libsoftgl.a
 
 # The back ends of the Amiga. Build them with the AmigaOS compiler.
-AMIGA_SRCS := $(wildcard backends/amiga/*.c)
-AMIGA_OBJS := $(patsubst %.c,$(OUT)/%.o,$(AMIGA_SRCS))
+AMIGA_SRCS := $(wildcard backends/amiga/*.c) backends/amiga/warp3d_stubs.s
+AMIGA_OBJS := $(patsubst %.s,$(OUT)/%.o,$(patsubst %.c,$(OUT)/%.o,$(AMIGA_SRCS)))
 
-amiga: $(OUT)/libsoftgl-amiga.a $(OUT)/examples/amiga/cube
+amiga: $(OUT)/libsoftgl-amiga.a $(OUT)/examples/amiga/cube $(OUT)/examples/amiga/w3dcube
 
 $(OUT)/examples/amiga/%: examples/amiga/%.c $(OUT)/libsoftgl-amiga.a $(OUT)/libsoftgl.a
 	@mkdir -p $(dir $@)
@@ -49,9 +49,13 @@ $(OUT)/libsoftgl-amiga.a: $(AMIGA_OBJS)
 	rm -f $@
 	$(AR) rcs $@ $^
 
-$(OUT)/backends/%.o: backends/%.c src/sgl.h include/softgl.h include/softgl_amiga.h
+$(OUT)/backends/%.o: backends/%.c src/sgl.h include/softgl.h include/softgl_amiga.h backends/amiga/warp3d_api.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(SGL_CFLAGS) -c $< -o $@
+
+$(OUT)/backends/%.o: backends/%.s
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@
 
 $(OUT)/libsoftgl.a: $(OBJS)
 	rm -f $@
