@@ -17,9 +17,11 @@ typedef struct {
   int (*fill)(sgl_glide_api *api);
 } driver;
 
-/* The built-in drivers, the Voodoo first. */
-static const driver drivers[] = {{"voodoo", sgl_glide_sst1}, {"virge", sgl_glide_virge},
-                                      {"matrox", sgl_glide_mga}, {"ati", sgl_glide_ati}};
+/* The built-in drivers: first the 3D cards without a VGA (the Voodoo
+ * and the PowerVR), then the VGA cards with a 3D engine. */
+static const driver drivers[] = {{"voodoo", sgl_glide_sst1}, {"powervr", sgl_glide_pvr},
+                                 {"virge", sgl_glide_virge},  {"matrox", sgl_glide_mga},
+                                 {"ati", sgl_glide_ati}};
 
 /* Gives 1 when the driver in api finds its card. */
 static int has_card(const sgl_glide_api *api) {
