@@ -125,6 +125,7 @@ typedef struct sgl_glide_api {
 #define SGL_GLIDE_LIMIT_NO_FOG 0x80u      /* no fog */
 #define SGL_GLIDE_LIMIT_NO_CLAMP 0x100u   /* the textures wrap: no clamp */
 #define SGL_GLIDE_LIMIT_ONE_HUE 0x200u    /* with a texture or a blend, one vertex color times an intensity */
+#define SGL_GLIDE_LIMIT_DECAL 0x400u      /* no GL_DECAL of an RGBA texture */
 
 /* Fills the table api from the Glide 2 functions that the program links
  * (the 3dfx SDK: glide.h and the Glide 2 library). Use it where
@@ -214,6 +215,12 @@ int sgl_glide_ati(sgl_glide_api *api);
  * backends/glide/glide_r128.c. */
 int sgl_glide_r128(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for the graphics of a SiS 530 or
+ * SiS 620 chipset (SiS 6306), for 32-bit DOS. The driver uses the 3D
+ * engine and the VBE BIOS, and sets the limits of api. Gives 1 on
+ * success. The code is in backends/glide/glide_sis.c. */
+int sgl_glide_sis(sgl_glide_api *api);
+
 /* Fills api with the built-in driver for a PowerVR PCX2 card (Matrox
  * m3D, VideoLogic Apocalypse 3Dx or 5D), for 32-bit DOS. The card draws
  * into the frame buffer of the VGA card, in a VBE mode. The driver sets
@@ -223,7 +230,7 @@ int sgl_glide_pvr(sgl_glide_api *api);
 
 /* Fills api with the built-in driver of the first 3D card that is in
  * the computer (32-bit DOS). With name ("voodoo", "powervr", "virge",
- * "matrox", "ati" or "rage128"), only that driver is tried. Gives the name of the driver, or NULL when there is
+ * "matrox", "ati", "rage128" or "sis"), only that driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
 const char *sgl_glide_dos(sgl_glide_api *api, const char *name);
 

@@ -6,8 +6,9 @@ Voodoo Graphics, the Voodoo Rush, the Voodoo2, the Banshee and the
 Voodoo3. On 32-bit DOS, a built-in driver gives the Glide functions on
 the Voodoo Graphics, the Voodoo2, the Banshee and the Voodoo3, and
 other built-in drivers give them on a PowerVR PCX2 card,
-on an S3 ViRGE card, on a Matrox card, on an ATI Rage card and on an ATI
-Rage 128 card. The code is in
+on an S3 ViRGE card, on a Matrox card, on an ATI Rage card, on an ATI
+Rage 128 card and on the graphics of a SiS 530 or SiS 620 chipset. The
+code is in
 `backends/glide/`.
 
 softgl still does the GL state, the transform, lighting, clipping and
@@ -457,11 +458,65 @@ limits stay:
 
 ![glidecube on the Xpert 128 card of 86Box](images/glidecube-rage128-dos.png)
 
+## The SiS driver for DOS
+
+`backends/glide/glide_sis.c` has the same Glide 2 functions for the 3D
+engine of the SiS 6306: the graphics in the north bridge of the SiS 530
+and SiS 620 chipsets (PCI ID 1039h:6306h).
+
+The driver does these steps:
+
+1. `grGlideInit` finds the graphics and maps the MMIO window (BAR 1,
+   64 KB).
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory (the shared memory of the
+   chipset) holds three color buffers (two when the memory is small),
+   the Z buffer, and then the textures with their mipmaps.
+3. For each triangle, the driver writes the changed 3D state
+   registers, then the three vertices: X, Y, Z, the color, the fog
+   factor, and U, V and 1/W as IEEE floats. A write of `TFIRE` (89FCh)
+   starts the triangle. The engine calculates the edges, the gradients
+   and the perspective division. Lines and points are two triangles.
+4. `grBufferClear` fills the clip window with the rectangle fill of the
+   2D engine: the back buffer, then the Z buffer. The driver waits for
+   the end of each fill, because the 3D engine does not wait for the 2D
+   engine.
+5. `grBufferSwap` shows the new buffer through VBE function 4F07h, as
+   the other drivers do.
+
+The Z buffer has 15 bits in each 16-bit word. The driver converts the
+Z values of `grBufferClear` and of the locks of the Z buffer.
+
+The engine draws a pixel whose center is on an edge for the two
+triangles of the edge. Thus the driver moves all the vertices by a
+small offset (1/256 pixel in x, 1/512 pixel in y): the edges of a
+usual model then do not go through the centers of the pixels, and a
+blend does not draw a pixel two times.
+
+The card does Gouraud shading, the texture (replace and modulate), the
+alpha of the texture, of the vertex or the product of the two, mipmaps
+(the nearest level), the bilinear filter, the clamp of the texture,
+the Z buffer, the alpha test, the blend with fog and the scissor box.
+The driver has these limits. The back end gives a draw that needs one
+of them to softgl:
+
+- No color mask.
+- No `GL_DECAL` of an RGBA texture (`SGL_GLIDE_LIMIT_DECAL`).
+- One texture unit.
+- The texture formats are RGB 565 and ARGB 4444.
+- The driver does not dither.
+- The register facts come from the SiS 6306 model of 86Box only. The
+  driver is tested in 86Box only (the Gigabyte GA-5SMM board,
+  `--machine 5smm --card internal`). Test it on a real computer before
+  you use it.
+
+![glidecube on the SiS 530 graphics of 86Box](images/glidecube-sis-dos.png)
+
 ## How to select a driver for DOS
 
 A DOS program calls `sgl_glide_dos(&api, name)`. The name is
-`"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"` or
-`NULL`. With `NULL`, the function
+`"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"`,
+`"sis"` or `NULL`. With `NULL`, the function
 selects the first card that it finds. `glidecube.exe` and
 `glidetest.exe` take the name as an argument:
 
@@ -485,7 +540,7 @@ glidecube 0 matrox
   texture, a blend and the alpha test through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
   `PASS softgl glide on the voodoo card` (or `powervr`, `virge`,
-  `matrox`, `ati` or `rage128`).
+  `matrox`, `ati`, `rage128` or `sis`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
@@ -495,7 +550,8 @@ glidecube 0 matrox
   computer with FreeDOS, and examines the output. CI runs `glidetest`
   on the ViRGE/DX, the ViRGE, the Mystique, the Millennium II, the
   G100, the 3D Rage Pro (`mach64_ragepro_pci`), the 3D Rage II+
-  (`mach64_rage2p`), the Xpert 128 (`ati_xpert128_pci`), the PowerVR PCX2 with a Mystique (`--powervr
+  (`mach64_rage2p`), the Xpert 128 (`ati_xpert128_pci`), the SiS 530 graphics of the
+  GA-5SMM board (`--machine 5smm --card internal`), the PowerVR PCX2 with a Mystique (`--powervr
   --card mystique`), the Voodoo Graphics, the Voodoo Banshee
   (`voodoo_banshee_pci`) and the Voodoo3 2000 (`voodoo3_2k_pci`). The G100 is an AGP card:
   use the ASUS P5A board (`--machine p5a`):

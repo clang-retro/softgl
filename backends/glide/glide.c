@@ -220,7 +220,8 @@ static sgl_texture *usable_texture(gr_state *s, sgl_context *c, int u) {
     return (sgl_texture *)1;
   /* GL_DECAL of an RGBA texture mixes the texture and the vertex color
    * by the texture alpha. */
-  if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_ALPHA) && env == GL_DECAL && lv->base == GL_RGBA) return (sgl_texture *)1;
+  if ((s->gr->limits & (SGL_GLIDE_LIMIT_ONE_ALPHA | SGL_GLIDE_LIMIT_DECAL)) && env == GL_DECAL && lv->base == GL_RGBA)
+    return (sgl_texture *)1;
   return t;
 }
 
