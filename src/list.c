@@ -144,7 +144,7 @@ void APIENTRY sgl_NewList(GLuint name, GLenum mode) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  if (c->compiling || c->prim != GL_NONE) {
+  if (c->compiling || c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return;
   }

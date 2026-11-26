@@ -132,7 +132,7 @@ static void changed(sgl_context *c) {
  * glBegin and glEnd. */
 static sgl_context *outside(void) {
   sgl_context *c = sgl_ctx;
-  if (c->prim != GL_NONE) {
+  if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return NULL;
   }

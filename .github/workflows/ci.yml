@@ -32,7 +32,7 @@ jobs:
       - name: Build and test (32-bit, 16-bit depth)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-multilib
+          sudo apt-get install -y --no-install-recommends gcc-multilib g++-multilib
           make -j"$(nproc)" check CC=${{ matrix.cc }} OUT=build32 \
             CFLAGS="-O2 -m32 -Werror -DSGL_DEPTH_BITS=16"
 
@@ -43,3 +43,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and test
         run: make -j"$(sysctl -n hw.ncpu)" check CFLAGS="-O2 -Werror"
+
+  # The 68000 targets of clang-retro: the renderer, GLU and the NURBS
+  # must compile for AmigaOS and Atari TOS (68000, no FPU).
+  m68k:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      - name: Build for AmigaOS
+        run: |
+          make -j"$(nproc)" OUT=build-amiga AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=amiga.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=amiga.cfg" CFLAGS="-O2 -Werror"
+      - name: Build for Atari TOS
+        run: |
+          make -j"$(nproc)" OUT=build-atari AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=atari.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=atari.cfg" CFLAGS="-O2 -Werror"

@@ -122,6 +122,102 @@ static int transfer_on(const sgl_context *c) {
          a->blue_bias != 0.0f || a->alpha_bias != 0.0f;
 }
 
+/* Reads element x of a row of indices of type type as an integer. */
+static int32_t index_element(const uint8_t *row, int x, GLenum type, int swap) {
+  switch (type) {
+    case GL_UNSIGNED_BYTE: return row[x];
+    case GL_BYTE: return (int8_t)row[x];
+    case GL_UNSIGNED_SHORT:
+    case GL_SHORT: {
+      uint16_t v;
+      memcpy(&v, row + x * 2, 2);
+      if (swap) v = (uint16_t)((v >> 8) | (v << 8));
+      return type == GL_SHORT ? (int32_t)(int16_t)v : (int32_t)v;
+    }
+    default: {
+      uint32_t v;
+      memcpy(&v, row + x * 4, 4);
+      if (swap) v = (v >> 24) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) | (v << 24);
+      if (type == GL_FLOAT) {
+        GLfloat f;
+        memcpy(&f, &v, 4);
+        return (int32_t)f;
+      }
+      return (int32_t)v;
+    }
+  }
+}
+
+/* Unpacks an image of w x h indices (color or stencil indices) of type
+ * type into out, one integer for each pixel, rows bottom first. GL_BITMAP
+ * gives 0 and 1. Gives 0 for an invalid type. */
+static int unpack_indices(const sgl_pixelstore *ps, int w, int h, GLenum type, const void *pixels,
+                          int32_t *out) {
+  int size = type_size(type), x, y;
+  const uint8_t *base = (const uint8_t *)pixels;
+  size_t rb;
+  if (size < 0) return 0;
+  rb = row_bytes(ps, w, 1, size);
+  for (y = 0; y < h; y++) {
+    const uint8_t *row = base + (size_t)(y + ps->skip_rows) * rb;
+    for (x = 0; x < w; x++) {
+      int32_t v;
+      if (size == 0) {
+        int bit = x + ps->skip_pixels;
+        uint8_t b = row[bit >> 3];
+        v = ps->lsb_first ? (b >> (bit & 7)) & 1 : (b >> (7 - (bit & 7))) & 1;
+      } else {
+        v = index_element(row + (size_t)ps->skip_pixels * size, x, type, ps->swap_bytes);
+      }
+      out[(size_t)y * w + x] = v;
+    }
+  }
+  return 1;
+}
+
+/* Gives the value of entry i of a pixel map slot (masked to the size of
+ * the map), or 0 for the map of one 0 that is there at first. */
+static GLfloat map_entry(const sgl_context *c, int slot, int32_t i) {
+  int n = c->pixel_map_size[slot];
+  if (!c->pixel_map[slot] || n <= 0) return 0.0f;
+  return c->pixel_map[slot][(uint32_t)i & (uint32_t)(n - 1)];
+}
+
+/* The slots of the pixel maps, in the order of GL_PIXEL_MAP_I_TO_I. */
+enum { MAP_I_TO_I, MAP_S_TO_S, MAP_I_TO_R, MAP_I_TO_G, MAP_I_TO_B, MAP_I_TO_A,
+       MAP_R_TO_R, MAP_G_TO_G, MAP_B_TO_B, MAP_A_TO_A };
+
+/* Applies the index shift and offset to an index, then the map of slot
+ * when map is on (GL_MAP_COLOR or GL_MAP_STENCIL). */
+static int32_t shift_index(const sgl_context *c, int32_t i, int map, int slot) {
+  GLint sh = c->a.index_shift;
+  if (sh > 0)
+    i = (int32_t)((uint32_t)i << (sh > 31 ? 31 : sh));
+  else if (sh < 0)
+    i >>= (-sh > 31 ? 31 : -sh);
+  i += c->a.index_offset;
+  if (map) i = (int32_t)map_entry(c, slot, i);
+  return i;
+}
+
+/* Changes a color index to RGBA bytes through the I_TO_R, I_TO_G,
+ * I_TO_B and I_TO_A maps (RGBA mode). */
+static void index_to_rgba(const sgl_context *c, int32_t i, uint8_t *o);
+
+/* Applies the R_TO_R, G_TO_G, B_TO_B and A_TO_A maps to a color in
+ * [0, 1] (GL_MAP_COLOR). */
+static void map_rgba(const sgl_context *c, GLfloat v[4]) {
+  int k;
+  for (k = 0; k < 4; k++) {
+    int n = c->pixel_map_size[MAP_R_TO_R + k];
+    GLfloat x = sgl_clamp01(v[k]);
+    if (c->pixel_map[MAP_R_TO_R + k] && n > 0)
+      v[k] = c->pixel_map[MAP_R_TO_R + k][(int)(x * (GLfloat)(n - 1) + 0.5f)];
+    else
+      v[k] = 0.0f;
+  }
+}
+
 /* Unpacks an image of w x h pixels in format and type into out, 4 bytes
  * (R, G, B, A) for each pixel, rows bottom first as in the image. The
  * pixel transfer scale and bias apply. Gives 0 for an invalid format or
@@ -131,7 +227,19 @@ int sgl_unpack_rgba8(const sgl_pixelstore *ps, int w, int h, GLenum format, GLen
   int comps = sgl_format_components(format), size = type_size(type), x, y;
   const uint8_t *base = (const uint8_t *)pixels;
   size_t rb;
-  int transfer = sgl_ctx && transfer_on(sgl_ctx) && format != GL_COLOR_INDEX;
+  int transfer = sgl_ctx && (transfer_on(sgl_ctx) || sgl_ctx->a.map_color) && format != GL_COLOR_INDEX;
+  if (format == GL_COLOR_INDEX) {
+    /* Color indices become colors through the pixel maps. */
+    int32_t *idx = (int32_t *)malloc((size_t)w * h * sizeof(int32_t) + 1);
+    size_t i, n = (size_t)w * h;
+    if (!idx || !sgl_ctx || !unpack_indices(ps, w, h, type, pixels, idx)) {
+      free(idx);
+      return 0;
+    }
+    for (i = 0; i < n; i++) index_to_rgba(sgl_ctx, shift_index(sgl_ctx, idx[i], 0, 0), out + i * 4);
+    free(idx);
+    return 1;
+  }
   if (comps == 0 || size <= 0) return 0;
   rb = row_bytes(ps, w, comps, size);
   base += (size_t)ps->skip_rows * rb + (size_t)ps->skip_pixels * comps * size;
@@ -196,6 +304,7 @@ int sgl_unpack_rgba8(const sgl_pixelstore *ps, int w, int h, GLenum format, GLen
         v[1] = v[1] * a->green_scale + a->green_bias;
         v[2] = v[2] * a->blue_scale + a->blue_bias;
         v[3] = v[3] * a->alpha_scale + a->alpha_bias;
+        if (a->map_color) map_rgba(sgl_ctx, v);
       }
       o[0] = to_byte(v[0]);
       o[1] = to_byte(v[1]);
@@ -204,6 +313,61 @@ int sgl_unpack_rgba8(const sgl_pixelstore *ps, int w, int h, GLenum format, GLen
     }
   }
   return 1;
+}
+
+/* Changes a color index to RGBA bytes through the index maps (see the
+ * declaration above). */
+static void index_to_rgba(const sgl_context *c, int32_t i, uint8_t *o) {
+  o[0] = to_byte(map_entry(c, MAP_I_TO_R, i));
+  o[1] = to_byte(map_entry(c, MAP_I_TO_G, i));
+  o[2] = to_byte(map_entry(c, MAP_I_TO_B, i));
+  o[3] = to_byte(map_entry(c, MAP_I_TO_A, i));
+}
+
+/* Packs w x h indices (rows bottom first) into dst in type with the pack
+ * store of the context. */
+static void pack_indices(sgl_context *c, int w, int h, const int32_t *src, GLenum type, void *dst) {
+  const sgl_pixelstore *ps = &c->c.pack;
+  int size = type_size(type), x, y;
+  size_t rb;
+  uint8_t *base = (uint8_t *)dst;
+  if (size < 0) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  rb = row_bytes(ps, w, 1, size);
+  for (y = 0; y < h; y++) {
+    uint8_t *row = base + (size_t)(y + ps->skip_rows) * rb;
+    for (x = 0; x < w; x++) {
+      int32_t v = src[(size_t)y * w + x];
+      if (size == 0) {
+        int bit = x + ps->skip_pixels;
+        uint8_t m = (uint8_t)(ps->lsb_first ? 1u << (bit & 7) : 0x80u >> (bit & 7));
+        if (v & 1)
+          row[bit >> 3] |= m;
+        else
+          row[bit >> 3] &= (uint8_t)~m;
+        continue;
+      }
+      {
+        uint8_t *e = row + ((size_t)ps->skip_pixels + (size_t)x) * size;
+        switch (type) {
+          case GL_UNSIGNED_BYTE: case GL_BYTE: *e = (uint8_t)v; break;
+          case GL_UNSIGNED_SHORT: case GL_SHORT: {
+            uint16_t u = (uint16_t)v;
+            memcpy(e, &u, 2);
+            break;
+          }
+          case GL_FLOAT: {
+            GLfloat f = (GLfloat)v;
+            memcpy(e, &f, 4);
+            break;
+          }
+          default: memcpy(e, &v, 4); break;
+        }
+      }
+    }
+  }
 }
 
 /* Unpacks an image of color indices (format GL_COLOR_INDEX) into out,
@@ -336,7 +500,7 @@ void sgl_pack_texels(sgl_context *c, int w, int h, const uint32_t *texels, GLenu
  * glBegin and glEnd. */
 static sgl_context *outside(void) {
   sgl_context *c = sgl_ctx;
-  if (c->prim != GL_NONE) {
+  if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return NULL;
   }
@@ -397,7 +561,10 @@ void APIENTRY sgl_PixelTransferf(GLenum pname, GLfloat v) {
     case GL_ALPHA_BIAS: a->alpha_bias = v; break;
     case GL_DEPTH_SCALE: a->depth_scale = v; break;
     case GL_DEPTH_BIAS: a->depth_bias = v; break;
-    case GL_MAP_COLOR: case GL_MAP_STENCIL: case GL_INDEX_SHIFT: case GL_INDEX_OFFSET: break;
+    case GL_MAP_COLOR: a->map_color = v != 0.0f; break;
+    case GL_MAP_STENCIL: a->map_stencil = v != 0.0f; break;
+    case GL_INDEX_SHIFT: a->index_shift = (GLint)v; break;
+    case GL_INDEX_OFFSET: a->index_offset = (GLint)v; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -414,8 +581,8 @@ static int map_slot(GLenum map) {
   return -1;
 }
 
-/* glPixelMapfv: keeps a pixel map. The maps are kept for the queries;
- * the color index maps are not used. */
+/* glPixelMapfv: sets a pixel map. The size of a map must be a power of
+ * two. */
 void APIENTRY sgl_PixelMapfv(GLenum map, GLsizei n, const GLfloat *values) {
   sgl_context *c = sgl_ctx;
   int i = map_slot(map);
@@ -424,7 +591,7 @@ void APIENTRY sgl_PixelMapfv(GLenum map, GLsizei n, const GLfloat *values) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  if (n < 1 || n > 256) {
+  if (n < 1 || n > 256 || (i <= MAP_I_TO_A && (n & (n - 1)))) {
     sgl_error(GL_INVALID_VALUE);
     return;
   }
@@ -521,14 +688,22 @@ void APIENTRY sgl_Clear(GLbitfield mask) {
   if (x0 >= x1 || y0 >= y1) return;
   if (mask & GL_COLOR_BUFFER_BIT) {
     const GLfloat *cc = c->a.clear_color;
-    uint32_t v = ((uint32_t)to_byte(cc[3]) << 24) | ((uint32_t)to_byte(cc[0]) << 16) |
-                 ((uint32_t)to_byte(cc[1]) << 8) | to_byte(cc[2]);
-    uint32_t keep = (c->a.color_mask[3] ? 0 : 0xFF000000u) | (c->a.color_mask[0] ? 0 : 0xFF0000u) |
-                    (c->a.color_mask[1] ? 0 : 0xFF00u) | (c->a.color_mask[2] ? 0 : 0xFFu);
+    uint32_t v, keep;
+    if (c->index_mode) {
+      v = (uint32_t)(int32_t)(c->a.clear_index + 0.5f) & c->index_max;
+      keep = c->index_max & ~c->a.index_mask;
+    } else {
+      v = ((uint32_t)to_byte(cc[3]) << 24) | ((uint32_t)to_byte(cc[0]) << 16) |
+          ((uint32_t)to_byte(cc[1]) << 8) | to_byte(cc[2]);
+      keep = (c->a.color_mask[3] ? 0 : 0xFF000000u) | (c->a.color_mask[0] ? 0 : 0xFF0000u) |
+             (c->a.color_mask[1] ? 0 : 0xFF00u) | (c->a.color_mask[2] ? 0 : 0xFFu);
+    }
     for (y = y0; y < y1; y++) {
       uint32_t *row = c->color + (long)(c->height - 1 - y) * c->rowpixels;
       if (keep == 0)
         for (x = x0; x < x1; x++) row[x] = v;
+      else if (c->index_mode)
+        for (x = x0; x < x1; x++) row[x] = (row[x] & keep) | (v & ~keep & c->index_max);
       else if (keep != 0xFFFFFFFFu)
         for (x = x0; x < x1; x++) row[x] = (row[x] & keep) | (v & ~keep);
     }
@@ -561,9 +736,54 @@ static uint32_t raster_z(const sgl_context *c) {
   return (uint32_t)(sgl_clamp01(c->a.raster_pos[2]) * (GLfloat)SGL_Z_MAX);
 }
 
-/* Draws w x h pixels of RGBA bytes (rows bottom first) at the raster
- * position, with the pixel zoom. */
-static void draw_rgba8(sgl_context *c, int w, int h, const uint8_t *px) {
+/* The kinds of pixel rectangles that draw_rect writes. */
+enum { RECT_RGBA, RECT_INDEX, RECT_DEPTH, RECT_STENCIL };
+
+/* Writes one value of a pixel rectangle at window position x, y. */
+static void rect_pixel(sgl_context *c, int kind, int x, int y, uint32_t z, const uint8_t *rgba,
+                       int32_t value) {
+  GLfloat col[4];
+  switch (kind) {
+    case RECT_RGBA:
+      col[0] = rgba[0] / 255.0f;
+      col[1] = rgba[1] / 255.0f;
+      col[2] = rgba[2] / 255.0f;
+      col[3] = rgba[3] / 255.0f;
+      sgl_write_fragment(c, x, y, z, col, NULL);
+      break;
+    case RECT_INDEX:
+      col[0] = (GLfloat)value;
+      col[1] = col[2] = col[3] = 0.0f;
+      sgl_write_fragment(c, x, y, z, col, NULL);
+      break;
+    case RECT_DEPTH:
+      /* A depth image takes the color of the raster position. */
+      if (c->index_mode) {
+        col[0] = c->a.raster_index;
+        sgl_write_fragment(c, x, y, (uint32_t)value, col, NULL);
+      } else {
+        sgl_write_fragment(c, x, y, (uint32_t)value, c->a.raster_color, NULL);
+      }
+      break;
+    default: {
+      /* A stencil image goes to the stencil buffer, in the scissor box. */
+      int x0 = x, y0 = y, x1 = x + 1, y1 = y + 1;
+      size_t i;
+      uint8_t w = (uint8_t)c->a.stencil_writemask;
+      sgl_clip_rect(c, &x0, &y0, &x1, &y1);
+      if (x0 >= x1 || y0 >= y1 || !c->stencil) break;
+      i = (size_t)(c->height - 1 - y) * c->width + (size_t)x;
+      c->stencil[i] = (uint8_t)((c->stencil[i] & ~w) | ((uint8_t)value & w));
+      break;
+    }
+  }
+}
+
+/* Draws w x h values of a pixel rectangle (rows bottom first) at the
+ * raster position, with the pixel zoom. rgba has 4 bytes for each pixel
+ * (RECT_RGBA); values has one value for each pixel (the other kinds). */
+static void draw_rect(sgl_context *c, int kind, int w, int h, const uint8_t *rgba,
+                      const int32_t *values) {
   GLfloat zx = c->a.zoom_x, zy = c->a.zoom_y;
   GLfloat rx = c->a.raster_pos[0], ry = c->a.raster_pos[1];
   uint32_t z = raster_z(c);
@@ -576,53 +796,123 @@ static void draw_rgba8(sgl_context *c, int w, int h, const uint8_t *px) {
       yb = t;
     }
     for (x = 0; x < w; x++) {
-      const uint8_t *p = px + ((size_t)y * w + x) * 4;
+      size_t k = (size_t)y * w + x;
       int xa = (int)floorf(rx + zx * (GLfloat)x), xb = (int)floorf(rx + zx * (GLfloat)(x + 1));
-      GLfloat rgba[4];
       int i, j;
       if (xa > xb) {
         int t = xa;
         xa = xb;
         xb = t;
       }
-      rgba[0] = p[0] / 255.0f;
-      rgba[1] = p[1] / 255.0f;
-      rgba[2] = p[2] / 255.0f;
-      rgba[3] = p[3] / 255.0f;
       for (j = ya; j < yb; j++)
-        for (i = xa; i < xb; i++) sgl_write_fragment(c, i, j, z, rgba, NULL);
+        for (i = xa; i < xb; i++)
+          rect_pixel(c, kind, i, j, z, rgba ? rgba + k * 4 : NULL, values ? values[k] : 0);
     }
   }
+}
+
+/* Makes the stencil buffer on first use. Gives 0 when there is not
+ * sufficient memory. */
+static int need_stencil(sgl_context *c) {
+  if (c->stencil) return 1;
+  c->stencil = (uint8_t *)calloc(c->depth_size ? c->depth_size : 1, 1);
+  return c->stencil != NULL;
+}
+
+/* Unpacks a depth image into window z values of the rasterizer, with
+ * the depth scale and bias. */
+static int unpack_depth(sgl_context *c, int w, int h, GLenum type, const void *pixels, int32_t *out) {
+  const sgl_pixelstore *ps = &c->c.unpack;
+  int size = type_size(type), x, y;
+  const uint8_t *base = (const uint8_t *)pixels;
+  size_t rb;
+  if (size <= 0) return 0;
+  rb = row_bytes(ps, w, 1, size);
+  base += (size_t)ps->skip_rows * rb + (size_t)ps->skip_pixels * size;
+  for (y = 0; y < h; y++) {
+    const uint8_t *row = base + (size_t)y * rb;
+    for (x = 0; x < w; x++) {
+      GLfloat d = element(row, x, type, ps->swap_bytes);
+      d = sgl_clamp01(d * c->a.depth_scale + c->a.depth_bias);
+      out[(size_t)y * w + x] = (int32_t)(d * (GLfloat)SGL_Z_MAX);
+    }
+  }
+  return 1;
 }
 
 /* glDrawPixels: draws an image at the raster position. */
 void APIENTRY sgl_DrawPixels(GLsizei w, GLsizei h, GLenum format, GLenum type, const void *pixels) {
   sgl_context *c = outside();
-  uint8_t *px;
-  if (!c || !c->color) return;
+  size_t n;
+  if (!c) return;
   if (w < 0 || h < 0) {
     sgl_error(GL_INVALID_VALUE);
     return;
   }
-  if (!c->a.raster_valid || w == 0 || h == 0) return;
-  if (format == GL_DEPTH_COMPONENT || format == GL_STENCIL_INDEX) {
-    /* Depth and stencil images are not drawn. */
-    return;
-  }
-  px = (uint8_t *)malloc((size_t)w * h * 4);
-  if (!px) {
-    sgl_error(GL_OUT_OF_MEMORY);
-    return;
-  }
-  if (!sgl_unpack_rgba8(&c->c.unpack, w, h, format, type, pixels, px))
+  if (sgl_format_components(format) == 0 || type_size(type) < 0 ||
+      (type == GL_BITMAP && format != GL_COLOR_INDEX && format != GL_STENCIL_INDEX)) {
     sgl_error(GL_INVALID_ENUM);
-  else
-    draw_rgba8(c, w, h, px);
-  free(px);
+    return;
+  }
+  if (c->index_mode && format != GL_COLOR_INDEX && format != GL_STENCIL_INDEX &&
+      format != GL_DEPTH_COMPONENT) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if (c->render_mode != GL_RENDER) {
+    sgl_feedback_raster(c, (GLfloat)GL_DRAW_PIXEL_TOKEN);
+    return;
+  }
+  if (!c->color || !c->a.raster_valid || w == 0 || h == 0) return;
+  n = (size_t)w * h;
+  if (format == GL_COLOR_INDEX && c->index_mode) {
+    int32_t *v = (int32_t *)malloc(n * sizeof(int32_t));
+    size_t i;
+    if (!v) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    unpack_indices(&c->c.unpack, w, h, type, pixels, v);
+    for (i = 0; i < n; i++) v[i] = shift_index(c, v[i], c->a.map_color, MAP_I_TO_I);
+    draw_rect(c, RECT_INDEX, w, h, NULL, v);
+    free(v);
+  } else if (format == GL_STENCIL_INDEX) {
+    int32_t *v = (int32_t *)malloc(n * sizeof(int32_t));
+    size_t i;
+    if (!v || !need_stencil(c)) {
+      free(v);
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    unpack_indices(&c->c.unpack, w, h, type, pixels, v);
+    for (i = 0; i < n; i++) v[i] = shift_index(c, v[i], c->a.map_stencil, MAP_S_TO_S);
+    draw_rect(c, RECT_STENCIL, w, h, NULL, v);
+    free(v);
+  } else if (format == GL_DEPTH_COMPONENT) {
+    int32_t *v = (int32_t *)malloc(n * sizeof(int32_t));
+    if (!v) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    if (unpack_depth(c, w, h, type, pixels, v)) draw_rect(c, RECT_DEPTH, w, h, NULL, v);
+    free(v);
+  } else {
+    uint8_t *px = (uint8_t *)malloc(n * 4);
+    if (!px) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    if (!sgl_unpack_rgba8(&c->c.unpack, w, h, format, type, pixels, px))
+      sgl_error(GL_INVALID_ENUM);
+    else
+      draw_rect(c, RECT_RGBA, w, h, px, NULL);
+    free(px);
+  }
 }
 
 /* Reads w x h pixels of the color buffer at x, y into 0xAARRGGBB
- * values, rows bottom first. Pixels outside the buffer are 0. */
+ * values (or indices in color index mode), rows bottom first. Pixels
+ * outside the buffer are 0. */
 static void read_rect(sgl_context *c, int x, int y, int w, int h, uint32_t *out) {
   int i, j;
   for (j = 0; j < h; j++)
@@ -634,77 +924,182 @@ static void read_rect(sgl_context *c, int x, int y, int w, int h, uint32_t *out)
     }
 }
 
-/* glReadPixels: reads a rectangle of the color or depth buffer. */
+/* Reads w x h values of the stencil buffer at x, y, rows bottom first.
+ * Values outside the buffer are 0. */
+static void read_stencil(sgl_context *c, int x, int y, int w, int h, int32_t *out) {
+  int i, j;
+  for (j = 0; j < h; j++)
+    for (i = 0; i < w; i++) {
+      int px = x + i, py = y + j;
+      out[(size_t)j * w + i] = c->stencil && px >= 0 && py >= 0 && px < c->width && py < c->height
+                                   ? c->stencil[(size_t)(c->height - 1 - py) * c->width + px]
+                                   : 0;
+    }
+}
+
+/* Reads w x h values of the depth buffer at x, y as window z values of
+ * the rasterizer, rows bottom first. Values outside the buffer are the
+ * far plane. */
+static void read_depth(sgl_context *c, int x, int y, int w, int h, int32_t *out) {
+  int i, j;
+  for (j = 0; j < h; j++)
+    for (i = 0; i < w; i++) {
+      int px = x + i, py = y + j;
+      uint32_t d = SGL_Z_MAX;
+      if (c->depth && px >= 0 && py >= 0 && px < c->width && py < c->height)
+        d = (uint32_t)c->depth[(size_t)(c->height - 1 - py) * c->width + px] << SGL_DEPTH_SHIFT;
+      out[(size_t)j * w + i] = (int32_t)d;
+    }
+}
+
+/* glReadPixels: reads a rectangle of the color, depth or stencil buffer. */
 void APIENTRY sgl_ReadPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum format, GLenum type,
                              void *pixels) {
   sgl_context *c = outside();
-  uint32_t *tmp;
+  size_t n, i;
   if (!c || !c->color) return;
   if (w < 0 || h < 0) {
     sgl_error(GL_INVALID_VALUE);
     return;
   }
+  if (format == GL_COLOR_INDEX && !c->index_mode) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
   if (w == 0 || h == 0) return;
+  n = (size_t)w * h;
   if (format == GL_DEPTH_COMPONENT) {
     /* Depth as floats or the integer types, without the pack store's
      * skips. */
-    int i, j;
-    for (j = 0; j < h; j++)
-      for (i = 0; i < w; i++) {
-        int px = x + i, py = y + j;
-        GLfloat d = 1.0f;
-        if (px >= 0 && py >= 0 && px < c->width && py < c->height)
-          d = (GLfloat)((uint32_t)c->depth[(size_t)(c->height - 1 - py) * c->width + px]
-                        << SGL_DEPTH_SHIFT) / (GLfloat)SGL_Z_MAX;
-        if (type == GL_FLOAT)
-          ((GLfloat *)pixels)[(size_t)j * w + i] = d;
-        else if (type == GL_UNSIGNED_SHORT)
-          ((GLushort *)pixels)[(size_t)j * w + i] = (GLushort)(d * 65535.0f);
-        else if (type == GL_UNSIGNED_INT)
-          ((GLuint *)pixels)[(size_t)j * w + i] = (GLuint)(d * 4294967295.0);
-        else if (type == GL_UNSIGNED_BYTE)
-          ((GLubyte *)pixels)[(size_t)j * w + i] = (GLubyte)(d * 255.0f);
-      }
+    int32_t *d = (int32_t *)malloc(n * sizeof(int32_t));
+    if (!d) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    read_depth(c, x, y, w, h, d);
+    for (i = 0; i < n; i++) {
+      GLfloat v = sgl_clamp01((GLfloat)(uint32_t)d[i] / (GLfloat)SGL_Z_MAX * c->a.depth_scale +
+                              c->a.depth_bias);
+      if (type == GL_FLOAT)
+        ((GLfloat *)pixels)[i] = v;
+      else if (type == GL_UNSIGNED_SHORT)
+        ((GLushort *)pixels)[i] = (GLushort)(v * 65535.0f);
+      else if (type == GL_UNSIGNED_INT)
+        ((GLuint *)pixels)[i] = (GLuint)(v * 4294967295.0);
+      else if (type == GL_UNSIGNED_BYTE)
+        ((GLubyte *)pixels)[i] = (GLubyte)(v * 255.0f);
+    }
+    free(d);
     return;
   }
-  tmp = (uint32_t *)malloc((size_t)w * h * 4);
-  if (!tmp) {
-    sgl_error(GL_OUT_OF_MEMORY);
+  if (format == GL_STENCIL_INDEX || format == GL_COLOR_INDEX) {
+    int32_t *v = (int32_t *)malloc(n * sizeof(int32_t));
+    if (!v) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    if (format == GL_STENCIL_INDEX) {
+      read_stencil(c, x, y, w, h, v);
+      for (i = 0; i < n; i++) v[i] = shift_index(c, v[i], c->a.map_stencil, MAP_S_TO_S);
+    } else {
+      read_rect(c, x, y, w, h, (uint32_t *)v);
+      for (i = 0; i < n; i++)
+        v[i] = shift_index(c, (int32_t)((uint32_t)v[i] & c->index_max), c->a.map_color, MAP_I_TO_I);
+    }
+    pack_indices(c, w, h, v, type, pixels);
+    free(v);
     return;
   }
-  read_rect(c, x, y, w, h, tmp);
-  pack_rgba(c, w, h, tmp, format, type, pixels);
-  free(tmp);
+  {
+    uint32_t *tmp = (uint32_t *)malloc(n * 4);
+    if (!tmp) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    read_rect(c, x, y, w, h, tmp);
+    pack_rgba(c, w, h, tmp, format, type, pixels);
+    free(tmp);
+  }
 }
 
-/* glCopyPixels: copies a rectangle of the color buffer to the raster
- * position. */
+/* glCopyPixels: copies a rectangle of the color, depth or stencil
+ * buffer to the raster position. */
 void APIENTRY sgl_CopyPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum type) {
   sgl_context *c = outside();
-  uint32_t *tmp;
-  uint8_t *px;
   size_t i, n;
-  if (!c || !c->color || type != GL_COLOR) return;
-  if (w <= 0 || h <= 0 || !c->a.raster_valid) return;
+  int32_t *v;
+  if (!c) return;
+  if (type != GL_COLOR && type != GL_DEPTH && type != GL_STENCIL) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  if (w < 0 || h < 0) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  if (c->render_mode != GL_RENDER) {
+    sgl_feedback_raster(c, (GLfloat)GL_COPY_PIXEL_TOKEN);
+    return;
+  }
+  if (!c->color || w == 0 || h == 0 || !c->a.raster_valid) return;
   n = (size_t)w * h;
-  tmp = (uint32_t *)malloc(n * 4);
-  px = (uint8_t *)malloc(n * 4);
-  if (!tmp || !px) {
-    free(tmp);
-    free(px);
+  v = (int32_t *)malloc(n * 4 + 1);
+  if (!v) {
     sgl_error(GL_OUT_OF_MEMORY);
     return;
   }
-  read_rect(c, x, y, w, h, tmp);
-  for (i = 0; i < n; i++) {
-    px[i * 4] = (uint8_t)(tmp[i] >> 16);
-    px[i * 4 + 1] = (uint8_t)(tmp[i] >> 8);
-    px[i * 4 + 2] = (uint8_t)tmp[i];
-    px[i * 4 + 3] = (uint8_t)(tmp[i] >> 24);
+  if (type == GL_DEPTH) {
+    read_depth(c, x, y, w, h, v);
+    for (i = 0; i < n; i++) {
+      GLfloat d = sgl_clamp01((GLfloat)(uint32_t)v[i] / (GLfloat)SGL_Z_MAX * c->a.depth_scale +
+                              c->a.depth_bias);
+      v[i] = (int32_t)(d * (GLfloat)SGL_Z_MAX);
+    }
+    draw_rect(c, RECT_DEPTH, w, h, NULL, v);
+  } else if (type == GL_STENCIL) {
+    if (need_stencil(c)) {
+      read_stencil(c, x, y, w, h, v);
+      for (i = 0; i < n; i++) v[i] = shift_index(c, v[i], c->a.map_stencil, MAP_S_TO_S);
+      draw_rect(c, RECT_STENCIL, w, h, NULL, v);
+    }
+  } else if (c->index_mode) {
+    read_rect(c, x, y, w, h, (uint32_t *)v);
+    for (i = 0; i < n; i++)
+      v[i] = shift_index(c, (int32_t)((uint32_t)v[i] & c->index_max), c->a.map_color, MAP_I_TO_I);
+    draw_rect(c, RECT_INDEX, w, h, NULL, v);
+  } else {
+    uint8_t *px = (uint8_t *)malloc(n * 4);
+    uint32_t *tmp = (uint32_t *)v;
+    if (!px) {
+      free(v);
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    read_rect(c, x, y, w, h, tmp);
+    for (i = 0; i < n; i++) {
+      px[i * 4] = (uint8_t)(tmp[i] >> 16);
+      px[i * 4 + 1] = (uint8_t)(tmp[i] >> 8);
+      px[i * 4 + 2] = (uint8_t)tmp[i];
+      px[i * 4 + 3] = (uint8_t)(tmp[i] >> 24);
+    }
+    if (transfer_on(c) || c->a.map_color) {
+      for (i = 0; i < n; i++) {
+        GLfloat f[4];
+        int k;
+        const sgl_attrib *a = &c->a;
+        for (k = 0; k < 4; k++) f[k] = px[i * 4 + k] / 255.0f;
+        f[0] = f[0] * a->red_scale + a->red_bias;
+        f[1] = f[1] * a->green_scale + a->green_bias;
+        f[2] = f[2] * a->blue_scale + a->blue_bias;
+        f[3] = f[3] * a->alpha_scale + a->alpha_bias;
+        if (a->map_color) map_rgba(c, f);
+        for (k = 0; k < 4; k++) px[i * 4 + k] = to_byte(f[k]);
+      }
+    }
+    draw_rect(c, RECT_RGBA, w, h, px, NULL);
+    free(px);
   }
-  draw_rgba8(c, w, h, px);
-  free(tmp);
-  free(px);
+  free(v);
 }
 
 /* glBitmap: draws a bitmap in the raster color at the raster position,
@@ -718,19 +1113,28 @@ void APIENTRY sgl_Bitmap(GLsizei w, GLsizei h, GLfloat xorig, GLfloat yorig, GLf
     return;
   }
   if (!c->a.raster_valid) return;
-  if (bitmap && w > 0 && h > 0 && c->color) {
+  if (c->render_mode != GL_RENDER) {
+    sgl_feedback_raster(c, (GLfloat)GL_BITMAP_TOKEN);
+  } else if (bitmap && w > 0 && h > 0 && c->color) {
     uint8_t *bits = (uint8_t *)malloc((size_t)w * h);
     int x0 = (int)floorf(c->a.raster_pos[0] - xorig), y0 = (int)floorf(c->a.raster_pos[1] - yorig);
     uint32_t z = raster_z(c);
+    GLfloat index[4];
+    const GLfloat *color = c->a.raster_color;
     int x, y;
     if (!bits) {
       sgl_error(GL_OUT_OF_MEMORY);
       return;
     }
+    if (c->index_mode) {
+      index[0] = c->a.raster_index;
+      index[1] = index[2] = index[3] = 0.0f;
+      color = index;
+    }
     sgl_unpack_index(&c->c.unpack, w, h, GL_BITMAP, bitmap, bits);
     for (y = 0; y < h; y++)
       for (x = 0; x < w; x++)
-        if (bits[(size_t)y * w + x]) sgl_write_fragment(c, x0 + x, y0 + y, z, c->a.raster_color, NULL);
+        if (bits[(size_t)y * w + x]) sgl_write_fragment(c, x0 + x, y0 + y, z, color, NULL);
     free(bits);
   }
   c->a.raster_pos[0] += xmove;

@@ -50,19 +50,43 @@ Windows NT 4.0 gives them:
 - Texture coordinate generation: object linear, eye linear and sphere
   map.
 - Rasterization: points, lines (width and stipple), polygons (fill,
-  line and point modes, stipple, culling, polygon offset), flat and
-  smooth shading.
+  line and point modes, polygon stipple, culling, polygon offset), flat
+  and smooth shading.
 - Textures: 1D and 2D, mipmaps, nearest and linear filters, repeat and
   clamp, texture objects, the four texture environments and
   perspective correction.
 - Per-fragment operations: fog, scissor, alpha test, stencil, depth
-  test, blending and color mask.
+  test, blending, the logical operation (`glLogicOp`) and color mask.
 - Pixels: `glDrawPixels`, `glReadPixels`, `glCopyPixels`, `glBitmap`,
-  the pixel store, transfer and zoom, and the pixel maps.
+  the pixel store and zoom. Color, color index, stencil and depth
+  images. The pixel transfer: scale and bias, index shift and offset,
+  and the pixel maps (`GL_MAP_COLOR`, `GL_MAP_STENCIL`, and the
+  `I_TO_R`, `I_TO_G`, `I_TO_B` and `I_TO_A` maps for color index
+  images in RGBA mode).
 - The accumulation buffer, `glPushAttrib` and `glPushClientAttrib`.
+- Selection (`GL_SELECT`): the name stack and the hit records.
+- Feedback (`GL_FEEDBACK`): the five vertex types, `glPassThrough`,
+  and the tokens of points, lines, polygons, bitmaps and pixel
+  rectangles.
+- Color index mode (see below).
+
+### Color index mode
+
+`sgl_create_index_context` makes a context in color index mode, for a
+pixel format of type `PFD_TYPE_COLORINDEX`. Each pixel of the color
+buffer holds an index in its low bits. The window layer changes the
+indices to colors through its palette when it copies the buffer.
+
+In color index mode, these operations use indices: clear
+(`glClearIndex`), flat and smooth shading, lighting with the color
+indices of the material (`GL_COLOR_INDEXES`), fog (`GL_FOG_INDEX`),
+the logical operation (`GL_INDEX_LOGIC_OP`), the index mask
+(`glIndexMask`), feedback, and `glDrawPixels`, `glReadPixels` and
+`glCopyPixels` with indices. Blending, the alpha test and textures are
+not used in color index mode, as the specification tells.
 
 GLU 1.3 is also available: the SGI reference GLU (matrices, mipmaps,
-image scale, quadrics and tessellation). Its license is the SGI Free
+image scale, quadrics, tessellation and NURBS). Its license is the SGI Free
 Software License B 2.0. See [glu/README.md](../glu/README.md).
 
 ## How the renderer is built
@@ -74,16 +98,23 @@ The renderer is in C (C99). The folders are:
 - `include/GL`: `gl.h`, `glext.h` and `glu.h`.
 - `include/softgl.h`: the interface to the window layer.
 
+The NURBS of GLU (`glu/libnurbs`) are in C++. The makefile compiles
+them with `-fno-exceptions -fno-rtti`, so that they need only
+`operator new` and `operator delete` from the C++ runtime. To build
+without a C++ compiler, set `NURBS=0`. Then the `gluNurbs` functions
+are not available.
+
 To build `build/libsoftgl.a` (the renderer and GLU) and run the tests:
 
 ```sh
 make check
 ```
 
-For a cross compiler, set `CC`, `CFLAGS` and `AR`:
+For a cross compiler, set `CC`, `CXX`, `CFLAGS` and `AR`. For
+example, with the clang-retro toolchain for AmigaOS:
 
 ```sh
-make CC="clang --target=m68k-apple-macos" AR=llvm-ar
+make CC="clang --config=amiga.cfg" CXX="clang++ --config=amiga.cfg" AR=llvm-ar
 ```
 
 In clang-retro MFC, the MFC makefile compiles the same files from
@@ -126,6 +157,7 @@ removes these two functions from `dispatch.c`.
 | Function | Purpose |
 | --- | --- |
 | `sgl_create_context` | Makes a rendering context. It can share display lists and textures with another context. |
+| `sgl_create_index_context` | Makes a rendering context in color index mode, with indices of 1 to 16 bits. |
 | `sgl_destroy_context` | Destroys a context. |
 | `sgl_make_current` | Makes a context the current context of the thread. |
 | `sgl_set_buffer` | Gives the color buffer to the context. The context makes its depth, stencil and accumulation buffers in the same size. |
@@ -169,11 +201,21 @@ makes the renderer faster without changes to the renderer.
 
 ## Tests
 
-- `tests/render.c` draws scenes into a 64 x 64 buffer and
-  examines pixels: flat and smooth shading, depth, a lit sphere in a
-  display list, a texture with perspective, vertex arrays, an evaluator
-  mesh, blending and the scissor. `make check` builds and runs it. The
-  output is `PASS softgl render`.
+`make check` builds and runs each test in `tests/`. Each test draws
+scenes into a 64 x 64 buffer in memory and examines the pixels or the
+values that OpenGL gives back:
+
+- `tests/render.c`: flat and smooth shading, depth, a lit sphere in a
+  display list, a texture with perspective, vertex arrays, an
+  evaluator mesh, blending and the scissor. The output is
+  `PASS softgl render`.
+- `tests/gl11.c`: points, selection, feedback, the logical operation,
+  the polygon stipple, color index images through the pixel maps,
+  stencil and depth images, GLU NURBS (drawn and tessellated), and
+  color index mode. The output is `PASS softgl gl11`.
+
+CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
+Atari TOS (68000) with the clang-retro toolchain.
 
 In clang-retro MFC:
 
@@ -187,20 +229,19 @@ In clang-retro MFC:
 
 ## Limits
 
-- Color index mode is not available. All pixel formats are RGBA.
-- Selection and feedback (`GL_SELECT`, `GL_FEEDBACK`) do not record
-  hits or vertices. `glRenderMode` gives 0.
-- `glLogicOp` has no effect.
+- Dithering has no effect. The buffer has 8 bits for each component.
+- Smooth points, lines and polygons are drawn without antialiasing.
 - The width and the height of a texture must be powers of two.
 - The OpenGL 1.2 functions are not available. `glTexImage3D` is a stub
   for GLU only.
-- NURBS of GLU (`gluNewNurbsRenderer`) are not available.
 - The pixel format tells 32 depth bits. On the 68k, the depth buffer
   has 16 bits (`glGetIntegerv(GL_DEPTH_BITS)` gives 16).
 
 ## Other systems
 
-The renderer has no dependency on the window layer. Its C code
-compiles for DOS, 16-bit Windows, AmigaOS, Atari TOS and OS/2 too. A
-front end for each of these systems must copy the color buffer to the
-screen, as `opengl_soft.cpp` does through GDI.
+The renderer has no dependency on the window layer. It compiles for
+the systems that have 32-bit pointers, such as AmigaOS, Atari TOS,
+32-bit DOS and OS/2. It does not compile for 16-bit x86 targets
+(16-bit DOS and 16-bit Windows): a context is more than 64 KB. A front
+end for each system must copy the color buffer to the screen, as
+`opengl_soft.cpp` does through GDI.

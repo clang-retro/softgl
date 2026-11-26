@@ -3,8 +3,9 @@
 This folder holds the OpenGL Utility Library (GLU 1.3) of the SGI
 reference implementation, from Mesa GLU 9.0.3. The files are not
 changed. The makefile compiles `libtess/*.c` (but not
-`libtess/priorityq-heap.c`, which `priorityq.c` includes) and
-`libutil/*.c`. The NURBS part (`libnurbs`, C++) is not here.
+`libtess/priorityq-heap.c`, which `priorityq.c` includes),
+`libutil/*.c` and the NURBS part, `libnurbs/*/*.cc` (C++, with
+`-DLIBRARYBUILD -DNDEBUG`).
 
 The files are under the SGI Free Software License B, version 2.0
 (`SGI-B-2.0`). The text of the license is at the start of each file.

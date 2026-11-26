@@ -88,6 +88,7 @@ int sgl_cap_index(GLenum cap) {
     case GL_LINE_SMOOTH: return SGL_LINE_SMOOTH;
     case GL_LINE_STIPPLE: return SGL_LINE_STIPPLE;
     case GL_COLOR_LOGIC_OP: return SGL_COLOR_LOGIC_OP;
+    case GL_INDEX_LOGIC_OP: return SGL_INDEX_LOGIC_OP;
     case GL_NORMALIZE: return SGL_NORMALIZE;
     case GL_POINT_SMOOTH: return SGL_POINT_SMOOTH;
     case GL_POLYGON_SMOOTH: return SGL_POLYGON_SMOOTH;
@@ -174,6 +175,7 @@ static void init_attrib(sgl_attrib *a) {
     m->diffuse[3] = 1.0f;
     m->specular[3] = 1.0f;
     m->emission[3] = 1.0f;
+    m->indexes[1] = m->indexes[2] = 1.0f;
     {
       int k;
       for (k = 0; k < SGL_SHINE_CACHE; k++) m->shine_of[k] = -1.0f;
@@ -197,6 +199,7 @@ static void init_attrib(sgl_attrib *a) {
   a->logic_op = GL_COPY;
   a->draw_buffer = GL_BACK;
   a->color_mask[0] = a->color_mask[1] = a->color_mask[2] = a->color_mask[3] = GL_TRUE;
+  a->index_mask = 0xFFFFFFFFu;
   a->stencil_func = GL_ALWAYS;
   a->stencil_fail = a->stencil_zfail = a->stencil_zpass = GL_KEEP;
   a->stencil_mask = a->stencil_writemask = 0xFFFFFFFFu;
@@ -271,11 +274,24 @@ sgl_context *sgl_create_context(sgl_context *share) {
   c->stack = &c->modelview;
   c->mvp_dirty = c->inv_dirty = 1;
   c->texture_identity = 1;
-  c->prim = GL_NONE;
+  c->prim = SGL_NO_PRIM;
   c->render_mode = GL_RENDER;
   sgl_vertex_init(c);
   sgl_texture_init(c);
   sgl_eval_init(c);
+  return c;
+}
+
+/* Makes a rendering context in color index mode (see softgl.h). */
+sgl_context *sgl_create_index_context(sgl_context *share, int index_bits) {
+  sgl_context *c;
+  if (index_bits < 1 || index_bits > 16) return NULL;
+  c = sgl_create_context(share);
+  if (!c) return NULL;
+  c->index_mode = 1;
+  c->index_bits = index_bits;
+  c->index_max = (1u << index_bits) - 1u;
+  c->a.index_mask = c->index_max;
   return c;
 }
 
@@ -387,7 +403,7 @@ void *sgl_get_proc(const char *name) {
  * call is between glBegin and glEnd. Gives NULL then. */
 static sgl_context *outside(void) {
   sgl_context *c = sgl_ctx;
-  if (c->prim != GL_NONE) {
+  if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return NULL;
   }
@@ -620,8 +636,12 @@ void APIENTRY sgl_ClearStencil(GLint s) {
   if (c) c->a.stencil_clear = s;
 }
 
-/* glClearIndex: color index mode is not there; the value is kept. */
-void APIENTRY sgl_ClearIndex(GLfloat i) { (void)i; }
+/* glClearIndex: sets the clear value of the color buffer in color
+ * index mode. */
+void APIENTRY sgl_ClearIndex(GLfloat i) {
+  sgl_context *c = outside();
+  if (c) c->a.clear_index = i;
+}
 
 /* glClearAccum: sets the color that glClear gives to the accumulation
  * buffer. */
@@ -656,10 +676,14 @@ void APIENTRY sgl_StencilMask(GLuint mask) {
   if (c) c->a.stencil_writemask = mask;
 }
 
-/* glIndexMask: color index mode is not there. */
-void APIENTRY sgl_IndexMask(GLuint mask) { (void)mask; }
+/* glIndexMask: sets the bits of the color indices that can change in
+ * color index mode. */
+void APIENTRY sgl_IndexMask(GLuint mask) {
+  sgl_context *c = outside();
+  if (c) c->a.index_mask = mask;
+}
 
-/* glIndexf: color index mode is not there. */
+/* glIndexf: sets the current color index. */
 void APIENTRY sgl_Indexf(GLfloat c) { sgl_ctx->a.index = c; }
 
 /* glBlendFunc: sets the blend factors. */
@@ -673,7 +697,12 @@ void APIENTRY sgl_BlendFunc(GLenum sfactor, GLenum dfactor) {
 /* glLogicOp: sets the logical operation of the color buffer. */
 void APIENTRY sgl_LogicOp(GLenum opcode) {
   sgl_context *c = outside();
-  if (c) c->a.logic_op = opcode;
+  if (!c) return;
+  if (opcode < GL_CLEAR || opcode > GL_SET) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  c->a.logic_op = opcode;
 }
 
 /* glStencilFunc: sets the stencil test. */
@@ -743,68 +772,6 @@ void APIENTRY sgl_AddSwapHintRectWIN(GLint x, GLint y, GLsizei w, GLsizei h) {
   (void)x, (void)y, (void)w, (void)h;
 }
 
-/* glRenderMode: sets render, selection or feedback mode. Selection and
- * feedback give no hits and no values. */
-GLint APIENTRY sgl_RenderMode(GLenum mode) {
-  sgl_context *c = outside();
-  if (!c) return 0;
-  if (mode != GL_RENDER && mode != GL_SELECT && mode != GL_FEEDBACK) {
-    sgl_error(GL_INVALID_ENUM);
-    return 0;
-  }
-  c->render_mode = mode;
-  return 0;
-}
-
-/* glSelectBuffer: keeps the selection buffer. */
-void APIENTRY sgl_SelectBuffer(GLsizei size, GLuint *buffer) {
-  sgl_context *c = outside();
-  if (!c) return;
-  c->select_buffer = buffer;
-  c->select_size = size;
-}
-
-/* glFeedbackBuffer: feedback gives no values. */
-void APIENTRY sgl_FeedbackBuffer(GLsizei size, GLenum type, GLfloat *buffer) {
-  (void)size, (void)type, (void)buffer;
-}
-
-/* glInitNames: empties the name stack. */
-void APIENTRY sgl_InitNames(void) { sgl_ctx->name_depth = 0; }
-
-/* glLoadName: replaces the top of the name stack. */
-void APIENTRY sgl_LoadName(GLuint name) {
-  sgl_context *c = sgl_ctx;
-  if (c->name_depth == 0) {
-    sgl_error(GL_INVALID_OPERATION);
-    return;
-  }
-  c->names[c->name_depth - 1] = name;
-}
-
-/* glPushName: pushes a name on the name stack. */
-void APIENTRY sgl_PushName(GLuint name) {
-  sgl_context *c = sgl_ctx;
-  if (c->name_depth >= SGL_NAME_DEPTH) {
-    sgl_error(GL_STACK_OVERFLOW);
-    return;
-  }
-  c->names[c->name_depth++] = name;
-}
-
-/* glPopName: pops a name off the name stack. */
-void APIENTRY sgl_PopName(void) {
-  sgl_context *c = sgl_ctx;
-  if (c->name_depth == 0) {
-    sgl_error(GL_STACK_UNDERFLOW);
-    return;
-  }
-  c->name_depth--;
-}
-
-/* glPassThrough: feedback gives no values. */
-void APIENTRY sgl_PassThrough(GLfloat token) { (void)token; }
-
 /* Makes the accumulation buffer on first use. Gives 0 when there is not
  * sufficient memory. */
 static int need_accum(sgl_context *c) {
@@ -864,6 +831,7 @@ static GLbitfield cap_group(int cap) {
   if (cap >= SGL_MAP1_VERTEX_3 && cap <= SGL_MAP2_INDEX) return GL_EVAL_BIT;
   switch (cap) {
     case SGL_ALPHA_TEST: case SGL_BLEND: case SGL_DITHER: case SGL_COLOR_LOGIC_OP:
+    case SGL_INDEX_LOGIC_OP:
       return GL_COLOR_BUFFER_BIT;
     case SGL_AUTO_NORMAL: return GL_EVAL_BIT;
     case SGL_COLOR_MATERIAL: case SGL_LIGHTING: return GL_LIGHTING_BIT;
@@ -931,6 +899,7 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE_ARRAY(GL_CURRENT_BIT, raster_color);
   RESTORE_ARRAY(GL_CURRENT_BIT, raster_tex);
   RESTORE(GL_CURRENT_BIT, raster_distance);
+  RESTORE(GL_CURRENT_BIT, raster_index);
   RESTORE(GL_CURRENT_BIT, raster_valid);
   RESTORE(GL_CURRENT_BIT, edge);
   RESTORE(GL_POINT_BIT, point_size);
@@ -956,6 +925,10 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_PIXEL_MODE_BIT, depth_scale);
   RESTORE(GL_PIXEL_MODE_BIT, depth_bias);
   RESTORE(GL_PIXEL_MODE_BIT, read_buffer);
+  RESTORE(GL_PIXEL_MODE_BIT, index_shift);
+  RESTORE(GL_PIXEL_MODE_BIT, index_offset);
+  RESTORE(GL_PIXEL_MODE_BIT, map_color);
+  RESTORE(GL_PIXEL_MODE_BIT, map_stencil);
   RESTORE_ARRAY(GL_LIGHTING_BIT, light);
   RESTORE_ARRAY(GL_LIGHTING_BIT, material);
   RESTORE_ARRAY(GL_LIGHTING_BIT, model_ambient);
@@ -969,6 +942,7 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_FOG_BIT, fog_density);
   RESTORE(GL_FOG_BIT, fog_start);
   RESTORE(GL_FOG_BIT, fog_end);
+  RESTORE(GL_FOG_BIT, fog_index);
   RESTORE(GL_DEPTH_BUFFER_BIT, depth_func);
   RESTORE(GL_DEPTH_BUFFER_BIT, depth_mask);
   RESTORE(GL_DEPTH_BUFFER_BIT, clear_depth);
@@ -980,6 +954,8 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_COLOR_BUFFER_BIT, draw_buffer);
   RESTORE_ARRAY(GL_COLOR_BUFFER_BIT, clear_color);
   RESTORE_ARRAY(GL_COLOR_BUFFER_BIT, color_mask);
+  RESTORE(GL_COLOR_BUFFER_BIT, clear_index);
+  RESTORE(GL_COLOR_BUFFER_BIT, index_mask);
   RESTORE(GL_STENCIL_BUFFER_BIT, stencil_func);
   RESTORE(GL_STENCIL_BUFFER_BIT, stencil_fail);
   RESTORE(GL_STENCIL_BUFFER_BIT, stencil_zfail);
@@ -1070,6 +1046,7 @@ void APIENTRY sgl_GetPointerv(GLenum pname, void **params) {
     case GL_TEXTURE_COORD_ARRAY_POINTER: *params = (void *)c->c.tex.pointer; break;
     case GL_EDGE_FLAG_ARRAY_POINTER: *params = (void *)c->c.edge.pointer; break;
     case GL_SELECTION_BUFFER_POINTER: *params = (void *)c->select_buffer; break;
+    case GL_FEEDBACK_BUFFER_POINTER: *params = (void *)c->feedback_buffer; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -1155,9 +1132,20 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_STENCIL_BITS: v[0] = 8; return 1;
     case GL_ACCUM_RED_BITS: case GL_ACCUM_GREEN_BITS: case GL_ACCUM_BLUE_BITS:
     case GL_ACCUM_ALPHA_BITS: v[0] = 16; return 1;
-    case GL_INDEX_BITS: v[0] = 0; return 1;
-    case GL_RGBA_MODE: v[0] = 1; *kind = Q_BOOL; return 1;
-    case GL_INDEX_MODE: v[0] = 0; *kind = Q_BOOL; return 1;
+    case GL_INDEX_BITS: v[0] = c->index_mode ? c->index_bits : 0; return 1;
+    case GL_RGBA_MODE: v[0] = !c->index_mode; *kind = Q_BOOL; return 1;
+    case GL_INDEX_MODE: v[0] = c->index_mode; *kind = Q_BOOL; return 1;
+    case GL_INDEX_CLEAR_VALUE: v[0] = a->clear_index; *kind = Q_FLOAT; return 1;
+    case GL_INDEX_WRITEMASK: v[0] = a->index_mask; return 1;
+    case GL_CURRENT_RASTER_INDEX: v[0] = a->raster_index; *kind = Q_FLOAT; return 1;
+    case GL_FOG_INDEX: v[0] = a->fog_index; *kind = Q_FLOAT; return 1;
+    case GL_INDEX_SHIFT: v[0] = a->index_shift; return 1;
+    case GL_INDEX_OFFSET: v[0] = a->index_offset; return 1;
+    case GL_MAP_COLOR: v[0] = a->map_color; *kind = Q_BOOL; return 1;
+    case GL_MAP_STENCIL: v[0] = a->map_stencil; *kind = Q_BOOL; return 1;
+    case GL_SELECTION_BUFFER_SIZE: v[0] = c->select_size; return 1;
+    case GL_FEEDBACK_BUFFER_SIZE: v[0] = c->feedback_size; return 1;
+    case GL_FEEDBACK_BUFFER_TYPE: v[0] = c->feedback_type; *kind = Q_ENUM; return 1;
     case GL_DOUBLEBUFFER: v[0] = 1; *kind = Q_BOOL; return 1;
     case GL_STEREO: v[0] = 0; *kind = Q_BOOL; return 1;
     case GL_POINT_SIZE: v[0] = a->point_size; *kind = Q_FLOAT; return 1;
