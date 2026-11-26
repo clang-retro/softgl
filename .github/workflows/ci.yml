@@ -63,4 +63,53 @@ jobs:
         run: |
           make -j"$(nproc)" OUT=build-atari AR="$CLANG_DOS/bin/llvm-ar" \
             CC="$CLANG_DOS/bin/clang --config=atari.cfg" \
-            CXX="$CLANG_DOS/bin/clang++ --config=atari.cfg" CFLAGS="-O2 -Werror"
+            CXX="$CLANG_DOS/bin/clang++ --config=atari.cfg" CFLAGS="-O2 -Werror" all atari
+
+  # The 3dfx Glide back end for Windows 95 and 98: the build with
+  # clang-retro's compiler, and a run of the example under Wine with a
+  # glide2x.dll that records the calls (tests/wine/fake_glide2x.c).
+  glide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      - name: Install Wine
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine wine32:i386 xvfb xauth
+      - name: Build for Windows 95
+        run: |
+          make -j"$(nproc)" OUT=build-win95 AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=win95.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=win95.cfg" CFLAGS="-O2 -Werror" glide
+      - name: Run the example under Wine
+        run: |
+          CC="$CLANG_DOS/bin/clang --config=win95.cfg" NM="$CLANG_DOS/bin/llvm-nm" \
+            WINE="xvfb-run -a wine" sh tools/test-glide-wine.sh build-win95
+
+  # The Atari back end in the Hatari emulator with EmuTOS: an ST, an STE
+  # and a Falcon (tests/atari/present.c). The library is built with -O0:
+  # the clang-retro nightly of 2026-11-25 and earlier miscompiles a store
+  # of a byte or word load that is extended (llvm 8e80744 fixes it), and
+  # this faults on the 68000. The m68k job builds with -O2.
+  atari-hatari:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      - name: Install Hatari
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends hatari
+      - name: Build for Atari TOS
+        run: |
+          make -j"$(nproc)" OUT=build-atari AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=atari.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=atari.cfg" CFLAGS="-O0" all atari
+      - name: Run the test in Hatari
+        run: CC="$CLANG_DOS/bin/clang --config=atari.cfg" CFLAGS=-O0 sh tools/test-atari-hatari.sh build-atari

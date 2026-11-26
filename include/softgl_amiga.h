@@ -14,6 +14,7 @@
 #define SOFTGL_AMIGA_H
 
 #include "softgl.h"
+#include "softgl_c2p.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,12 +29,6 @@ struct ScreenBuffer;
 #define SGL_AMIGA_BLITTER_FILL 2u  /* fill the long rows of flat triangles with the Blitter */
 #define SGL_AMIGA_NO_AKIKO 4u      /* do not use Akiko (CD32) for chunky-to-planar */
 
-/* The tables that change a 32-bit pixel to a pen of depth planes. */
-typedef struct sgl_c2p_tables {
-  uint16_t r[256], g[256], b[256]; /* the pen is (r[R] + g[G] + b[B]) >> shift */
-  int shift;
-  uint32_t index_mask;             /* color index mode: the pen is index & index_mask */
-} sgl_c2p_tables;
 
 /* The state of the back end. The program sets the first fields; the
  * other fields are for the back end. */
@@ -67,8 +62,8 @@ void sgl_amiga_free_color(uint32_t *p);
 
 /* Gives the palette that the back end uses for depth planes: 1 << depth
  * colors of 3 bytes (red, green, blue). Load it into the screen, for
- * example with LoadRGB32. */
-void sgl_amiga_palette(int depth, uint8_t (*rgb)[3]);
+ * example with LoadRGB32. It is sgl_c2p_palette of softgl_c2p.h. */
+#define sgl_amiga_palette sgl_c2p_palette
 
 /* The flags of sgl_amiga_warp3d. */
 #define SGL_AMIGA_W3D_ALLOW_CPU 1u /* also use the CPU driver of Warp3D (slower than softgl on a 68k) */
@@ -93,19 +88,6 @@ typedef struct sgl_amiga_warp3d {
  * Warp3D or a pixel format that the back end does not know: ctx then
  * stays in software. */
 int sgl_amiga_warp3d_attach(sgl_amiga_warp3d *w, sgl_context *ctx);
-
-/* The parts without the hardware, which the tests use on any system. */
-
-/* Fills the tables for depth planes. */
-void sgl_c2p_init(sgl_c2p_tables *t, int depth);
-
-/* Changes n pixels of 32 bits to pens. index_mode is 1 for a context
- * in color index mode. */
-void sgl_c2p_pens(const sgl_c2p_tables *t, const uint32_t *src, uint8_t *dst, int n, int index_mode);
-
-/* Writes n pens (n a multiple of 8) to depth planes. planes[p] points
- * to the first byte of the row in plane p. */
-void sgl_c2p_planes(const uint8_t *pens, int n, uint8_t *const *planes, int depth);
 
 #ifdef __cplusplus
 }

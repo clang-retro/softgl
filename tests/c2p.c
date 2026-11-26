@@ -1,6 +1,6 @@
-/* c2p.c - the tests of the chunky-to-planar code of the Amiga back end
- * (backends/amiga/c2p.c), which has no hardware code: the pens, the
- * palette and the bit planes.
+/* c2p.c - the tests of the conversion code of the Amiga and Atari back
+ * ends (backends/common/c2p.c), which has no hardware code: the pens,
+ * the palette, the bit planes, the interleaved bit planes and RGB 565.
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../backends/amiga/c2p.c"
+#include "../backends/common/c2p.c"
 
 static int failures;
 
@@ -64,7 +64,7 @@ static void test_pens(void) {
   for (depth = 1; depth <= 8; depth++) {
     char what[64];
     sgl_c2p_init(&t, depth);
-    sgl_amiga_palette(depth, rgb);
+    sgl_c2p_palette(depth, rgb);
     sgl_c2p_pens(&t, px, pen, 4, 0);
     snprintf(what, sizeof what, "black and white, depth %d", depth);
     check(what, pen[0] == 0 && pen[1] == (1 << depth) - 1);
@@ -105,9 +105,46 @@ static void test_pens(void) {
   }
 }
 
+/* Tests the interleaved planes against a bit-by-bit conversion. */
+static void test_interleaved(void) {
+  enum { N = 64 };
+  uint8_t pens[N];
+  uint16_t got[N / 16 * 8 + 1], want[N / 16 * 8 + 1];
+  int depth, i, p, round;
+  for (round = 0; round < 50; round++) {
+    for (i = 0; i < N; i++) pens[i] = (uint8_t)rnd();
+    for (depth = 1; depth <= 8; depth++) {
+      memset(want, 0, sizeof want);
+      got[N / 16 * depth] = want[N / 16 * depth] = 0x5A5A;
+      for (i = 0; i < N; i++)
+        for (p = 0; p < depth; p++)
+          if ((pens[i] >> p) & 1) want[(i / 16) * depth + p] |= (uint16_t)(0x8000u >> (i & 15));
+      sgl_c2p_interleaved(pens, N, got, depth);
+      if (memcmp(got, want, (N / 16 * depth + 1) * sizeof got[0]) != 0) {
+        printf("FAIL interleaved: depth %d, round %d\n", depth, round);
+        failures++;
+        return;
+      }
+    }
+  }
+}
+
+/* Tests the RGB 565 pixels. */
+static void test_565(void) {
+  sgl_c2p_tables t;
+  static const uint32_t px[4] = {0xFFFFFFFFu, 0xFF000000u, 0xFFFF0000u, 0x00123456u};
+  uint16_t out[4];
+  sgl_c2p_init(&t, 16);
+  sgl_c2p_pens16(&t, px, out, 4);
+  check("565", out[0] == 0xFFFF && out[1] == 0 && out[2] == 0xF800 &&
+                   out[3] == (((0x12 >> 3) << 11) | ((0x34 >> 2) << 5) | (0x56 >> 3)));
+}
+
 /* Runs the tests. */
 int main(void) {
   test_planes();
+  test_interleaved();
+  test_565();
   test_pens();
   if (failures) return 1;
   printf("PASS softgl c2p\n");
