@@ -125,9 +125,10 @@ jobs:
         if: steps.dos32.outputs.ok == '1'
         run: sh tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe
 
-  # The Glide back end with the ViRGE and Voodoo drivers for 32-bit DOS
-  # in 86Box: a Pentium computer with FreeDOS and an S3 ViRGE/DX, an S3
-  # ViRGE, or a Voodoo Graphics card. The job builds 86Box from a fixed
+  # The Glide back end with the ViRGE, Matrox and Voodoo drivers for
+  # 32-bit DOS in 86Box: a Pentium computer with FreeDOS and an S3
+  # ViRGE/DX, an S3 ViRGE, a Matrox Mystique, Millennium II or
+  # Productiva G100 (on an AGP board), or a Voodoo Graphics card. The job builds 86Box from a fixed
   # commit (tools/setup-86box.sh) and keeps the build in the cache. A
   # nightly without dos32.cfg cannot build the test; then the job only
   # writes a notice.
@@ -169,6 +170,17 @@ jobs:
       - name: Run the test on the ViRGE
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --card virge325_pci ~/86box build-dos32/tests/dos/glidetest.exe virge
+      - name: Run the test on the Matrox Mystique
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card mystique ~/86box build-dos32/tests/dos/glidetest.exe matrox
+      - name: Run the test on the Matrox Millennium II
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card millennium_ii ~/86box build-dos32/tests/dos/glidetest.exe matrox
+      - name: Run the test on the Matrox Productiva G100
+        if: steps.dos32.outputs.ok == '1'
+        run: |
+          python3 tools/test-glide-86box.py --machine p5a --card productiva_g100 ~/86box \
+            build-dos32/tests/dos/glidetest.exe matrox
       - name: Run the test on the Voodoo Graphics
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --voodoo ~/86box build-dos32/tests/dos/glidetest.exe voodoo

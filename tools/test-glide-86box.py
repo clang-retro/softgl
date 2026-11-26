@@ -11,6 +11,9 @@ DIR is the folder of tools/setup-86box.sh. The options:
     --card NAME     the video card of 86Box (default: virge375_pci, the
                     ViRGE/DX); for example virge325_pci (the ViRGE)
     --voodoo        also a Voodoo Graphics card
+    --machine NAME  the main board of 86Box (default: p55t2p4, the ASUS
+                    P/I-P55T2P4 with PCI slots); p5a (the ASUS P5A) has
+                    an AGP slot, for an AGP card such as productiva_g100
     --shot PNG      a screenshot of the screen, SHOT_MS milliseconds of
                     emulated time after FreeDOS starts
     --shot-ms N     (default 5000)
@@ -46,14 +49,14 @@ def write_dos_file(env, text, name, workdir):
     subprocess.run(["mcopy", "-o", path, "c:/" + name], env=env, check=True)
 
 
-def make_config(workdir, image, card, voodoo):
-    """Writes 86box.cfg: an ASUS P/I-P55T2P4 with a Pentium 200, 32 MB,
-    the video card card (and a Voodoo when voodoo is true) and the
-    image as the IDE disk. Gives the path of the file."""
+def make_config(workdir, image, machine, card, voodoo):
+    """Writes 86box.cfg: the main board machine with a Pentium 200,
+    32 MB, the video card card (and a Voodoo when voodoo is true) and
+    the image as the IDE disk. Gives the path of the file."""
     path = os.path.join(workdir, "86box.cfg")
     with open(path, "w") as f:
         f.write(f"""[Machine]
-machine = p55t2p4
+machine = {machine}
 cpu_family = pentium_p54c
 cpu_speed = 200000000
 cpu_multi = 3
@@ -109,7 +112,7 @@ def run(opts):
         write_dos_file(env, "@ECHO OFF\nRUN.EXE %s > OUT.TXT\nECHO SGL-END\n" % " ".join(opts.args),
                        "RUN.BAT", workdir)
         subprocess.run(["mcopy", "-o", opts.exe, "c:/RUN.EXE"], env=env, check=True)
-        config = make_config(workdir, image, opts.card, opts.voodoo)
+        config = make_config(workdir, image, opts.machine, opts.card, opts.voodoo)
         sock = os.path.join(workdir, "auto.sock")
         box_env = dict(os.environ, SDL_AUDIODRIVER="dummy")
         if not box_env.get("DISPLAY"):
@@ -152,6 +155,7 @@ def main():
     p = argparse.ArgumentParser(description="Runs a DOS program of softgl in 86Box.")
     p.add_argument("--card", default="virge375_pci")
     p.add_argument("--voodoo", action="store_true")
+    p.add_argument("--machine", default="p55t2p4")
     p.add_argument("--shot")
     p.add_argument("--shot-ms", type=int, default=5000)
     p.add_argument("--timeout", type=int, default=120)

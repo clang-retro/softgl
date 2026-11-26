@@ -121,6 +121,8 @@ typedef struct sgl_glide_api {
 #define SGL_GLIDE_LIMIT_FOG_ALPHA 0x08u   /* the fog uses the vertex alpha: no fog with a blend */
 #define SGL_GLIDE_LIMIT_SQUARE 0x10u      /* only square textures */
 #define SGL_GLIDE_LIMIT_ONE_ALPHA 0x20u   /* the alpha is the texture alpha or the vertex alpha, not a product */
+#define SGL_GLIDE_LIMIT_NO_BLEND 0x40u    /* no blend */
+#define SGL_GLIDE_LIMIT_NO_FOG 0x80u      /* no fog */
 
 /* Fills the table api from the Glide 2 functions that the program links
  * (the 3dfx SDK: glide.h and the Glide 2 library). Use it where
@@ -188,8 +190,16 @@ int sgl_glide_sst1(sgl_glide_api *api);
  * backends/glide/glide_virge.c. */
 int sgl_glide_virge(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for a Matrox Mystique, Mystique
+ * 220, Millennium II or Productiva G100 card, for 32-bit DOS. The driver
+ * uses the drawing engine of the card and the VBE BIOS, and sets the
+ * limits of api. Gives 1 on success. The code is in
+ * backends/glide/glide_mga.c. */
+int sgl_glide_mga(sgl_glide_api *api);
+
 /* Fills api with the built-in driver of the first 3D card that is in
- * the computer (32-bit DOS). With name ("voodoo" or "virge"), only that
+ * the computer (32-bit DOS). With name ("voodoo", "virge" or "matrox"),
+ * only that
  * driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
 const char *sgl_glide_dos(sgl_glide_api *api, const char *name);

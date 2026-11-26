@@ -2,8 +2,9 @@
 # setup-86box.sh DIR - gets what tools/test-glide-86box.py needs, in DIR:
 #
 #   DIR/86Box/build/src/86Box   the 86Box emulator, built from source
-#                               without the Qt interface and with the
-#                               automation socket
+#                               without the Qt interface, with the
+#                               automation socket and with the Matrox
+#                               Productiva G100 (a DEV_BRANCH device)
 #   DIR/roms                    the ROM files of 86Box
 #   DIR/FD13LITE.img            the FreeDOS 1.3 disk image
 #
@@ -45,7 +46,8 @@ fetch 86Box https://github.com/86Box/86Box "$BOX_COMMIT"
 fetch roms https://github.com/86Box/roms "$ROMS_COMMIT"
 if [ ! -x "$DIR/86Box/build/src/86Box" ]; then
   cmake -S "$DIR/86Box" -B "$DIR/86Box/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DQT=OFF -DSDL2=ON \
-    -DRTMIDI=OFF -DFLUIDSYNTH=OFF -DMUNT=OFF -DSOUNDCANVAS=OFF -DDISCORD=OFF -DDISASM=OFF -DAUTOMATION=ON >/dev/null
+    -DRTMIDI=OFF -DFLUIDSYNTH=OFF -DMUNT=OFF -DSOUNDCANVAS=OFF -DDISCORD=OFF -DDISASM=OFF -DAUTOMATION=ON \
+    -DDEV_BRANCH=ON -DG100=ON >/dev/null
   ninja -C "$DIR/86Box/build" >/dev/null
 fi
 
