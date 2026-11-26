@@ -2838,6 +2838,45 @@ static void APIENTRY nop_DrawRangeElements(GLenum mode, GLuint start, GLuint end
   (void)type;
   (void)indices;
 }
+/* Does nothing: no context is current (glTexImage3D). */
+static void APIENTRY nop_TexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) {
+  (void)target;
+  (void)level;
+  (void)internalformat;
+  (void)width;
+  (void)height;
+  (void)depth;
+  (void)border;
+  (void)format;
+  (void)type;
+  (void)pixels;
+}
+/* Does nothing: no context is current (glTexSubImage3D). */
+static void APIENTRY nop_TexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels) {
+  (void)target;
+  (void)level;
+  (void)xoffset;
+  (void)yoffset;
+  (void)zoffset;
+  (void)width;
+  (void)height;
+  (void)depth;
+  (void)format;
+  (void)type;
+  (void)pixels;
+}
+/* Does nothing: no context is current (glCopyTexSubImage3D). */
+static void APIENTRY nop_CopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
+  (void)target;
+  (void)level;
+  (void)xoffset;
+  (void)yoffset;
+  (void)zoffset;
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+}
 /* Does nothing: no context is current (glActiveTexture). */
 static void APIENTRY nop_ActiveTexture(GLenum texture) {
   (void)texture;
@@ -3698,6 +3737,20 @@ static void APIENTRY save_PrioritizeTextures(GLsizei n, const GLuint *textures, 
   if (a) a[2].p = sgl_list_copy(priorities, (size_t)(n) * sizeof(GLfloat));
   if (sgl_list_executes()) sgl_PrioritizeTextures(n, textures, priorities);
 }
+/* Records glCopyTexSubImage3D in the display list that is compiled. */
+static void APIENTRY save_CopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
+  sgl_cell *a = sgl_list_add(SGL_OP_CopyTexSubImage3D, 9);
+  if (a) a[0].u = target;
+  if (a) a[1].i = level;
+  if (a) a[2].i = xoffset;
+  if (a) a[3].i = yoffset;
+  if (a) a[4].i = zoffset;
+  if (a) a[5].i = x;
+  if (a) a[6].i = y;
+  if (a) a[7].i = width;
+  if (a) a[8].i = height;
+  if (sgl_list_executes()) sgl_CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
+}
 /* Records glActiveTexture in the display list that is compiled. */
 static void APIENTRY save_ActiveTexture(GLenum texture) {
   sgl_cell *a = sgl_list_add(SGL_OP_ActiveTexture, 1);
@@ -4081,6 +4134,9 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_TexCoordPointerEXT,
   nop_VertexPointerEXT,
   nop_DrawRangeElements,
+  nop_TexImage3D,
+  nop_TexSubImage3D,
+  nop_CopyTexSubImage3D,
   nop_ActiveTexture,
   nop_ClientActiveTexture,
   nop_MultiTexCoord1s,
@@ -4475,6 +4531,9 @@ const struct sgl_dispatch sgl_exec_table = {
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
   sgl_DrawRangeElements,
+  sgl_TexImage3D,
+  sgl_TexSubImage3D,
+  sgl_CopyTexSubImage3D,
   sgl_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -4869,6 +4928,9 @@ const struct sgl_dispatch sgl_save_table = {
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
   sgl_DrawRangeElements,
+  save_TexImage3D,
+  save_TexSubImage3D,
+  save_CopyTexSubImage3D,
   save_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -5178,6 +5240,9 @@ void sgl_play_generated(int op, const sgl_cell *a) {
       break;
     case SGL_OP_PrioritizeTextures:
       sgl_PrioritizeTextures((GLsizei)a[0].i, (const GLuint *)a[1].p, (const GLfloat *)a[2].p);
+      break;
+    case SGL_OP_CopyTexSubImage3D:
+      sgl_CopyTexSubImage3D((GLenum)a[0].u, (GLint)a[1].i, (GLint)a[2].i, (GLint)a[3].i, (GLint)a[4].i, (GLint)a[5].i, (GLint)a[6].i, (GLsizei)a[7].i, (GLsizei)a[8].i);
       break;
     case SGL_OP_ActiveTexture:
       sgl_ActiveTexture((GLenum)a[0].u);
@@ -6626,6 +6691,21 @@ void APIENTRY glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei
 void APIENTRY glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
   SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
 }
+void APIENTRY glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+/* glTexImage3D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) {
+  SGL_DISPATCH->TexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+}
+void APIENTRY glTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
+/* glTexSubImage3D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels) {
+  SGL_DISPATCH->TexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+}
+void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
+/* glCopyTexSubImage3D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
+  SGL_DISPATCH->CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
+}
 void APIENTRY glActiveTexture(GLenum texture);
 /* glActiveTexture: an extension, which wglGetProcAddress gives. */
 void APIENTRY glActiveTexture(GLenum texture) {
@@ -6826,6 +6906,11 @@ void APIENTRY glClientActiveTextureARB(GLenum texture);
 void APIENTRY glClientActiveTextureARB(GLenum texture) {
   SGL_DISPATCH->ClientActiveTexture(texture);
 }
+void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
+/* glCopyTexSubImage3DEXT: the name of glCopyTexSubImage3D in an extension. */
+void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
+  SGL_DISPATCH->CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
+}
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
 /* glDrawRangeElementsEXT: the name of glDrawRangeElements in an extension. */
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
@@ -7011,6 +7096,16 @@ void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v);
 void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v) {
   SGL_DISPATCH->MultiTexCoord4sv(target, v);
 }
+void APIENTRY glTexImage3DEXT(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+/* glTexImage3DEXT: the name of glTexImage3D in an extension. */
+void APIENTRY glTexImage3DEXT(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) {
+  SGL_DISPATCH->TexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+}
+void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
+/* glTexSubImage3DEXT: the name of glTexSubImage3D in an extension. */
+void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels) {
+  SGL_DISPATCH->TexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+}
 
 /* The extension functions by name, for wglGetProcAddress. */
 const struct sgl_proc sgl_extension_procs[] = {
@@ -7030,6 +7125,9 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glTexCoordPointerEXT", (void (*)(void))glTexCoordPointerEXT},
   {"glVertexPointerEXT", (void (*)(void))glVertexPointerEXT},
   {"glDrawRangeElements", (void (*)(void))glDrawRangeElements},
+  {"glTexImage3D", (void (*)(void))glTexImage3D},
+  {"glTexSubImage3D", (void (*)(void))glTexSubImage3D},
+  {"glCopyTexSubImage3D", (void (*)(void))glCopyTexSubImage3D},
   {"glActiveTexture", (void (*)(void))glActiveTexture},
   {"glClientActiveTexture", (void (*)(void))glClientActiveTexture},
   {"glMultiTexCoord1s", (void (*)(void))glMultiTexCoord1s},
@@ -7070,6 +7168,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultTransposeMatrixd", (void (*)(void))glMultTransposeMatrixd},
   {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
   {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
+  {"glCopyTexSubImage3DEXT", (void (*)(void))glCopyTexSubImage3DEXT},
   {"glDrawRangeElementsEXT", (void (*)(void))glDrawRangeElementsEXT},
   {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
   {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
@@ -7107,5 +7206,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultiTexCoord4ivARB", (void (*)(void))glMultiTexCoord4ivARB},
   {"glMultiTexCoord4sARB", (void (*)(void))glMultiTexCoord4sARB},
   {"glMultiTexCoord4svARB", (void (*)(void))glMultiTexCoord4svARB},
+  {"glTexImage3DEXT", (void (*)(void))glTexImage3DEXT},
+  {"glTexSubImage3DEXT", (void (*)(void))glTexSubImage3DEXT},
   {0, 0}
 };

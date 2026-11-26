@@ -93,6 +93,10 @@ typedef uint32_t sgl_depth_t;
 #define SGL_LIST_DEPTH 64
 #define SGL_MAX_TEXTURE_LEVELS 11
 #define SGL_MAX_TEXTURE_SIZE 1024
+/* The largest 3D texture: 64 x 64 x 64 texels are 1 MB. */
+#ifndef SGL_MAX_3D_TEXTURE_SIZE
+#define SGL_MAX_3D_TEXTURE_SIZE 64
+#endif
 #define SGL_MAX_EVAL_ORDER 16
 #define SGL_SHINE_TABLE 256
 #define SGL_SHINE_CACHE 4
@@ -182,8 +186,8 @@ typedef struct sgl_material {
 typedef struct sgl_level {
   uint32_t *texels;
   uint8_t *indices;        /* for a paletted texture: the indices */
-  int width, height;
-  int wlog, hlog;          /* log2 of the size, or -1 */
+  int width, height, depth; /* depth is 1 for a 1D or 2D texture */
+  int wlog, hlog, dlog;    /* log2 of the size, or -1 */
   GLenum internal;         /* the internal format that was asked for */
   GLenum base;             /* GL_RGBA, GL_RGB, GL_ALPHA, GL_LUMINANCE, ... */
   GLint border;
@@ -243,7 +247,7 @@ typedef struct sgl_map {
 /* The capabilities of each texture unit, in the order of their bits. */
 enum sgl_unit_cap {
   SGL_U_TEXTURE_1D, SGL_U_TEXTURE_2D, SGL_U_GEN_S, SGL_U_GEN_T, SGL_U_GEN_R, SGL_U_GEN_Q,
-  SGL_UNIT_CAP_COUNT
+  SGL_U_TEXTURE_3D, SGL_UNIT_CAP_COUNT
 };
 
 /* The bits of the enables, by capability. */
@@ -278,7 +282,7 @@ typedef struct sgl_unit_attrib {
   GLfloat env_color[4];
   GLenum gen_mode[4];
   GLfloat gen_object[4][4], gen_eye[4][4];
-  GLuint bound_1d, bound_2d; /* the bound names, at glPushAttrib */
+  GLuint bound_1d, bound_2d, bound_3d; /* the bound names, at glPushAttrib */
 } sgl_unit_attrib;
 
 /* The evaluator maps, in the order of the SGL_MAP1_ and SGL_MAP2_ caps. */
@@ -371,6 +375,7 @@ typedef struct sgl_array {
 typedef struct sgl_pixelstore {
   GLboolean swap_bytes, lsb_first;
   GLint row_length, skip_rows, skip_pixels, alignment;
+  GLint image_height, skip_images; /* OpenGL 1.2: for the 3D images */
 } sgl_pixelstore;
 
 /* The state of the client: arrays and pixel store, which
@@ -448,8 +453,9 @@ struct sgl_context {
   int call_depth;
 
   /* Textures. */
-  sgl_texture default_1d, default_2d;
+  sgl_texture default_1d, default_2d, default_3d;
   sgl_texture *tex_1d[SGL_MAX_TEXTURE_UNITS], *tex_2d[SGL_MAX_TEXTURE_UNITS];
+  sgl_texture *tex_3d[SGL_MAX_TEXTURE_UNITS];
 
   /* Evaluators. */
   sgl_map map1[SGL_MAP_TYPES], map2[SGL_MAP_TYPES];

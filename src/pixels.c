@@ -644,6 +644,17 @@ static void store(sgl_pixelstore *ps, GLenum pname, GLint v) {
     case GL_PACK_ROW_LENGTH: case GL_UNPACK_ROW_LENGTH: ps->row_length = v; break;
     case GL_PACK_SKIP_ROWS: case GL_UNPACK_SKIP_ROWS: ps->skip_rows = v; break;
     case GL_PACK_SKIP_PIXELS: case GL_UNPACK_SKIP_PIXELS: ps->skip_pixels = v; break;
+    case GL_PACK_IMAGE_HEIGHT: case GL_UNPACK_IMAGE_HEIGHT:
+    case GL_PACK_SKIP_IMAGES: case GL_UNPACK_SKIP_IMAGES:
+      if (v < 0) {
+        sgl_error(GL_INVALID_VALUE);
+        return;
+      }
+      if (pname == GL_PACK_IMAGE_HEIGHT || pname == GL_UNPACK_IMAGE_HEIGHT)
+        ps->image_height = v;
+      else
+        ps->skip_images = v;
+      break;
     case GL_PACK_ALIGNMENT:
     case GL_UNPACK_ALIGNMENT:
       if (v != 1 && v != 2 && v != 4 && v != 8) {

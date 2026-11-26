@@ -28,10 +28,11 @@ To remove the generic implementation, compile with
 
 ## What the renderer does
 
-The renderer gives the functions of OpenGL 1.1, as `opengl32.dll` of
-Windows NT 4.0 gives them:
+The renderer gives all of OpenGL 1.2 (without the optional imaging
+subset) and parts of OpenGL 1.3. It exports the OpenGL 1.1 functions,
+as `opengl32.dll` of Windows NT 4.0 exports them:
 
-- `glGetString(GL_VERSION)` gives `1.1.0`.
+- `glGetString(GL_VERSION)` gives `1.2.0`.
   `glGetString(GL_RENDERER)` gives `clang-retro Generic`.
 - These extensions are available. `wglGetProcAddress` gives their
   functions:
@@ -55,10 +56,12 @@ Windows NT 4.0 gives them:
   - `GL_EXT_separate_specular_color`
   - `GL_EXT_rescale_normal`
   - `GL_EXT_draw_range_elements` (`glDrawRangeElementsEXT`)
+  - `GL_EXT_texture3D` (`glTexImage3DEXT` and `glTexSubImage3DEXT`)
 - `wglGetProcAddress` also gives the functions of these extensions by
-  their OpenGL 1.3 names, without the `ARB` suffix (for example
-  `glActiveTexture` and `glDrawRangeElements`). `GL_VERSION` stays `1.1.0` until all of
-  OpenGL 1.2 and 1.3 is available.
+  their OpenGL 1.2 and 1.3 names, without the `ARB` or `EXT` suffix
+  (for example `glActiveTexture`, `glDrawRangeElements` and
+  `glTexImage3D`). `GL_VERSION` becomes `1.3.0` when all of OpenGL 1.3
+  is available.
 - Vertices: immediate mode, vertex arrays, display lists, evaluators
   (`glMap1`, `glMap2`, `glEvalMesh`) and rectangles.
 - Transformation: the modelview and projection matrix stacks, one
@@ -71,7 +74,7 @@ Windows NT 4.0 gives them:
 - Rasterization: points, lines (width and stipple), polygons (fill,
   line and point modes, polygon stipple, culling, polygon offset), flat
   and smooth shading.
-- Textures: 1D and 2D, mipmaps, nearest and linear filters, the wrap
+- Textures: 1D, 2D and 3D, mipmaps, nearest and linear filters, the wrap
   modes (repeat, clamp, clamp to edge, clamp to border and mirrored
   repeat), the LOD limits, the base and maximum levels, texture objects, the texture environments
   (`GL_MODULATE`, `GL_DECAL`, `GL_BLEND`, `GL_REPLACE` and `GL_ADD`)
@@ -112,6 +115,23 @@ The units apply in order: unit 0 uses the primary color, and each
 next unit uses the result of the unit before it. The rasterizer does
 the work only for the units that have a texture on. Thus a program
 that uses one unit is not slower with 2 units in the build.
+
+### 3D textures
+
+A 3D texture is a stack of 2D images. The size of each side must be a
+power of two, and not more than `SGL_MAX_3D_TEXTURE_SIZE` (default 64).
+A 64 x 64 x 64 texture uses 1 MB. Set a smaller value for a small
+machine:
+
+```sh
+make CFLAGS="-O2 -DSGL_MAX_3D_TEXTURE_SIZE=16"
+```
+
+The nearest filter reads one image. The linear filter reads the two
+nearest images and mixes them. Thus a 3D texture with the linear
+filter takes approximately two times the time of a 2D texture. The
+renderer does the work of the r coordinate only for the primitives
+that have a 3D texture on.
 
 `GL_CLAMP` operates as `GL_CLAMP_TO_EDGE`: the renderer does not keep
 the border texels. Use `GL_CLAMP_TO_BORDER` to get the border color.
@@ -261,8 +281,8 @@ values that OpenGL gives back:
   color index mode. The output is `PASS softgl gl11`.
 - `tests/gl12.c`: the packed pixel types (draw and read), separate
   specular color, the wrap modes, the LOD limits and the base level,
-  `glDrawRangeElements` and `GL_RESCALE_NORMAL`. The output is
-  `PASS softgl gl12`.
+  `glDrawRangeElements`, `GL_RESCALE_NORMAL` and the 3D textures. The
+  output is `PASS softgl gl12`.
 - `tests/gl13.c`: two texture units (immediate mode, vertex arrays and
   a display list), a texture matrix for one unit, `glPushAttrib` of
   the units, `GL_ADD`, `GL_CLAMP_TO_EDGE`, the transpose matrices and
@@ -287,8 +307,7 @@ In clang-retro MFC:
 - Dithering has no effect. The buffer has 8 bits for each component.
 - Smooth points, lines and polygons are drawn without antialiasing.
 - The width and the height of a texture must be powers of two.
-- Of OpenGL 1.2, 3D textures are not available yet. `glTexImage3D` is
-  a stub for GLU only. Of OpenGL 1.3, cube maps, `GL_COMBINE`,
+- Of OpenGL 1.3, cube maps, `GL_COMBINE`,
   compressed textures and multisample are not available yet.
 - Pixel rectangles (`glDrawPixels`, `glBitmap`) are not textured.
 - The pixel format tells 32 depth bits. On the 68k, the depth buffer

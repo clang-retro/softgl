@@ -47,6 +47,7 @@ static void bind_defaults(sgl_context *c) {
   for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
     c->tex_1d[u] = &c->default_1d;
     c->tex_2d[u] = &c->default_2d;
+    c->tex_3d[u] = &c->default_3d;
   }
 }
 
@@ -55,6 +56,7 @@ static void bind_defaults(sgl_context *c) {
 void sgl_texture_init(sgl_context *c) {
   init_texture(&c->default_1d, 0, GL_TEXTURE_1D);
   init_texture(&c->default_2d, 0, GL_TEXTURE_2D);
+  init_texture(&c->default_3d, 0, GL_TEXTURE_3D);
   bind_defaults(c);
 }
 
@@ -63,6 +65,7 @@ void sgl_texture_init(sgl_context *c) {
 void sgl_texture_release(sgl_context *c) {
   free_levels(&c->default_1d);
   free_levels(&c->default_2d);
+  free_levels(&c->default_3d);
   bind_defaults(c);
 }
 
@@ -88,9 +91,11 @@ static sgl_texture *find_texture(sgl_shared *s, GLuint name) {
   return t;
 }
 
-/* Gives the texture of texture unit u for the primitives: the 2D
- * texture when it is on, else the 1D texture, or NULL. */
+/* Gives the texture of texture unit u for the primitives: the 3D
+ * texture when it is on, else the 2D texture, else the 1D texture, or
+ * NULL. */
 sgl_texture *sgl_unit_texture(sgl_context *c, int u) {
+  if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_3D)]) return c->tex_3d[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)]) return c->tex_2d[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)]) return c->tex_1d[u];
   return NULL;
@@ -111,7 +116,8 @@ unsigned sgl_texture_units(const sgl_context *c) {
   int u;
   if (c->index_mode) return 0;
   for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++)
-    if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)] || c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)])
+    if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)] || c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)] ||
+        c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_3D)])
       m |= 1u << u;
   return m;
 }
@@ -122,6 +128,7 @@ static sgl_texture *bound(sgl_context *c, GLenum target) {
   int u = c->a.active_texture;
   if (target == GL_TEXTURE_2D) return c->tex_2d[u];
   if (target == GL_TEXTURE_1D) return c->tex_1d[u];
+  if (target == GL_TEXTURE_3D) return c->tex_3d[u];
   return NULL;
 }
 
@@ -184,7 +191,7 @@ static uint32_t texel(GLenum base, const uint8_t *p) {
 /* Makes the texels of a paletted level from its indices and the
  * palette of the texture. */
 static void expand_palette(sgl_texture *t, sgl_level *lv) {
-  size_t i, n = (size_t)lv->width * lv->height;
+  size_t i, n = (size_t)lv->width * lv->height * lv->depth;
   if (!lv->indices || !lv->texels) return;
   for (i = 0; i < n; i++) {
     int k = lv->indices[i];
@@ -194,38 +201,81 @@ static void expand_palette(sgl_texture *t, sgl_level *lv) {
 
 /* Computes if the texture has all the levels of a mipmap. */
 static void check_complete(sgl_texture *t) {
-  int i, b = t->base_level, w, h;
+  int i, b = t->base_level, w, h, d;
   t->complete = 0;
   if (b >= SGL_MAX_TEXTURE_LEVELS || !t->level[b].texels) return;
   w = t->level[b].width;
   h = t->level[b].height;
-  for (i = b + 1; i < SGL_MAX_TEXTURE_LEVELS && i <= t->max_level && (w > 1 || h > 1); i++) {
+  d = t->level[b].depth;
+  for (i = b + 1; i < SGL_MAX_TEXTURE_LEVELS && i <= t->max_level && (w > 1 || h > 1 || d > 1); i++) {
     w = w > 1 ? w / 2 : 1;
     h = h > 1 ? h / 2 : 1;
-    if (!t->level[i].texels || t->level[i].width != w || t->level[i].height != h) return;
+    d = d > 1 ? d / 2 : 1;
+    if (!t->level[i].texels || t->level[i].width != w || t->level[i].height != h ||
+        t->level[i].depth != d)
+      return;
   }
   t->complete = 1;
 }
 
-/* Sets level lv of the bound texture of target to an image of w x h
- * pixels. Gives 1 on success. */
-static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal, int w, int h,
+/* Gives the pixel store of image z of a 3D image of rows of height h:
+ * the rows of the image follow GL_UNPACK_SKIP_IMAGES and
+ * GL_UNPACK_IMAGE_HEIGHT. For a 1D or 2D image (three is 0) it is ps. */
+static sgl_pixelstore image_store(const sgl_pixelstore *ps, int three, int h, int z) {
+  sgl_pixelstore p = *ps;
+  if (three) p.skip_rows += (ps->skip_images + z) * (ps->image_height > 0 ? ps->image_height : h);
+  return p;
+}
+
+/* Unpacks d images of W x H pixels to RGBA bytes rgba (W * H * 4 bytes
+ * for each image). Gives 0 for an invalid format or type. */
+static int unpack_images(const sgl_pixelstore *ps, int three, int W, int H, int d, GLenum format,
+                         GLenum type, const void *pixels, uint8_t *rgba) {
+  int z;
+  for (z = 0; z < d; z++) {
+    sgl_pixelstore p = image_store(ps, three, H, z);
+    if (!sgl_unpack_rgba8(&p, W, H, format, type, pixels, rgba + (size_t)z * W * H * 4)) return 0;
+  }
+  return 1;
+}
+
+/* Unpacks d images of W x H color indices to bytes idx. */
+static void unpack_index_images(const sgl_pixelstore *ps, int three, int W, int H, int d, GLenum type,
+                                const void *pixels, uint8_t *idx) {
+  int z;
+  for (z = 0; z < d; z++) {
+    sgl_pixelstore p = image_store(ps, three, H, z);
+    sgl_unpack_index(&p, W, H, type, pixels, idx + (size_t)z * W * H);
+  }
+}
+
+/* Tells if target is a target of glTexImage3D. */
+static int is_3d(GLenum target) { return target == GL_TEXTURE_3D || target == GL_PROXY_TEXTURE_3D; }
+
+/* Sets level lv of the bound texture of target to an image of w x h x d
+ * pixels (d is 1 for a 1D or 2D texture). The border is in w, h and,
+ * for a 3D texture, in d. Gives 1 on success. */
+static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal, int w, int h, int d,
                      GLint border, GLenum format, GLenum type, const void *pixels,
                      const sgl_pixelstore *ps) {
   sgl_texture *t;
   sgl_level *lv;
   GLenum base = base_format(internal);
-  int wl = log2_exact(w - 2 * border), hl = log2_exact(h - 2 * border);
+  int three = is_3d(target), db = three ? border : 0;
+  int wl = log2_exact(w - 2 * border), hl = log2_exact(h - 2 * border), dl = log2_exact(d - 2 * db);
+  int max = three ? SGL_MAX_3D_TEXTURE_SIZE : SGL_MAX_TEXTURE_SIZE;
+  int W = w, H = h, D = d, x, y, z;
   size_t n;
-  if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_1D) return 1;
+  if (level < 0 || level >= SGL_MAX_TEXTURE_LEVELS || border < 0 || border > 1 || wl < 0 ||
+      hl < 0 || dl < 0 || w > max + 2 || h > max + 2 || d > max + 2) {
+    sgl_error(GL_INVALID_VALUE);
+    return 0;
+  }
+  if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_1D || target == GL_PROXY_TEXTURE_3D)
+    return 1;
   t = bound(c, target);
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
-    return 0;
-  }
-  if (level < 0 || level >= SGL_MAX_TEXTURE_LEVELS || border < 0 || border > 1 || wl < 0 ||
-      hl < 0 || w > SGL_MAX_TEXTURE_SIZE + 2 || h > SGL_MAX_TEXTURE_SIZE + 2) {
-    sgl_error(GL_INVALID_VALUE);
     return 0;
   }
   if (!base) {
@@ -239,8 +289,9 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
   /* The border texels are dropped: the texture is the inside. */
   w -= 2 * border;
   h -= 2 * border;
+  d -= 2 * db;
   lv = &t->level[level];
-  n = (size_t)w * h;
+  n = (size_t)w * h * d;
   free(lv->texels);
   free(lv->indices);
   lv->indices = NULL;
@@ -251,8 +302,10 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
   }
   lv->width = w;
   lv->height = h;
+  lv->depth = d;
   lv->wlog = wl;
   lv->hlog = hl;
+  lv->dlog = dl;
   lv->internal = (GLenum)internal;
   lv->border = border;
   if (base == GL_COLOR_INDEX) {
@@ -264,16 +317,16 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
       return 0;
     }
     if (pixels) {
-      uint8_t *all = (uint8_t *)malloc((size_t)(w + 2 * border) * (h + 2 * border));
-      int y;
+      uint8_t *all = (uint8_t *)malloc((size_t)W * H * D);
       if (!all) {
         sgl_error(GL_OUT_OF_MEMORY);
         return 0;
       }
-      sgl_unpack_index(ps, w + 2 * border, h + 2 * border, type, pixels, all);
-      for (y = 0; y < h; y++)
-        memcpy(lv->indices + (size_t)y * w, all + (size_t)(y + border) * (w + 2 * border) + border,
-               (size_t)w);
+      unpack_index_images(ps, three, W, H, D, type, pixels, all);
+      for (z = 0; z < d; z++)
+        for (y = 0; y < h; y++)
+          memcpy(lv->indices + ((size_t)z * h + y) * w,
+                 all + (((size_t)(z + db) * H + y + border) * W + border), (size_t)w);
       free(all);
     } else {
       memset(lv->indices, 0, n);
@@ -282,22 +335,22 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
   } else {
     lv->base = base;
     if (pixels) {
-      int W = w + 2 * border, H = h + 2 * border, x, y;
-      uint8_t *rgba = (uint8_t *)malloc((size_t)W * H * 4);
+      uint8_t *rgba = (uint8_t *)malloc((size_t)W * H * D * 4);
       if (!rgba) {
         sgl_error(GL_OUT_OF_MEMORY);
         return 0;
       }
-      if (!sgl_unpack_rgba8(ps, W, H, format, type, pixels, rgba)) {
+      if (!unpack_images(ps, three, W, H, D, format, type, pixels, rgba)) {
         free(rgba);
         sgl_error(GL_INVALID_ENUM);
         return 0;
       }
-      for (y = 0; y < h; y++) {
-        const uint8_t *src = rgba + ((size_t)(y + border) * W + border) * 4;
-        uint32_t *dst = lv->texels + (size_t)y * w;
-        for (x = 0; x < w; x++, src += 4) dst[x] = texel(base, src);
-      }
+      for (z = 0; z < d; z++)
+        for (y = 0; y < h; y++) {
+          const uint8_t *src = rgba + (((size_t)(z + db) * H + y + border) * W + border) * 4;
+          uint32_t *dst = lv->texels + ((size_t)z * h + y) * w;
+          for (x = 0; x < w; x++, src += 4) dst[x] = texel(base, src);
+        }
       free(rgba);
     } else {
       memset(lv->texels, 0, n * 4);
@@ -315,7 +368,7 @@ void APIENTRY sgl_TexImage2D(GLenum target, GLint level, GLint internal, GLsizei
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  set_image(c, target, level, internal, w, h, border, format, type, pixels, &c->c.unpack);
+  set_image(c, target, level, internal, w, h, 1, border, format, type, pixels, &c->c.unpack);
 }
 
 /* glTexImage1D: sets a level of the 1D texture (a 2D texture one texel
@@ -327,17 +380,18 @@ void APIENTRY sgl_TexImage1D(GLenum target, GLint level, GLint internal, GLsizei
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  set_image(c, target, level, internal, w, 1 + 2 * border, border, format, type, pixels,
+  set_image(c, target, level, internal, w, 1 + 2 * border, 1, border, format, type, pixels,
             &c->c.unpack);
 }
 
-/* Changes texels [x, x + w) x [y, y + h) of level lv of the bound
- * texture of target. */
-static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, int w, int h,
-                      GLenum format, GLenum type, const void *pixels, const sgl_pixelstore *ps) {
+/* Changes texels [x, x + w) x [y, y + h) x [z, z + d) of level lv of
+ * the bound texture of target. */
+static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, int z, int w, int h,
+                      int d, GLenum format, GLenum type, const void *pixels,
+                      const sgl_pixelstore *ps) {
   sgl_texture *t = bound(c, target);
   sgl_level *lv;
-  int i, j;
+  int i, j, k, three = is_3d(target);
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
     return;
@@ -347,35 +401,41 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
     return;
   }
   lv = &t->level[level];
-  if (!lv->texels || x < 0 || y < 0 || x + w > lv->width || y + h > lv->height) {
+  if (!lv->texels || x < 0 || y < 0 || z < 0 || x + w > lv->width || y + h > lv->height ||
+      z + d > lv->depth) {
     sgl_error(GL_INVALID_VALUE);
     return;
   }
-  if (w <= 0 || h <= 0) return;
+  if (w <= 0 || h <= 0 || d <= 0) return;
   if (lv->indices && format == GL_COLOR_INDEX) {
-    uint8_t *idx = (uint8_t *)malloc((size_t)w * h);
+    uint8_t *idx = (uint8_t *)malloc((size_t)w * h * d);
     if (!idx) {
       sgl_error(GL_OUT_OF_MEMORY);
       return;
     }
-    sgl_unpack_index(ps, w, h, type, pixels, idx);
-    for (j = 0; j < h; j++) memcpy(lv->indices + (size_t)(y + j) * lv->width + x, idx + (size_t)j * w, (size_t)w);
+    unpack_index_images(ps, three, w, h, d, type, pixels, idx);
+    for (k = 0; k < d; k++)
+      for (j = 0; j < h; j++)
+        memcpy(lv->indices + ((size_t)(z + k) * lv->height + y + j) * lv->width + x,
+               idx + ((size_t)k * h + j) * w, (size_t)w);
     free(idx);
     expand_palette(t, lv);
   } else {
-    uint8_t *rgba = (uint8_t *)malloc((size_t)w * h * 4);
+    uint8_t *rgba = (uint8_t *)malloc((size_t)w * h * d * 4);
     if (!rgba) {
       sgl_error(GL_OUT_OF_MEMORY);
       return;
     }
-    if (!sgl_unpack_rgba8(ps, w, h, format, type, pixels, rgba)) {
+    if (!unpack_images(ps, three, w, h, d, format, type, pixels, rgba)) {
       free(rgba);
       sgl_error(GL_INVALID_ENUM);
       return;
     }
-    for (j = 0; j < h; j++)
-      for (i = 0; i < w; i++)
-        lv->texels[(size_t)(y + j) * lv->width + x + i] = texel(lv->base, rgba + ((size_t)j * w + i) * 4);
+    for (k = 0; k < d; k++)
+      for (j = 0; j < h; j++)
+        for (i = 0; i < w; i++)
+          lv->texels[((size_t)(z + k) * lv->height + y + j) * lv->width + x + i] =
+              texel(lv->base, rgba + (((size_t)k * h + j) * w + i) * 4);
     free(rgba);
   }
 }
@@ -383,13 +443,21 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
 /* glTexSubImage2D: changes a rectangle of a level of the 2D texture. */
 void APIENTRY sgl_TexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsizei w, GLsizei h,
                                 GLenum format, GLenum type, const void *pixels) {
-  sub_image(sgl_ctx, target, level, x, y, w, h, format, type, pixels, &sgl_ctx->c.unpack);
+  if (target != GL_TEXTURE_2D) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  sub_image(sgl_ctx, target, level, x, y, 0, w, h, 1, format, type, pixels, &sgl_ctx->c.unpack);
 }
 
 /* glTexSubImage1D: changes a span of a level of the 1D texture. */
 void APIENTRY sgl_TexSubImage1D(GLenum target, GLint level, GLint x, GLsizei w, GLenum format,
                                 GLenum type, const void *pixels) {
-  sub_image(sgl_ctx, target, level, x, 0, w, 1, format, type, pixels, &sgl_ctx->c.unpack);
+  if (target != GL_TEXTURE_1D) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  sub_image(sgl_ctx, target, level, x, 0, 0, w, 1, 1, format, type, pixels, &sgl_ctx->c.unpack);
 }
 
 /* Reads w x h pixels of the color buffer at x, y as RGBA bytes, rows
@@ -418,12 +486,17 @@ static uint8_t *read_color(sgl_context *c, int x, int y, int w, int h) {
 void APIENTRY sgl_CopyTexImage2D(GLenum target, GLint level, GLenum internal, GLint x, GLint y,
                                  GLsizei w, GLsizei h, GLint border) {
   sgl_context *c = sgl_ctx;
-  uint8_t *p = read_color(c, x, y, w, h);
+  uint8_t *p;
+  if (is_3d(target)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  p = read_color(c, x, y, w, h);
   if (!p) {
     sgl_error(GL_OUT_OF_MEMORY);
     return;
   }
-  set_image(c, target, level, (GLint)internal, w, h, border, GL_RGBA, GL_UNSIGNED_BYTE, p,
+  set_image(c, target, level, (GLint)internal, w, h, 1, border, GL_RGBA, GL_UNSIGNED_BYTE, p,
             &sgl_tight_store);
   free(p);
 }
@@ -433,12 +506,17 @@ void APIENTRY sgl_CopyTexImage2D(GLenum target, GLint level, GLenum internal, GL
 void APIENTRY sgl_CopyTexImage1D(GLenum target, GLint level, GLenum internal, GLint x, GLint y,
                                  GLsizei w, GLint border) {
   sgl_context *c = sgl_ctx;
-  uint8_t *p = read_color(c, x, y, w, 1);
+  uint8_t *p;
+  if (is_3d(target)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  p = read_color(c, x, y, w, 1);
   if (!p) {
     sgl_error(GL_OUT_OF_MEMORY);
     return;
   }
-  set_image(c, target, level, (GLint)internal, w, 1, border, GL_RGBA, GL_UNSIGNED_BYTE, p,
+  set_image(c, target, level, (GLint)internal, w, 1, 1, border, GL_RGBA, GL_UNSIGNED_BYTE, p,
             &sgl_tight_store);
   free(p);
 }
@@ -453,7 +531,7 @@ void APIENTRY sgl_CopyTexSubImage2D(GLenum target, GLint level, GLint xoff, GLin
     sgl_error(GL_OUT_OF_MEMORY);
     return;
   }
-  sub_image(c, target, level, xoff, yoff, w, h, GL_RGBA, GL_UNSIGNED_BYTE, p, &sgl_tight_store);
+  sub_image(c, target, level, xoff, yoff, 0, w, h, 1, GL_RGBA, GL_UNSIGNED_BYTE, p, &sgl_tight_store);
   free(p);
 }
 
@@ -467,7 +545,47 @@ void APIENTRY sgl_CopyTexSubImage1D(GLenum target, GLint level, GLint xoff, GLin
     sgl_error(GL_OUT_OF_MEMORY);
     return;
   }
-  sub_image(c, target, level, xoff, 0, w, 1, GL_RGBA, GL_UNSIGNED_BYTE, p, &sgl_tight_store);
+  sub_image(c, target, level, xoff, 0, 0, w, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p, &sgl_tight_store);
+  free(p);
+}
+
+/* glTexImage3D: sets a level of the 3D texture. */
+void APIENTRY sgl_TexImage3D(GLenum target, GLint level, GLint internal, GLsizei w, GLsizei h,
+                             GLsizei d, GLint border, GLenum format, GLenum type, const void *pixels) {
+  sgl_context *c = sgl_ctx;
+  if (!is_3d(target)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  set_image(c, target, level, internal, w, h, d, border, format, type, pixels, &c->c.unpack);
+}
+
+/* glTexSubImage3D: changes a box of a level of the 3D texture. */
+void APIENTRY sgl_TexSubImage3D(GLenum target, GLint level, GLint x, GLint y, GLint z, GLsizei w,
+                                GLsizei h, GLsizei d, GLenum format, GLenum type, const void *pixels) {
+  if (target != GL_TEXTURE_3D) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  sub_image(sgl_ctx, target, level, x, y, z, w, h, d, format, type, pixels, &sgl_ctx->c.unpack);
+}
+
+/* glCopyTexSubImage3D: changes a rectangle of image z of the 3D texture
+ * from the color buffer. */
+void APIENTRY sgl_CopyTexSubImage3D(GLenum target, GLint level, GLint xoff, GLint yoff, GLint zoff,
+                                    GLint x, GLint y, GLsizei w, GLsizei h) {
+  sgl_context *c = sgl_ctx;
+  uint8_t *p;
+  if (target != GL_TEXTURE_3D) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  p = read_color(c, x, y, w, h);
+  if (!p) {
+    sgl_error(GL_OUT_OF_MEMORY);
+    return;
+  }
+  sub_image(c, target, level, xoff, yoff, zoff, w, h, 1, GL_RGBA, GL_UNSIGNED_BYTE, p, &sgl_tight_store);
   free(p);
 }
 
@@ -480,7 +598,9 @@ void APIENTRY sgl_GetTexImage(GLenum target, GLint level, GLenum format, GLenum 
     return;
   }
   if (!t->level[level].texels) return;
-  sgl_pack_texels(c, t->level[level].width, t->level[level].height, t->level[level].texels, format,
+  /* The images of a 3D texture follow each other as rows. */
+  sgl_pack_texels(c, t->level[level].width, t->level[level].height * t->level[level].depth,
+                  t->level[level].texels, format,
                   type, pixels);
 }
 
@@ -593,7 +713,13 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
   sgl_texture *t;
   if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_1D) {
     /* Every proxy image of a valid size fits. */
-    params[0] = pname == GL_TEXTURE_WIDTH || pname == GL_TEXTURE_HEIGHT ? SGL_MAX_TEXTURE_SIZE : 0;
+    params[0] = pname == GL_TEXTURE_WIDTH || pname == GL_TEXTURE_HEIGHT ? SGL_MAX_TEXTURE_SIZE
+                : pname == GL_TEXTURE_DEPTH ? 1 : 0;
+    return;
+  }
+  if (target == GL_PROXY_TEXTURE_3D) {
+    params[0] = pname == GL_TEXTURE_WIDTH || pname == GL_TEXTURE_HEIGHT || pname == GL_TEXTURE_DEPTH
+                    ? SGL_MAX_3D_TEXTURE_SIZE : 0;
     return;
   }
   t = bound(c, target);
@@ -605,6 +731,9 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
   switch (pname) {
     case GL_TEXTURE_WIDTH: params[0] = lv->texels ? lv->width + 2 * lv->border : 0; break;
     case GL_TEXTURE_HEIGHT: params[0] = lv->texels ? lv->height + 2 * lv->border : 0; break;
+    case GL_TEXTURE_DEPTH:
+      params[0] = !lv->texels ? 0 : lv->depth + (t->target == GL_TEXTURE_3D ? 2 * lv->border : 0);
+      break;
     case GL_TEXTURE_BORDER: params[0] = lv->border; break;
     case GL_TEXTURE_INTERNAL_FORMAT: params[0] = lv->texels ? (GLint)lv->internal : 1; break;
     case GL_TEXTURE_RED_SIZE: case GL_TEXTURE_GREEN_SIZE: case GL_TEXTURE_BLUE_SIZE:
@@ -753,12 +882,13 @@ void APIENTRY sgl_BindTexture(GLenum target, GLuint name) {
   sgl_context *c = sgl_ctx;
   sgl_shared *s = c->shared;
   sgl_texture *t;
-  if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D) {
+  if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_3D) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
   if (name == 0) {
-    t = target == GL_TEXTURE_2D ? &c->default_2d : &c->default_1d;
+    t = target == GL_TEXTURE_2D ? &c->default_2d
+        : target == GL_TEXTURE_3D ? &c->default_3d : &c->default_1d;
   } else {
     t = find_texture(s, name);
     if (!t) {
@@ -777,6 +907,8 @@ void APIENTRY sgl_BindTexture(GLenum target, GLuint name) {
   }
   if (target == GL_TEXTURE_2D)
     c->tex_2d[c->a.active_texture] = t;
+  else if (target == GL_TEXTURE_3D)
+    c->tex_3d[c->a.active_texture] = t;
   else
     c->tex_1d[c->a.active_texture] = t;
 }
@@ -798,6 +930,7 @@ void APIENTRY sgl_DeleteTextures(GLsizei n, const GLuint *textures) {
     for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
       if (c->tex_2d[u] == t) c->tex_2d[u] = &c->default_2d;
       if (c->tex_1d[u] == t) c->tex_1d[u] = &c->default_1d;
+      if (c->tex_3d[u] == t) c->tex_3d[u] = &c->default_3d;
     }
     free_levels(t);
     free(t);

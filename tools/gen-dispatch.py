@@ -87,6 +87,9 @@ def multitexcoord():
 # opengl32.dll does not export them: wglGetProcAddress gives them.
 EXTENSIONS += [
     ("void", "DrawRangeElements", "GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices"),
+    ("void", "TexImage3D", "GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels"),
+    ("void", "TexSubImage3D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels"),
+    ("void", "CopyTexSubImage3D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height"),
     ("void", "ActiveTexture", "GLenum texture"),
     ("void", "ClientActiveTexture", "GLenum texture"),
 ] + multitexcoord() + [
@@ -100,7 +103,8 @@ EXTENSIONS += [
 # that became part of OpenGL. Each is exported and given by
 # wglGetProcAddress, and calls the entry of the core name.
 ALIASES = dict(
-    [("DrawRangeElementsEXT", "DrawRangeElements"),("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
+    [("DrawRangeElementsEXT", "DrawRangeElements"), ("TexImage3DEXT", "TexImage3D"),
+     ("TexSubImage3DEXT", "TexSubImage3D"), ("CopyTexSubImage3DEXT", "CopyTexSubImage3D"),("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
     + [(name + "ARB", name) for _, name, _ in multitexcoord()]
     + [(n + "ARB", n) for n in ("LoadTransposeMatrixf", "LoadTransposeMatrixd",
                                 "MultTransposeMatrixf", "MultTransposeMatrixd")])
@@ -130,7 +134,7 @@ Map1d Map2d PixelMapuiv PixelMapusv
 # list.c), because their pointers need the pixel store or a count that
 # the arguments do not tell simply.
 HAND_SAVE = set("""
-TexImage1D TexImage2D TexSubImage1D TexSubImage2D DrawPixels Bitmap
+TexImage1D TexImage2D TexImage3D TexSubImage1D TexSubImage2D TexSubImage3D DrawPixels Bitmap
 PolygonStipple CallLists Map1f Map2f PixelMapfv ColorTableEXT
 ColorSubTableEXT
 """.split())

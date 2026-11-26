@@ -362,6 +362,9 @@ struct sgl_dispatch {
   void (APIENTRY *TexCoordPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *VertexPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *DrawRangeElements)(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
+  void (APIENTRY *TexImage3D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+  void (APIENTRY *TexSubImage3D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
+  void (APIENTRY *CopyTexSubImage3D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
   void (APIENTRY *ActiveTexture)(GLenum texture);
   void (APIENTRY *ClientActiveTexture)(GLenum texture);
   void (APIENTRY *MultiTexCoord1s)(GLenum target, GLshort s);
@@ -495,6 +498,7 @@ enum sgl_op {
   SGL_OP_CopyTexSubImage2D,
   SGL_OP_BindTexture,
   SGL_OP_PrioritizeTextures,
+  SGL_OP_CopyTexSubImage3D,
   SGL_OP_ActiveTexture,
   SGL_OP_MultiTexCoord4f,
   SGL_OP_LoadTransposeMatrixf,
@@ -690,6 +694,9 @@ void APIENTRY sgl_NormalPointerEXT(GLenum type, GLsizei stride, GLsizei count, c
 void APIENTRY sgl_TexCoordPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_VertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
+void APIENTRY sgl_TexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+void APIENTRY sgl_TexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
+void APIENTRY sgl_CopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
 void APIENTRY sgl_ActiveTexture(GLenum texture);
 void APIENTRY sgl_ClientActiveTexture(GLenum texture);
 void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
@@ -710,6 +717,8 @@ void APIENTRY save_TexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsi
 void APIENTRY save_TexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
 void APIENTRY save_ColorTableEXT(GLenum target, GLenum internalFormat, GLsizei width, GLenum format, GLenum type, const void *table);
 void APIENTRY save_ColorSubTableEXT(GLenum target, GLsizei start, GLsizei count, GLenum format, GLenum type, const void *data);
+void APIENTRY save_TexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+void APIENTRY save_TexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
 
 /* Plays the generated command with code op and arguments a back. */
 void sgl_play_generated(int op, const sgl_cell *a);

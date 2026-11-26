@@ -358,6 +358,73 @@ void APIENTRY save_TexImage1D(GLenum target, GLint level, GLint internal, GLsize
   if (sgl_list_executes()) sgl_TexImage1D(target, level, internal, w, border, format, type, pixels);
 }
 
+/* Gives the number of bytes of a 3D image of w x h x d pixels in the
+ * unpack store: the rows of d images that follow GL_UNPACK_SKIP_IMAGES
+ * and GL_UNPACK_IMAGE_HEIGHT. */
+static size_t image3d_bytes(int w, int h, int d, GLenum format, GLenum type) {
+  const sgl_pixelstore *ps = &sgl_ctx->c.unpack;
+  int ih = ps->image_height > 0 ? ps->image_height : h;
+  if (w <= 0 || h <= 0 || d <= 0) return 0;
+  return sgl_image_bytes(ps, w, (ps->skip_images + d - 1) * ih + h, format, type);
+}
+
+/* Plays a recorded glTexImage3D. */
+static void play_TexImage3D(const sgl_cell *a) {
+  WITH_STORE((const sgl_pixelstore *)a[11].p,
+             sgl_TexImage3D(a[1].u, a[2].i, a[3].i, a[4].i, a[5].i, a[6].i, a[7].i, a[8].u, a[9].u,
+                            a[10].p));
+}
+
+/* Records glTexImage3D, with a copy of the image. */
+void APIENTRY save_TexImage3D(GLenum target, GLint level, GLint internal, GLsizei w, GLsizei h,
+                              GLsizei d, GLint border, GLenum format, GLenum type, const void *pixels) {
+  sgl_node *n = sgl_list_add_hand(play_TexImage3D, 11, NULL);
+  if (n) {
+    sgl_cell *a = n->args;
+    a[1].u = target;
+    a[2].i = level;
+    a[3].i = internal;
+    a[4].i = w;
+    a[5].i = h;
+    a[6].i = d;
+    a[7].i = border;
+    a[8].u = format;
+    a[9].u = type;
+    a[10].p = pixels ? sgl_list_copy(pixels, image3d_bytes(w, h, d, format, type)) : NULL;
+    a[11].p = save_store();
+  }
+  if (sgl_list_executes()) sgl_TexImage3D(target, level, internal, w, h, d, border, format, type, pixels);
+}
+
+/* Plays a recorded glTexSubImage3D. */
+static void play_TexSubImage3D(const sgl_cell *a) {
+  WITH_STORE((const sgl_pixelstore *)a[12].p,
+             sgl_TexSubImage3D(a[1].u, a[2].i, a[3].i, a[4].i, a[5].i, a[6].i, a[7].i, a[8].i, a[9].u,
+                               a[10].u, a[11].p));
+}
+
+/* Records glTexSubImage3D, with a copy of the image. */
+void APIENTRY save_TexSubImage3D(GLenum target, GLint level, GLint x, GLint y, GLint z, GLsizei w,
+                                 GLsizei h, GLsizei d, GLenum format, GLenum type, const void *pixels) {
+  sgl_node *n = sgl_list_add_hand(play_TexSubImage3D, 12, NULL);
+  if (n) {
+    sgl_cell *a = n->args;
+    a[1].u = target;
+    a[2].i = level;
+    a[3].i = x;
+    a[4].i = y;
+    a[5].i = z;
+    a[6].i = w;
+    a[7].i = h;
+    a[8].i = d;
+    a[9].u = format;
+    a[10].u = type;
+    a[11].p = sgl_list_copy(pixels, image3d_bytes(w, h, d, format, type));
+    a[12].p = save_store();
+  }
+  if (sgl_list_executes()) sgl_TexSubImage3D(target, level, x, y, z, w, h, d, format, type, pixels);
+}
+
 /* Plays a recorded glTexSubImage2D. */
 static void play_TexSubImage2D(const sgl_cell *a) {
   WITH_STORE((const sgl_pixelstore *)a[10].p,

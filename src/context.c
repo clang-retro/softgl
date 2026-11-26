@@ -16,13 +16,13 @@ SGL_THREAD const struct sgl_dispatch *sgl_cur = &sgl_nop_table;
  * programs of the Windows SDK look for it. */
 static const char kVendor[] = "clang-retro";
 static const char kRenderer[] = "clang-retro Generic";
-static const char kVersion[] = "1.1.0";
+static const char kVersion[] = "1.2.0";
 static const char kExtensions[] =
     "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
     "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
     "GL_SGIS_texture_edge_clamp GL_EXT_texture_edge_clamp GL_ARB_texture_border_clamp "
     "GL_ARB_texture_mirrored_repeat GL_SGIS_texture_lod GL_EXT_packed_pixels "
-    "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements";
+    "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements GL_EXT_texture3D";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -103,6 +103,7 @@ int sgl_cap_index(GLenum cap) {
     case GL_STENCIL_TEST: return SGL_STENCIL_TEST;
     case GL_TEXTURE_1D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_1D);
     case GL_TEXTURE_2D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_2D);
+    case GL_TEXTURE_3D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_3D);
     case GL_TEXTURE_GEN_S: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_S);
     case GL_TEXTURE_GEN_T: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_T);
     case GL_TEXTURE_GEN_R: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_R);
@@ -327,6 +328,7 @@ void sgl_destroy_context(sgl_context *c) {
   sgl_eval_free(c);
   for (i = 0; i < 10; i++) free(c->pixel_map[i]);
   free(c->verts);
+  free(c->clipverts);
   free(c->depth);
   free(c->stencil);
   free(c->accum);
@@ -885,6 +887,7 @@ void APIENTRY sgl_PushAttrib(GLbitfield mask) {
   for (i = 0; i < SGL_MAX_TEXTURE_UNITS; i++) {
     s->unit[i].bound_1d = c->tex_1d[i]->name;
     s->unit[i].bound_2d = c->tex_2d[i]->name;
+    s->unit[i].bound_3d = c->tex_3d[i]->name;
   }
 }
 
@@ -1018,6 +1021,7 @@ void APIENTRY sgl_PopAttrib(void) {
       a->active_texture = i;
       sgl_BindTexture(GL_TEXTURE_1D, s->unit[i].bound_1d);
       sgl_BindTexture(GL_TEXTURE_2D, s->unit[i].bound_2d);
+      sgl_BindTexture(GL_TEXTURE_3D, s->unit[i].bound_3d);
     }
     a->active_texture = active;
   }
@@ -1167,6 +1171,7 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_MAX_LIGHTS: v[0] = SGL_MAX_LIGHTS; return 1;
     case GL_MAX_CLIP_PLANES: v[0] = SGL_MAX_CLIP_PLANES; return 1;
     case GL_MAX_TEXTURE_SIZE: v[0] = SGL_MAX_TEXTURE_SIZE; return 1;
+    case GL_MAX_3D_TEXTURE_SIZE: v[0] = SGL_MAX_3D_TEXTURE_SIZE; return 1;
     case GL_MAX_EVAL_ORDER: v[0] = SGL_MAX_EVAL_ORDER; return 1;
     case GL_MAX_PIXEL_MAP_TABLE: v[0] = 256; return 1;
     case GL_MAX_VIEWPORT_DIMS: v[0] = v[1] = 4096; return 2;
@@ -1254,6 +1259,7 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
       return 4;
     case GL_TEXTURE_BINDING_1D: v[0] = c->tex_1d[u]->name; return 1;
     case GL_TEXTURE_BINDING_2D: v[0] = c->tex_2d[u]->name; return 1;
+    case GL_TEXTURE_BINDING_3D: v[0] = c->tex_3d[u]->name; return 1;
     case GL_PERSPECTIVE_CORRECTION_HINT: v[0] = a->hint_perspective; *kind = Q_ENUM; return 1;
     case GL_POINT_SMOOTH_HINT: v[0] = a->hint_point; *kind = Q_ENUM; return 1;
     case GL_LINE_SMOOTH_HINT: v[0] = a->hint_line; *kind = Q_ENUM; return 1;
@@ -1276,12 +1282,16 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_UNPACK_ROW_LENGTH: v[0] = c->c.unpack.row_length; return 1;
     case GL_UNPACK_SKIP_ROWS: v[0] = c->c.unpack.skip_rows; return 1;
     case GL_UNPACK_SKIP_PIXELS: v[0] = c->c.unpack.skip_pixels; return 1;
+    case GL_UNPACK_IMAGE_HEIGHT: v[0] = c->c.unpack.image_height; return 1;
+    case GL_UNPACK_SKIP_IMAGES: v[0] = c->c.unpack.skip_images; return 1;
     case GL_UNPACK_SWAP_BYTES: v[0] = c->c.unpack.swap_bytes; *kind = Q_BOOL; return 1;
     case GL_UNPACK_LSB_FIRST: v[0] = c->c.unpack.lsb_first; *kind = Q_BOOL; return 1;
     case GL_PACK_ALIGNMENT: v[0] = c->c.pack.alignment; return 1;
     case GL_PACK_ROW_LENGTH: v[0] = c->c.pack.row_length; return 1;
     case GL_PACK_SKIP_ROWS: v[0] = c->c.pack.skip_rows; return 1;
     case GL_PACK_SKIP_PIXELS: v[0] = c->c.pack.skip_pixels; return 1;
+    case GL_PACK_IMAGE_HEIGHT: v[0] = c->c.pack.image_height; return 1;
+    case GL_PACK_SKIP_IMAGES: v[0] = c->c.pack.skip_images; return 1;
     case GL_PACK_SWAP_BYTES: v[0] = c->c.pack.swap_bytes; *kind = Q_BOOL; return 1;
     case GL_PACK_LSB_FIRST: v[0] = c->c.pack.lsb_first; *kind = Q_BOOL; return 1;
     case GL_TEXTURE_ENV_MODE: v[0] = a->unit[u].env_mode; *kind = Q_ENUM; return 1;

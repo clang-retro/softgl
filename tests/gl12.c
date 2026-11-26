@@ -1,6 +1,6 @@
 /* gl12.c - the tests of the OpenGL 1.2 features of softgl: packed
  * pixels, the separate specular color, the wrap modes, the level of
- * detail parameters and glDrawRangeElements.
+ * detail parameters, glDrawRangeElements and the 3D textures.
  *
  *     gl12 [prefix]
  *
@@ -209,6 +209,81 @@ static void test_range_elements(void) {
   glDisable(GL_RESCALE_NORMAL);
 }
 
+/* Draws a quad over the buffer with r from r0 at the left to r1 at the
+ * right, and s = t = 0.5. */
+static void quad_r(GLfloat r0, GLfloat r1) {
+  glBegin(GL_QUADS);
+  glTexCoord3f(0.5f, 0.5f, r0);
+  glVertex2f(-1, -1);
+  glTexCoord3f(0.5f, 0.5f, r1);
+  glVertex2f(1, -1);
+  glTexCoord3f(0.5f, 0.5f, r1);
+  glVertex2f(1, 1);
+  glTexCoord3f(0.5f, 0.5f, r0);
+  glVertex2f(-1, 1);
+  glEnd();
+}
+
+/* The 3D textures: the images along r, the linear filter between
+ * images, GL_UNPACK_SKIP_IMAGES, glTexSubImage3D, a display list and the
+ * queries. */
+static void test_3d(void) {
+  /* Image 0 (skipped), then red, green, blue and white: 1 x 1 x 4. */
+  static const GLubyte img[5 * 4] = {9, 9, 9, 255, 255, 0, 0, 255, 0, 255, 0, 255,
+                                     0, 0, 255, 255, 255, 255, 255, 255};
+  static const GLubyte yellow[4] = {255, 255, 0, 255};
+  GLuint t, list;
+  GLint v;
+  reset();
+  glGenTextures(1, &t);
+  glBindTexture(GL_TEXTURE_3D, t);
+  glGetIntegerv(GL_TEXTURE_BINDING_3D, &v);
+  check("GL_TEXTURE_BINDING_3D", (GLuint)v == t);
+  glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glPixelStorei(GL_UNPACK_SKIP_IMAGES, 1);
+  glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, 1, 1, 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+  glPixelStorei(GL_UNPACK_SKIP_IMAGES, 0);
+  glGetTexLevelParameteriv(GL_TEXTURE_3D, 0, GL_TEXTURE_DEPTH, &v);
+  check("GL_TEXTURE_DEPTH", v == 4);
+  glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &v);
+  check("GL_MAX_3D_TEXTURE_SIZE", v >= 16);
+  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+  /* The 3D texture is used when GL_TEXTURE_2D is also on. */
+  glEnable(GL_TEXTURE_2D);
+  glEnable(GL_TEXTURE_3D);
+  check("GL_TEXTURE_3D is on", glIsEnabled(GL_TEXTURE_3D));
+  quad_r(0, 1);
+  dump("texture-3d");
+  expect("3D image 0", 4, 32, 0xFF0000, 0);
+  expect("3D image 1", 20, 32, 0x00FF00, 0);
+  expect("3D image 2", 40, 32, 0x0000FF, 0);
+  expect("3D image 3", 60, 32, 0xFFFFFF, 0);
+  /* The linear filter: halfway between the centers of images 0 and 1. */
+  reset();
+  glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  quad_r(0.25f, 0.25f);
+  expect("3D linear", 32, 32, 0x808000, 2);
+  glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  /* glTexSubImage3D in a display list: image 2 becomes yellow. */
+  list = glGenLists(1);
+  glNewList(list, GL_COMPILE);
+  glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 2, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, yellow);
+  glEndList();
+  glCallList(list);
+  glDeleteLists(list, 1);
+  reset();
+  quad_r(0, 1);
+  expect("3D sub image", 40, 32, 0xFFFF00, 0);
+  expect("3D other image", 20, 32, 0x00FF00, 0);
+  glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, 3, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+  check("width 3 is GL_INVALID_VALUE", glGetError() == GL_INVALID_VALUE);
+  glDisable(GL_TEXTURE_3D);
+  glDisable(GL_TEXTURE_2D);
+  glDeleteTextures(1, &t);
+}
+
 /* Runs the tests. */
 int main(int argc, char **argv) {
   sgl_context *ctx;
@@ -219,6 +294,7 @@ int main(int argc, char **argv) {
   test_wrap();
   test_lod();
   test_range_elements();
+  test_3d();
   {
     GLenum e = glGetError();
     if (e != GL_NO_ERROR) {
