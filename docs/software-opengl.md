@@ -456,13 +456,23 @@ values that OpenGL gives back:
   values, that softgl waits for the work of the back end before it
   uses the buffers, and that the texture serials change. The output is
   `PASS softgl backend`.
-- `tests/c2p.c`: the parts of the Amiga back end that have no hardware
-  code: the pens, the palette and the bit planes (compared with a
-  conversion of one bit at a time). The output is `PASS softgl c2p`.
+- `tests/c2p.c`: the chunky-to-planar code of the Amiga and Atari back
+  ends: the pens, the palette, the bit planes (compared with a
+  conversion of one bit at a time), the interleaved planes and RGB 565.
+  The output is `PASS softgl c2p`.
+- `tests/glide.c`: the Glide back end with a fake Glide table. The
+  output is `PASS softgl glide`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
 Atari TOS (68000) with the clang-retro toolchain. For AmigaOS, it also
-builds the Amiga back end and links `examples/amiga/cube.c`.
+builds the Amiga back end and links `examples/amiga/cube.c`. For Atari
+TOS, it builds the Atari back end and its example. For Windows 95, it
+builds the Glide back end. Two more CI jobs run programs in emulators:
+
+- `tools/test-glide-wine.sh` runs `glidecube.exe` with a fake
+  `glide2x.dll` in Wine (see [glide.md](glide.md#tests)).
+- `tools/test-atari-hatari.sh` runs `tests/atari/present.c` in Hatari
+  on an ST, an STE and a Falcon (see [atari.md](atari.md#tests)).
 
 In clang-retro MFC:
 

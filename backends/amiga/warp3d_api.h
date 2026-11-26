@@ -115,6 +115,7 @@ typedef struct {
 #define W3D_ATO_WIDTH (W3D_ATO_TAGS + 2)
 #define W3D_ATO_HEIGHT (W3D_ATO_TAGS + 3)
 #define W3D_ATO_MIPMAP (W3D_ATO_TAGS + 4)
+#define W3D_ATO_MIPMAPPTRS (W3D_ATO_TAGS + 6)
 
 /* The texture format of the back end. */
 #define W3D_A8R8G8B8 6
@@ -146,6 +147,8 @@ typedef struct {
 #define W3D_Q_DRAW_LINE 2
 #define W3D_Q_DRAW_TRIANGLE 3
 #define W3D_Q_TEXMAPPING 11
+#define W3D_Q_MIPMAPPING 12
+#define W3D_Q_MMFILTER 14
 #define W3D_Q_PERSPECTIVE 17
 #define W3D_Q_SPECULAR 25
 #define W3D_Q_GOURAUDSHADING 32

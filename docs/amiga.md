@@ -142,9 +142,9 @@ through warp3d.library (version 2 or later): for example a CyberVision
 a Voodoo card. The code is in `backends/amiga/warp3d.c`.
 
 softgl still does the GL state, the transform, lighting, clipping and
-culling. The card does the rasterization: Gouraud shading, the texture
-of unit 0, the Z buffer, the alpha test, blending, the secondary color
-and the scissor box.
+culling. The card does the rasterization: Gouraud shading, the textures
+of units 0 and 1, mipmaps, the Z buffer, the alpha test, blending, fog,
+the secondary color and the scissor box.
 
 ### How to use it
 
@@ -168,17 +168,20 @@ depth test.
 The card draws a primitive only when it can do the GL state. softgl
 draws the primitive in software when one of these is on:
 
-- Color index mode, the logical operation, the stencil test, fog, a
-  color mask, or `glDrawBuffer(GL_NONE)`.
+- Color index mode, the logical operation, the stencil test, a color
+  mask, or `glDrawBuffer(GL_NONE)`.
 - The polygon or line stipple, smooth points, lines or polygons, or
   point size attenuation.
 - An occlusion query.
 - A blend equation other than `GL_FUNC_ADD`, separate blend factors for
   alpha, or the constant blend color.
-- A texture on unit 1, a texture that is not 2D, a paletted texture, a
-  depth texture, a texture that is not RGB or RGBA, or a texture
-  environment other than `GL_REPLACE`, `GL_MODULATE`, `GL_DECAL` and
-  `GL_BLEND`.
+- A texture that is not 2D, a paletted texture, a depth texture, a
+  texture that is not RGB or RGBA, or a texture environment other than
+  `GL_REPLACE`, `GL_MODULATE`, `GL_DECAL` and `GL_BLEND`.
+- A texture on unit 1 with an environment other than `GL_MODULATE`.
+- Fog or a texture on unit 1 together with blending, the alpha test,
+  the depth test without depth writes, or (for unit 1) the secondary
+  color. See [More than one pass](#more-than-one-pass).
 - A feature that the driver does not have (`W3D_Query`), for example
   the Z buffer.
 
@@ -188,6 +191,33 @@ it copies the changed buffers back. These copies are slow, so a program
 is fast only when most of its primitives stay on the card. `glClear` of
 the whole frame goes to the card; a clear of the scissor box stays in
 softgl.
+
+### More than one pass
+
+The card draws one texture in one pass. For unit 1 and for fog, the
+back end draws the primitive again:
+
+1. The first pass draws the GL state with the texture of unit 0.
+2. With a texture on unit 1, the second pass draws that texture and
+   multiplies it with the frame (`W3D_DST_COLOR`, `W3D_ZERO`). This is
+   `GL_MODULATE`.
+3. With fog, the last pass draws the fog color with the alpha 1 - f,
+   and blends it (`W3D_SRC_ALPHA`, `W3D_ONE_MINUS_SRC_ALPHA`). This
+   gives the GL fog of each vertex.
+
+The later passes use the Z test `GL_EQUAL` without Z writes, so they
+change only the pixels of the first pass. For this reason, the first
+pass must write each pixel that it draws: GL blending and the alpha
+test must be off, and with the depth test, depth writes must be on.
+Fog needs the blend feature of the driver.
+
+### Mipmaps
+
+When the driver has mipmapping (`W3D_Q_MIPMAPPING`) and the texture
+has all its levels, the back end gives all the levels to the card. A
+`*_MIPMAP_LINEAR` filter needs `W3D_Q_MMFILTER`. Without it, the card
+uses the nearest level. Without mipmapping, the card uses the base
+level.
 
 ### The pixel formats
 
@@ -217,8 +247,9 @@ Warp3D stubs of a program.
 - **No hardware tests.** CI builds the back end and links
   `w3dcube` with `-Werror`. A test on a real card (or in WinUAE with a
   Warp3D wrapper) is necessary.
-- **No mipmaps on the card.** A mipmap filter uses the filter of the
-  base level.
+- **Fog is per vertex.** The fog pass interpolates the fog of the
+  vertices. softgl also computes fog per vertex, so the result is
+  nearly the same.
 - **`GL_CLAMP_TO_EDGE` and `GL_MIRRORED_REPEAT`** are `W3D_CLAMP` on the
   card.
 - **One context for each back end.** The size of the color buffer must

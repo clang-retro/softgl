@@ -34,6 +34,8 @@ typedef struct w3d_tex {
   uint32_t *texels;
   ULONG bytes;
   unsigned long used;      /* the frame of the last use, for the replacement */
+  ULONG env;               /* the texture environment that is set, or 0 */
+  GLfloat env_color[4];    /* the environment color that is set */
 } w3d_tex;
 
 #define TEXTURES 32
@@ -71,6 +73,8 @@ typedef struct w3d_state {
 #define F_BLEND 64u
 #define F_SCISSOR 128u
 #define F_PERSP 256u
+#define F_MIPMAP 512u
+#define F_MMFILTER 1024u
 
 /* Gives 1 when the driver has a query. */
 static int has(W3D_Context *w, ULONG q) {
@@ -191,7 +195,11 @@ static int to_hardware(w3d_state *s) {
 static void w3d_software(void *user, sgl_context *c) {
   w3d_state *s = (w3d_state *)user;
   int y;
-  (void)c;
+  /* A context that is destroyed has no color buffer: nothing to copy. */
+  if (!c->color) {
+    s->hw_newer[0] = s->hw_newer[1] = 0;
+    return;
+  }
   if (lock(s)) {
     sgl_W3D_WaitIdle(s->w3d);
     if (s->hw_newer[0])
@@ -247,38 +255,48 @@ static ULONG env_mode(GLenum m) {
   }
 }
 
-/* Gives the texture of unit 0 when the card can use it, NULL when no
- * texture is on, and (sgl_texture *)1 when the card cannot draw it. */
-static sgl_texture *usable_texture(w3d_state *s, sgl_context *c) {
+/* Gives the texture of unit u when the card can use it, NULL when the
+ * unit has no texture, and (sgl_texture *)1 when the card cannot draw
+ * it. Unit 1 goes to the card in a second pass, which multiplies the
+ * frame by the texture: thus unit 1 must use GL_MODULATE. */
+static sgl_texture *usable_texture(w3d_state *s, sgl_context *c, int u) {
   unsigned units = sgl_texture_units(c);
   sgl_texture *t;
   const sgl_level *lv;
-  if (!units) return NULL;
-  if (units != 1u || !(s->features & F_TEX)) return (sgl_texture *)1;
-  t = sgl_unit_texture(c, 0);
+  if (!(units & (1u << u))) return NULL;
+  if (!(s->features & F_TEX)) return (sgl_texture *)1;
+  t = sgl_unit_texture(c, u);
   lv = t ? sgl_base_level(t) : NULL;
   if (!lv) return NULL;
   if (t->target != GL_TEXTURE_2D || t->palette_size || t->compare_mode != GL_NONE) return (sgl_texture *)1;
   if (lv->base != GL_RGB && lv->base != GL_RGBA) return (sgl_texture *)1;
   if (lv->width > s->max_tex || lv->height > s->max_tex || lv->wlog < 0 || lv->hlog < 0) return (sgl_texture *)1;
-  if (!env_mode(c->a.unit[0].env_mode)) return (sgl_texture *)1;
+  if (u == 0 && !env_mode(c->a.unit[0].env_mode)) return (sgl_texture *)1;
+  if (u == 1 && (c->a.unit[1].env_mode != GL_MODULATE || !(s->features & F_BLEND))) return (sgl_texture *)1;
   return t;
 }
 
+/* Gives 1 when the primitive needs more than one pass on the card: a
+ * texture on unit 1, or fog. */
+static int multipass(sgl_context *c, int unit1) { return unit1 || c->a.enabled[SGL_FOG]; }
+
 /* Gives 1 when the card can draw a primitive in the GL state of c.
- * lines is 1 for a line, 2 for a point. */
+ * kind is 0 for a triangle, 1 for a line, 2 for a point. */
 static int can_draw(w3d_state *s, sgl_context *c, int kind) {
   const sgl_attrib *a = &c->a;
+  sgl_texture *t1;
+  int alpha = a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS;
   if (c != s->ctx || c->index_mode || c->query || c->width != s->width || c->height != s->height) return 0;
   if (kind == 1 && (!(s->features & F_LINE) || a->enabled[SGL_LINE_STIPPLE] || a->enabled[SGL_LINE_SMOOTH]))
     return 0;
   if (kind == 2 && (!(s->features & F_POINT) || a->enabled[SGL_POINT_SMOOTH])) return 0;
   if (kind == 0 && (a->enabled[SGL_POLYGON_STIPPLE] || a->enabled[SGL_POLYGON_SMOOTH])) return 0;
-  if (a->enabled[SGL_STENCIL_TEST] || a->enabled[SGL_FOG] || a->draw_buffer == GL_NONE) return 0;
+  if (a->enabled[SGL_STENCIL_TEST] || a->draw_buffer == GL_NONE) return 0;
+  if (a->enabled[SGL_FOG] && !(s->features & F_BLEND)) return 0;
   if (a->enabled[SGL_COLOR_LOGIC_OP] && a->logic_op != GL_COPY) return 0;
   if (!a->color_mask[0] || !a->color_mask[1] || !a->color_mask[2] || !a->color_mask[3]) return 0;
   if (a->enabled[SGL_DEPTH_TEST] && !s->has_z) return 0;
-  if (a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS && !(s->features & F_ALPHA)) return 0;
+  if (alpha && !(s->features & F_ALPHA)) return 0;
   if (a->enabled[SGL_SCISSOR_TEST] && !(s->features & F_SCISSOR)) return 0;
   if (c->sec_on && !(s->features & F_SPEC)) return 0;
   if (a->enabled[SGL_BLEND]) {
@@ -286,7 +304,19 @@ static int can_draw(w3d_state *s, sgl_context *c, int kind) {
         a->blend_dst != a->blend_dst_alpha || !blend_factor(a->blend_src) || !blend_factor(a->blend_dst))
       return 0;
   }
-  if (usable_texture(s, c) == (sgl_texture *)1) return 0;
+  if (usable_texture(s, c, 0) == (sgl_texture *)1) return 0;
+  t1 = usable_texture(s, c, 1);
+  if (t1 == (sgl_texture *)1) return 0;
+  if (multipass(c, t1 != NULL)) {
+    /* The later passes blend with the frame of the first pass and test
+     * Z for equality. Thus the first pass must write each pixel that it
+     * passes, and the GL state must not blend or discard pixels. The
+     * secondary color is added after unit 1, so the first pass cannot
+     * add it when unit 1 is on. */
+    if (a->enabled[SGL_BLEND] || alpha) return 0;
+    if (a->enabled[SGL_DEPTH_TEST] && !a->depth_mask) return 0;
+    if (t1 && c->sec_on) return 0;
+  }
   return 1;
 }
 
@@ -300,35 +330,66 @@ static void set_state(w3d_state *s, ULONG state, int on) {
     s->on &= ~state;
 }
 
-/* Sets the state of the card from the GL state of c. */
-static void apply_state(w3d_state *s, sgl_context *c, int textured) {
+/* The state of one pass on the card. */
+typedef struct w3d_pass {
+  int textured, depth, zupdate, alpha, blend, spec;
+  ULONG zmode, src, dst;
+} w3d_pass;
+
+/* Gives the state of the first pass: the GL state of c. */
+static void first_pass(sgl_context *c, int textured, w3d_pass *p) {
   const sgl_attrib *a = &c->a;
-  int depth = a->enabled[SGL_DEPTH_TEST];
-  int alpha = a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS;
-  int blend = a->enabled[SGL_BLEND];
+  p->textured = textured;
+  p->depth = a->enabled[SGL_DEPTH_TEST];
+  p->zupdate = p->depth && a->depth_mask;
+  p->zmode = cmp_mode(a->depth_func);
+  p->alpha = a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS;
+  p->blend = a->enabled[SGL_BLEND];
+  p->src = blend_factor(a->blend_src);
+  p->dst = blend_factor(a->blend_dst);
+  p->spec = c->sec_on;
+}
+
+/* Gives the state of a later pass: it blends src and dst with the frame
+ * of the first pass, on the pixels of the first pass only. */
+static void later_pass(sgl_context *c, int textured, ULONG src, ULONG dst, w3d_pass *p) {
+  p->textured = textured;
+  p->depth = c->a.enabled[SGL_DEPTH_TEST];
+  p->zupdate = 0;
+  p->zmode = W3D_A_EQUAL;
+  p->alpha = 0;
+  p->blend = 1;
+  p->src = src;
+  p->dst = dst;
+  p->spec = 0;
+}
+
+/* Sets the state of the card for pass p of a primitive of c. */
+static void apply_state(w3d_state *s, sgl_context *c, const w3d_pass *p) {
+  const sgl_attrib *a = &c->a;
   int sc = a->enabled[SGL_SCISSOR_TEST];
   if (!s->key_valid) s->on = 0;
   set_state(s, W3D_GOURAUD, 1);
-  set_state(s, W3D_TEXMAPPING, textured);
-  set_state(s, W3D_PERSPECTIVE, textured && (s->features & F_PERSP) && a->hint_perspective != GL_FASTEST);
-  set_state(s, W3D_ZBUFFER, depth);
-  set_state(s, W3D_ZBUFFERUPDATE, depth && a->depth_mask);
-  set_state(s, W3D_ALPHATEST, alpha);
-  set_state(s, W3D_BLENDING, blend);
-  set_state(s, W3D_SPECULAR, c->sec_on);
+  set_state(s, W3D_TEXMAPPING, p->textured);
+  set_state(s, W3D_PERSPECTIVE, p->textured && (s->features & F_PERSP) && a->hint_perspective != GL_FASTEST);
+  set_state(s, W3D_ZBUFFER, p->depth);
+  set_state(s, W3D_ZBUFFERUPDATE, p->zupdate);
+  set_state(s, W3D_ALPHATEST, p->alpha);
+  set_state(s, W3D_BLENDING, p->blend);
+  set_state(s, W3D_SPECULAR, p->spec);
   set_state(s, W3D_SCISSOR, sc);
-  if (depth && (!s->key_valid || s->zmode != cmp_mode(a->depth_func))) {
-    s->zmode = cmp_mode(a->depth_func);
+  if (p->depth && (!s->key_valid || s->zmode != p->zmode)) {
+    s->zmode = p->zmode;
     sgl_W3D_SetZCompareMode(s->w3d, s->zmode);
   }
-  if (alpha && (!s->key_valid || s->amode != cmp_mode(a->alpha_func) || s->aref != a->alpha_ref)) {
+  if (p->alpha && (!s->key_valid || s->amode != cmp_mode(a->alpha_func) || s->aref != a->alpha_ref)) {
     s->amode = cmp_mode(a->alpha_func);
     s->aref = a->alpha_ref;
     sgl_W3D_SetAlphaMode(s->w3d, s->amode, &s->aref);
   }
-  if (blend && (!s->key_valid || s->asrc != blend_factor(a->blend_src) || s->adst != blend_factor(a->blend_dst))) {
-    s->asrc = blend_factor(a->blend_src);
-    s->adst = blend_factor(a->blend_dst);
+  if (p->blend && (!s->key_valid || s->asrc != p->src || s->adst != p->dst)) {
+    s->asrc = p->src;
+    s->adst = p->dst;
     sgl_W3D_SetBlendMode(s->w3d, s->asrc, s->adst);
   }
   if (sc) {
@@ -353,44 +414,89 @@ static void free_tex(w3d_state *s, w3d_tex *e) {
   memset(e, 0, sizeof *e);
 }
 
-/* Gives the Warp3D filter of the GL filters of a texture. The card gets
- * no mipmaps: a mipmap filter uses the filter of its base level. */
-static ULONG filter_of(GLenum f) {
-  return f == GL_LINEAR || f == GL_LINEAR_MIPMAP_NEAREST || f == GL_LINEAR_MIPMAP_LINEAR ? W3D_LINEAR
-                                                                                          : W3D_NEAREST;
+/* Gives 1 when f is a GL mipmap filter. */
+static int is_mipmap(GLenum f) { return f != GL_NEAREST && f != GL_LINEAR; }
+
+/* Gives the number of mipmaps below the base level of t that the card
+ * gets: all the levels to 1 x 1, or 0 when the card gets no mipmaps
+ * (the driver has no mipmaps, the filter is not a mipmap filter, or
+ * softgl does not have all the levels). */
+static int mipmap_count(const w3d_state *s, const sgl_texture *t) {
+  const sgl_level *lv = sgl_base_level(t);
+  int n, i, b = t->base_level;
+  if (!(s->features & F_MIPMAP) || !is_mipmap(t->min_filter) || !t->complete) return 0;
+  n = lv->wlog > lv->hlog ? lv->wlog : lv->hlog;
+  if (b + n >= SGL_MAX_TEXTURE_LEVELS || b + n > t->max_level) return 0;
+  for (i = 1; i <= n; i++) {
+    const sgl_level *m = &t->level[b + i];
+    if (!m->texels || m->width != (lv->width >> i ? lv->width >> i : 1) ||
+        m->height != (lv->height >> i ? lv->height >> i : 1))
+      return 0;
+  }
+  return n;
 }
 
-/* Gives the card texture of t: loads it when it is new or changed.
- * Gives NULL on failure. */
-static W3D_Texture *card_texture(w3d_state *s, sgl_context *c, sgl_texture *t) {
-  unsigned long serial, id = sgl_texture_id(c, 0, &serial);
+/* Gives the Warp3D filter of a GL filter. With mips 0, a mipmap filter
+ * uses the filter of the base level. A linear filter between the
+ * mipmaps needs W3D_Q_MMFILTER; without it, the card uses the nearest
+ * mipmap. The Warp3D names give the filter in a mipmap first, as the GL
+ * names do. */
+static ULONG filter_of(const w3d_state *s, GLenum f, int mips) {
+  int lin = f == GL_LINEAR || f == GL_LINEAR_MIPMAP_NEAREST || f == GL_LINEAR_MIPMAP_LINEAR;
+  int between = (f == GL_NEAREST_MIPMAP_LINEAR || f == GL_LINEAR_MIPMAP_LINEAR) && (s->features & F_MMFILTER);
+  if (!mips || !is_mipmap(f)) return lin ? W3D_LINEAR : W3D_NEAREST;
+  if (lin) return between ? W3D_LINEAR_MIP_LINEAR : W3D_LINEAR_MIP_NEAREST;
+  return between ? W3D_NEAREST_MIP_LINEAR : W3D_NEAREST_MIP_NEAREST;
+}
+
+/* Gives the card texture of the texture t of unit u: loads it when it
+ * is new or changed, and sets its texture environment (env is the
+ * Warp3D environment). Gives NULL on failure. */
+static W3D_Texture *card_texture(w3d_state *s, sgl_context *c, sgl_texture *t, int u, ULONG env) {
+  unsigned long serial, id = sgl_texture_id(c, u, &serial);
   const sgl_level *lv = sgl_base_level(t);
+  const GLfloat *ec = c->a.unit[u].env_color;
   w3d_tex *e = NULL, *old = &s->tex[0];
-  int i;
-  ULONG err = 0;
-  struct TagItem tags[5];
-  W3D_Color env;
+  int i, mips;
+  ULONG err = 0, off;
+  void *ptrs[SGL_MAX_TEXTURE_LEVELS];
+  struct TagItem tags[7];
   for (i = 0; i < TEXTURES; i++) {
     if (s->tex[i].id == id) e = &s->tex[i];
     if (s->tex[i].used < old->used) old = &s->tex[i];
   }
   if (e && e->serial == serial) {
     e->used = s->frame;
-    return e->tex;
+    goto env;
   }
   if (!e) e = old;
   free_tex(s, e);
-  e->bytes = (ULONG)lv->width * (ULONG)lv->height * 4;
+  mips = mipmap_count(s, t);
+  /* One block holds the base level and the mipmaps. */
+  e->bytes = 0;
+  for (i = 0; i <= mips; i++) e->bytes += (ULONG)t->level[t->base_level + i].width * t->level[t->base_level + i].height * 4;
   e->texels = (uint32_t *)AllocMem(e->bytes, MEMF_ANY);
   if (!e->texels) return NULL;
   /* The texels of softgl are 0xAARRGGBB: in the memory of the 68k, this
    * is W3D_A8R8G8B8. */
-  CopyMem(lv->texels, e->texels, e->bytes);
+  for (i = 0, off = 0; i <= mips; i++) {
+    const sgl_level *m = &t->level[t->base_level + i];
+    ULONG n = (ULONG)m->width * m->height * 4;
+    CopyMem(m->texels, (uint8_t *)e->texels + off, n);
+    if (i) ptrs[i - 1] = (uint8_t *)e->texels + off;
+    off += n;
+  }
   tags[0].ti_Tag = W3D_ATO_IMAGE, tags[0].ti_Data = (IPTR)e->texels;
   tags[1].ti_Tag = W3D_ATO_FORMAT, tags[1].ti_Data = W3D_A8R8G8B8;
   tags[2].ti_Tag = W3D_ATO_WIDTH, tags[2].ti_Data = (IPTR)lv->width;
   tags[3].ti_Tag = W3D_ATO_HEIGHT, tags[3].ti_Data = (IPTR)lv->height;
   tags[4].ti_Tag = TAG_DONE, tags[4].ti_Data = 0;
+  if (mips) {
+    /* A mask of 0: the program gives all the mipmaps, from the largest. */
+    tags[4].ti_Tag = W3D_ATO_MIPMAP, tags[4].ti_Data = 0;
+    tags[5].ti_Tag = W3D_ATO_MIPMAPPTRS, tags[5].ti_Data = (IPTR)ptrs;
+    tags[6].ti_Tag = TAG_DONE, tags[6].ti_Data = 0;
+  }
   e->tex = sgl_W3D_AllocTexObj(s->w3d, &err, tags);
   if (!e->tex || err != W3D_SUCCESS) {
     e->tex = NULL;
@@ -400,102 +506,170 @@ static W3D_Texture *card_texture(w3d_state *s, sgl_context *c, sgl_texture *t) {
   e->id = id;
   e->serial = serial;
   e->used = s->frame;
-  sgl_W3D_SetFilter(s->w3d, e->tex, filter_of(t->min_filter), filter_of(t->mag_filter));
+  sgl_W3D_SetFilter(s->w3d, e->tex, filter_of(s, t->min_filter, mips), filter_of(s, t->mag_filter, 0));
   sgl_W3D_SetWrapMode(s->w3d, e->tex, t->wrap_s == GL_REPEAT ? W3D_REPEAT : W3D_CLAMP,
                       t->wrap_t == GL_REPEAT ? W3D_REPEAT : W3D_CLAMP, NULL);
-  env.r = c->a.unit[0].env_color[0];
-  env.g = c->a.unit[0].env_color[1];
-  env.b = c->a.unit[0].env_color[2];
-  env.a = c->a.unit[0].env_color[3];
-  sgl_W3D_SetTexEnv(s->w3d, e->tex, env_mode(c->a.unit[0].env_mode), &env);
+env:
+  /* Warp3D keeps the environment in the texture: set it when it
+   * changes, because one texture can be on unit 0 and on unit 1. */
+  if (!e->env || e->env != env || memcmp(e->env_color, ec, sizeof e->env_color) != 0) {
+    W3D_Color col;
+    col.r = ec[0], col.g = ec[1], col.b = ec[2], col.a = ec[3];
+    e->env = env;
+    memcpy(e->env_color, ec, sizeof e->env_color);
+    sgl_W3D_SetTexEnv(s->w3d, e->tex, env, &col);
+  }
   return e->tex;
 }
 
-/* Fills a Warp3D vertex from a softgl window vertex. tw and th are the
- * size of the texture in texels (0 without a texture). */
-static void vertex(const w3d_state *s, const sgl_hw_vertex *h, int tw, int th, W3D_Vertex *v) {
+/* Fills a Warp3D vertex from a softgl window vertex: the texture
+ * coordinates of unit u, with tw and th the size of the texture in
+ * texels (0 without a texture). With fog nonzero, the color is the fog
+ * color with the alpha 1 - f, for the fog pass. */
+static void vertex(const w3d_state *s, sgl_context *c, const sgl_hw_vertex *h, int u, int tw, int th, int fog,
+                   W3D_Vertex *v) {
   v->x = h->x;
   v->y = (W3D_Float)s->height - h->y;
   v->z = h->z;
   v->w = h->w;
   if (tw) {
-    W3D_Float q = h->tex[0][3] != 0.0f ? 1.0f / h->tex[0][3] : 1.0f;
-    v->u = h->tex[0][0] * q * (W3D_Float)tw;
-    v->v = h->tex[0][1] * q * (W3D_Float)th;
+    W3D_Float q = h->tex[u][3] != 0.0f ? 1.0f / h->tex[u][3] : 1.0f;
+    v->u = h->tex[u][0] * q * (W3D_Float)tw;
+    v->v = h->tex[u][1] * q * (W3D_Float)th;
   } else {
     v->u = v->v = 0.0f;
   }
   v->tex3d = 0.0f;
-  v->color.r = h->color[0];
-  v->color.g = h->color[1];
-  v->color.b = h->color[2];
-  v->color.a = h->color[3];
+  if (fog) {
+    v->color.r = c->a.fog_color[0];
+    v->color.g = c->a.fog_color[1];
+    v->color.b = c->a.fog_color[2];
+    v->color.a = 1.0f - h->fog;
+  } else {
+    v->color.r = h->color[0];
+    v->color.g = h->color[1];
+    v->color.b = h->color[2];
+    v->color.a = h->color[3];
+  }
   v->spec.r = h->spec[0];
   v->spec.g = h->spec[1];
   v->spec.b = h->spec[2];
   v->l = 0.0f;
 }
 
-/* Prepares the card to draw a primitive of kind (0 triangle, 1 line, 2
- * point): the state, the buffers and the texture. Gives 0 when the card
- * cannot draw it; else 1, with the texture in *tex and its size. */
-static int prepare(w3d_state *s, sgl_context *c, int kind, W3D_Texture **tex, int *tw, int *th) {
-  sgl_texture *t;
-  if (!can_draw(s, c, kind)) return 0;
-  t = usable_texture(s, c);
-  *tex = NULL;
-  *tw = *th = 0;
-  if (!to_hardware(s)) return 0;
-  if (t) {
-    *tex = card_texture(s, c, t);
-    if (!*tex) return 0;
-    *tw = sgl_base_level(t)->width;
-    *th = sgl_base_level(t)->height;
+/* Gives one pass of a primitive of kind (0 triangle, 1 line, 2 point)
+ * with n vertices to the card: the vertices use texture tex of unit u
+ * (tex NULL for none) and the fog color when fog is nonzero. Gives 1
+ * when the card drew it. */
+static int draw_pass(w3d_state *s, sgl_context *c, int kind, const sgl_hw_vertex *const *h, W3D_Texture *tex,
+                     int u, int tw, int th, int fog) {
+  if (kind == 0) {
+    W3D_Triangle t;
+    vertex(s, c, h[0], u, tw, th, fog, &t.v1);
+    vertex(s, c, h[1], u, tw, th, fog, &t.v2);
+    vertex(s, c, h[2], u, tw, th, fog, &t.v3);
+    t.tex = tex;
+    t.st_pattern = NULL;
+    return sgl_W3D_DrawTriangle(s->w3d, &t) == W3D_SUCCESS;
   }
-  apply_state(s, c, *tex != NULL);
+  if (kind == 1) {
+    W3D_Line l;
+    vertex(s, c, h[0], u, tw, th, fog, &l.v1);
+    vertex(s, c, h[1], u, tw, th, fog, &l.v2);
+    l.tex = tex;
+    l.linewidth = c->a.line_width;
+    l.st_enable = 0;
+    l.st_pattern = 0;
+    l.st_factor = 0;
+    return sgl_W3D_DrawLine(s->w3d, &l) == W3D_SUCCESS;
+  }
+  {
+    W3D_Point p;
+    vertex(s, c, h[0], u, tw, th, fog, &p.v1);
+    p.tex = tex;
+    p.pointsize = c->a.point_size;
+    return sgl_W3D_DrawPoint(s->w3d, &p) == W3D_SUCCESS;
+  }
+}
+
+/* Draws a primitive of kind (0 triangle, 1 line, 2 point) on the card,
+ * in up to three passes:
+ * 1. The GL state with the texture of unit 0.
+ * 2. With a texture on unit 1: the texture, blended as dst * texture
+ *    (W3D_DST_COLOR, W3D_ZERO). This is GL_MODULATE.
+ * 3. With fog: the fog color with alpha 1 - f, blended as
+ *    (W3D_SRC_ALPHA, W3D_ONE_MINUS_SRC_ALPHA). This gives
+ *    f C + (1 - f) fog color, the GL fog of each vertex.
+ * Passes 2 and 3 use the Z test GL_EQUAL without Z writes, so they
+ * change only the pixels of pass 1. Gives 0 when the card cannot draw
+ * the primitive; softgl then draws it. */
+static int draw(w3d_state *s, sgl_context *c, int kind, const sgl_hw_vertex *const *h) {
+  sgl_texture *t0, *t1;
+  W3D_Texture *x0 = NULL, *x1 = NULL;
+  int tw0 = 0, th0 = 0, tw1 = 0, th1 = 0, ok;
+  w3d_pass p;
+  if (!can_draw(s, c, kind)) return 0;
+  t0 = usable_texture(s, c, 0);
+  t1 = usable_texture(s, c, 1);
+  if (!to_hardware(s)) return 0;
+  if (t0) {
+    x0 = card_texture(s, c, t0, 0, env_mode(c->a.unit[0].env_mode));
+    if (!x0) return 0;
+    tw0 = sgl_base_level(t0)->width;
+    th0 = sgl_base_level(t0)->height;
+  }
+  if (t1) {
+    /* Pass 2 replaces the color with the texture, and the blend
+     * multiplies. */
+    x1 = card_texture(s, c, t1, 1, W3D_REPLACE);
+    if (!x1) return 0;
+    tw1 = sgl_base_level(t1)->width;
+    th1 = sgl_base_level(t1)->height;
+    /* Loading x1 can replace x0 in the cache. */
+    if (t0 && !(x0 = card_texture(s, c, t0, 0, env_mode(c->a.unit[0].env_mode)))) return 0;
+  }
   s->hw_newer[0] = 1;
   if (c->a.enabled[SGL_DEPTH_TEST] && c->a.depth_mask) s->hw_newer[1] = 1;
-  return 1;
+  first_pass(c, x0 != NULL, &p);
+  apply_state(s, c, &p);
+  ok = draw_pass(s, c, kind, h, x0, 0, tw0, th0, 0);
+  if (ok && x1) {
+    /* When the two units have the same texture, this sets its
+     * environment again (Warp3D keeps it in the texture). */
+    x1 = card_texture(s, c, t1, 1, W3D_REPLACE);
+    later_pass(c, 1, W3D_DST_COLOR, W3D_ZERO, &p);
+    apply_state(s, c, &p);
+    if (x1) draw_pass(s, c, kind, h, x1, 1, tw1, th1, 0);
+  }
+  if (ok && c->a.enabled[SGL_FOG]) {
+    later_pass(c, 0, W3D_SRC_ALPHA, W3D_ONE_MINUS_SRC_ALPHA, &p);
+    apply_state(s, c, &p);
+    draw_pass(s, c, kind, h, NULL, 0, 0, 0, 1);
+  }
+  return ok;
 }
 
 /* The triangle entry. */
 static int w3d_triangle(void *user, sgl_context *c, const sgl_hw_vertex *a, const sgl_hw_vertex *b,
                         const sgl_hw_vertex *d) {
-  w3d_state *s = (w3d_state *)user;
-  W3D_Triangle t;
-  int tw, th;
-  if (!prepare(s, c, 0, &t.tex, &tw, &th)) return 0;
-  vertex(s, a, tw, th, &t.v1);
-  vertex(s, b, tw, th, &t.v2);
-  vertex(s, d, tw, th, &t.v3);
-  t.st_pattern = NULL;
-  return sgl_W3D_DrawTriangle(s->w3d, &t) == W3D_SUCCESS;
+  const sgl_hw_vertex *h[3];
+  h[0] = a, h[1] = b, h[2] = d;
+  return draw((w3d_state *)user, c, 0, h);
 }
 
 /* The line entry. */
 static int w3d_line(void *user, sgl_context *c, const sgl_hw_vertex *a, const sgl_hw_vertex *b) {
-  w3d_state *s = (w3d_state *)user;
-  W3D_Line l;
-  int tw, th;
-  if (!prepare(s, c, 1, &l.tex, &tw, &th)) return 0;
-  vertex(s, a, tw, th, &l.v1);
-  vertex(s, b, tw, th, &l.v2);
-  l.linewidth = c->a.line_width;
-  l.st_enable = 0;
-  l.st_pattern = 0;
-  l.st_factor = 0;
-  return sgl_W3D_DrawLine(s->w3d, &l) == W3D_SUCCESS;
+  const sgl_hw_vertex *h[2];
+  h[0] = a, h[1] = b;
+  return draw((w3d_state *)user, c, 1, h);
 }
 
 /* The point entry. */
 static int w3d_point(void *user, sgl_context *c, const sgl_hw_vertex *a) {
-  w3d_state *s = (w3d_state *)user;
-  W3D_Point p;
-  int tw, th;
-  if (c->point_atten || !prepare(s, c, 2, &p.tex, &tw, &th)) return 0;
-  vertex(s, a, tw, th, &p.v1);
-  p.pointsize = c->a.point_size;
-  return sgl_W3D_DrawPoint(s->w3d, &p) == W3D_SUCCESS;
+  const sgl_hw_vertex *h[1];
+  h[0] = a;
+  if (c->point_atten) return 0;
+  return draw((w3d_state *)user, c, 2, h);
 }
 
 /* The clear entry: the card clears the whole frame and the Z buffer.
@@ -679,7 +853,8 @@ int sgl_amiga_warp3d_attach(sgl_amiga_warp3d *w, sgl_context *ctx) {
   s->features = (has(s->w3d, W3D_Q_DRAW_POINT) ? F_POINT : 0) | (has(s->w3d, W3D_Q_DRAW_LINE) ? F_LINE : 0) |
                 (has(s->w3d, W3D_Q_TEXMAPPING) ? F_TEX : 0) | (has(s->w3d, W3D_Q_SPECULAR) ? F_SPEC : 0) |
                 (has(s->w3d, W3D_Q_ALPHATEST) ? F_ALPHA : 0) | (has(s->w3d, W3D_Q_BLENDING) ? F_BLEND : 0) |
-                (has(s->w3d, W3D_Q_SCISSOR) ? F_SCISSOR : 0) | (has(s->w3d, W3D_Q_PERSPECTIVE) ? F_PERSP : 0);
+                (has(s->w3d, W3D_Q_SCISSOR) ? F_SCISSOR : 0) | (has(s->w3d, W3D_Q_PERSPECTIVE) ? F_PERSP : 0) |
+                (has(s->w3d, W3D_Q_MIPMAPPING) ? F_MIPMAP : 0) | (has(s->w3d, W3D_Q_MMFILTER) ? F_MMFILTER : 0);
   s->max_tex = (int)sgl_W3D_Query(s->w3d, W3D_Q_MAXTEXWIDTH, 0);
   if ((int)sgl_W3D_Query(s->w3d, W3D_Q_MAXTEXHEIGHT, 0) < s->max_tex)
     s->max_tex = (int)sgl_W3D_Query(s->w3d, W3D_Q_MAXTEXHEIGHT, 0);
