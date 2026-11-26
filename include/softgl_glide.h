@@ -109,7 +109,18 @@ typedef struct sgl_glide_api {
                                sgl_gr_lfbinfo *info);
   int(SGL_GLIDE_CALL *LfbUnlock)(int type, int buffer);
   void *library;           /* for sgl_glide_unload: the DLL, or NULL */
+  unsigned limits;         /* SGL_GLIDE_LIMIT_ flags; 0 for a Voodoo */
 } sgl_glide_api;
+
+/* The flags of sgl_glide_api.limits. A driver that is not a Voodoo (for
+ * example the S3 ViRGE driver) sets them for the Glide functions that it
+ * cannot do. The back end then lets softgl draw these primitives. */
+#define SGL_GLIDE_LIMIT_ALPHA_TEST 0x01u  /* no alpha test */
+#define SGL_GLIDE_LIMIT_BLEND 0x02u       /* only the blend (src alpha, 1 - src alpha) */
+#define SGL_GLIDE_LIMIT_COLOR_MASK 0x04u  /* the color writes cannot be stopped */
+#define SGL_GLIDE_LIMIT_FOG_ALPHA 0x08u   /* the fog uses the vertex alpha: no fog with a blend */
+#define SGL_GLIDE_LIMIT_SQUARE 0x10u      /* only square textures */
+#define SGL_GLIDE_LIMIT_ONE_ALPHA 0x20u   /* the alpha is the texture alpha or the vertex alpha, not a product */
 
 /* Fills the table api from the Glide 2 functions that the program links
  * (the 3dfx SDK: glide.h and the Glide 2 library). Use it where
@@ -155,6 +166,7 @@ typedef struct sgl_glide_api {
     *(void **)&(api)->LfbLock = (void *)grLfbLock;                             \
     *(void **)&(api)->LfbUnlock = (void *)grLfbUnlock;                         \
     (api)->library = 0;                                                        \
+    (api)->limits = 0;                                                         \
   } while (0)
 
 /* Fills api from glide2x.dll (Windows only). Gives 1 on success, and 0
@@ -169,6 +181,18 @@ void sgl_glide_unload(sgl_glide_api *api);
  * registers of the card directly, and does not need a Glide library.
  * Gives 1 on success. The code is in backends/glide/glide_sst1.c. */
 int sgl_glide_sst1(sgl_glide_api *api);
+
+/* Fills api with the built-in driver for the S3 ViRGE cards on 32-bit
+ * DOS. The driver uses the 3D engine of the card and the VBE BIOS, and
+ * sets the limits of api. Gives 1 on success. The code is in
+ * backends/glide/glide_virge.c. */
+int sgl_glide_virge(sgl_glide_api *api);
+
+/* Fills api with the built-in driver of the first 3D card that is in
+ * the computer (32-bit DOS). With name ("voodoo" or "virge"), only that
+ * driver is tried. Gives the name of the driver, or NULL when there is
+ * no card. The code is in backends/glide/glide_dos.c. */
+const char *sgl_glide_dos(sgl_glide_api *api, const char *name);
 
 /* A flag of sgl_glide: grBufferSwap does not wait for the vertical
  * retrace. */

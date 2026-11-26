@@ -6,8 +6,11 @@
  *     glidecube [frames]
  *
  * On Windows 95 and 98 it needs a Voodoo card and its glide2x.dll. On
- * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics
- * card, and uses the built-in driver of softgl (sgl_glide_sst1).
+ * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics or
+ * an S3 ViRGE card, and uses the built-in drivers of softgl
+ * (sgl_glide_dos). There, a second argument can name the driver:
+ *
+ *     glidecube [frames [voodoo | virge]]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -38,8 +41,11 @@ static uint32_t ms(void) { return sgl_dos_ms(); }
 /* Gives 1 when the user pushed Esc. */
 static int escape(void) { return kbhit() && getch() == 27; }
 
-/* Fills api with the built-in Voodoo driver. */
-static int load(sgl_glide_api *api) { return sgl_glide_sst1(api); }
+/* The driver that the command line names, or NULL for the first card. */
+static const char *driver_name;
+
+/* Fills api with the built-in driver of the card. */
+static int load(sgl_glide_api *api) { return sgl_glide_dos(api, driver_name) != NULL; }
 
 /* The built-in driver has no DLL to free. */
 static void unload(sgl_glide_api *api) { (void)api; }
@@ -107,8 +113,11 @@ int main(int argc, char **argv) {
   sgl_context *ctx;
   uint32_t start;
   int frame = 0, frames = argc > 1 ? atoi(argv[1]) : 0;
+#ifdef __MSDOS__
+  driver_name = argc > 2 ? argv[2] : NULL;
+#endif
   if (!load(&api)) {
-    fprintf(stderr, "no Glide driver (glide2x.dll on Windows)\n");
+    fprintf(stderr, "no Glide driver (glide2x.dll on Windows) or no 3D card\n");
     return 1;
   }
   ctx = sgl_create_context(NULL);

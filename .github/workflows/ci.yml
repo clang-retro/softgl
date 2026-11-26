@@ -125,6 +125,54 @@ jobs:
         if: steps.dos32.outputs.ok == '1'
         run: sh tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe
 
+  # The Glide back end with the ViRGE and Voodoo drivers for 32-bit DOS
+  # in 86Box: a Pentium computer with FreeDOS and an S3 ViRGE/DX, an S3
+  # ViRGE, or a Voodoo Graphics card. The job builds 86Box from a fixed
+  # commit (tools/setup-86box.sh) and keeps the build in the cache. A
+  # nightly without dos32.cfg cannot build the test; then the job only
+  # writes a notice.
+  glide-86box:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      - name: Find the 32-bit DOS target
+        id: dos32
+        run: |
+          if [ -f "$CLANG_DOS/bin/dos32.cfg" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The nightly has no dos32.cfg; the 32-bit DOS build is not done"
+          fi
+      - name: Restore 86Box
+        if: steps.dos32.outputs.ok == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/86box
+          key: 86box-${{ hashFiles('tools/setup-86box.sh') }}
+      - name: Set up 86Box
+        if: steps.dos32.outputs.ok == '1'
+        run: |
+          sudo apt-get update
+          sh tools/setup-86box.sh ~/86box
+      - name: Build for 32-bit DOS
+        if: steps.dos32.outputs.ok == '1'
+        run: |
+          make -j"$(nproc)" OUT=build-dos32 AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=dos32.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=dos32.cfg" CFLAGS="-O2 -Werror" all glide-dos
+      - name: Run the test on the ViRGE/DX
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card virge375_pci ~/86box build-dos32/tests/dos/glidetest.exe virge
+      - name: Run the test on the ViRGE
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card virge325_pci ~/86box build-dos32/tests/dos/glidetest.exe virge
+      - name: Run the test on the Voodoo Graphics
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --voodoo ~/86box build-dos32/tests/dos/glidetest.exe voodoo
+
   # The Atari back end in the Hatari emulator with EmuTOS: an ST, an STE
   # and a Falcon (tests/atari/present.c). The library is built with -O0:
   # the clang-retro nightly of 2026-11-25 and earlier miscompiles a store

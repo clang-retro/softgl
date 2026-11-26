@@ -15,6 +15,7 @@
 
 #include <dos.h>
 #include <dpmi.h>
+#include <string.h>
 #include <time.h>
 
 #define PCI_ADDR 0xCF8
@@ -133,4 +134,76 @@ uint32_t sgl_dos_ms(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000);
+}
+
+/* The DOS memory block for the VBE calls: 512 bytes below 1 MB. */
+static int vbe_segment = -1;
+
+/* Gives the linear address of the DOS memory block for the VBE calls,
+ * and sets its real-mode segment in *segment. Gives NULL when DOS has
+ * no free memory. */
+static uint8_t *vbe_block(int *segment) {
+  int selector;
+  if (vbe_segment < 0) vbe_segment = __dpmi_allocate_dos_memory(32, &selector);
+  if (vbe_segment < 0) return 0;
+  *segment = vbe_segment;
+  return (uint8_t *)(uintptr_t)((unsigned long)vbe_segment << 4);
+}
+
+/* Calls VBE function ax of interrupt 10h with bx, cx and dx, and ES:DI
+ * on the DOS memory block. Gives 1 when the function gives 004Fh. */
+static int vbe_call(unsigned ax, unsigned bx, unsigned cx, unsigned dx) {
+  __dpmi_regs r;
+  int segment = 0;
+  memset(&r, 0, sizeof r);
+  r.x.ax = (unsigned short)ax;
+  r.x.bx = (unsigned short)bx;
+  r.x.cx = (unsigned short)cx;
+  r.x.dx = (unsigned short)dx;
+  if (vbe_block(&segment)) r.x.es = (unsigned short)segment;
+  if (__dpmi_int(0x10, &r) != 0) return 0;
+  return r.x.ax == 0x004F;
+}
+
+/* Gives the information of VBE mode mode (function 4F01h). */
+int sgl_vbe_mode_info(int mode, sgl_vbe_mode *out) {
+  int segment;
+  uint8_t *b = vbe_block(&segment);
+  if (!b) return 0;
+  memset(b, 0, 256);
+  if (!vbe_call(0x4F01, 0, (unsigned)mode, 0)) return 0;
+  out->attributes = (uint16_t)(b[0] | (b[1] << 8));
+  out->stride = (uint16_t)(b[16] | (b[17] << 8));
+  out->width = (uint16_t)(b[18] | (b[19] << 8));
+  out->height = (uint16_t)(b[20] | (b[21] << 8));
+  out->bits = b[25];
+  out->lfb = (uint32_t)b[40] | ((uint32_t)b[41] << 8) | ((uint32_t)b[42] << 16) | ((uint32_t)b[43] << 24);
+  return 1;
+}
+
+/* Gives the video memory in bytes (VBE function 4F00h), or 0. */
+uint32_t sgl_vbe_memory(void) {
+  int segment;
+  uint8_t *b = vbe_block(&segment);
+  if (!b) return 0;
+  memset(b, 0, 512);
+  memcpy(b, "VBE2", 4);
+  if (!vbe_call(0x4F00, 0, 0, 0) || memcmp(b, "VESA", 4) != 0) return 0;
+  return (uint32_t)(b[18] | (b[19] << 8)) << 16;
+}
+
+/* Sets VBE mode mode (function 4F02h), with the linear frame buffer
+ * when lfb is 1. */
+int sgl_vbe_set_mode(int mode, int lfb) { return vbe_call(0x4F02, (unsigned)mode | (lfb ? 0x4000u : 0u), 0, 0); }
+
+/* Sets the first scan line that the monitor shows (function 4F07h).
+ * With vsync, the change waits for the vertical retrace. */
+int sgl_vbe_display_start(int line, int vsync) { return vbe_call(0x4F07, vsync ? 0x80u : 0u, 0, (unsigned)line); }
+
+/* Sets the text mode 3 (80 x 25) again. */
+void sgl_vbe_text_mode(void) {
+  __dpmi_regs r;
+  memset(&r, 0, sizeof r);
+  r.x.ax = 0x0003;
+  __dpmi_int(0x10, &r);
 }

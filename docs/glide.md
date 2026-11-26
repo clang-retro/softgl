@@ -150,6 +150,59 @@ make OUT=build-dos32 CC="clang --config=dos32.cfg" \
 
 ![glidecube on the Voodoo card of DOSBox-X](images/glidecube-voodoo-dos.png)
 
+## The ViRGE driver for DOS
+
+`backends/glide/glide_virge.c` has the same Glide 2 functions for the
+3D engine of an S3 ViRGE card. The back end uses it as it uses a
+Voodoo. The cards are the ViRGE, ViRGE/VX, ViRGE/DX, ViRGE/GX,
+ViRGE/GX2 and Trio3D/2X.
+
+The driver does these steps:
+
+1. `grGlideInit` finds the first PCI function with the vendor ID 5333h
+   and the device ID of a ViRGE, and reads BAR 0.
+2. `grSstWinOpen` sets a VBE mode of 15-bit color (5:5:5) at the
+   resolution, and maps the linear frame buffer and the register
+   window ("new MMIO", 16 MB after the frame buffer). When the VBE BIOS
+   has no linear frame buffer (VBE 1.2), the driver sets the address
+   of the frame buffer in the registers CR59 and CR5A of the card.
+3. Video memory holds three color buffers (two when the memory is
+   small), the 16-bit Z buffer, and then the textures.
+4. The draw functions calculate the start values and the gradients of
+   each triangle, and write them to the 3D registers. Lines and points
+   are two triangles.
+5. `grBufferClear` uses the rectangle fill of the 2D engine.
+6. `grBufferSwap` shows the new buffer through VBE function 4F07h.
+   With two buffers, the driver first waits for the vertical retrace.
+7. `grSstWinClose` sets the text mode again.
+
+The ViRGE draws less than a Voodoo. The driver sets the `limits` of
+its table (the `SGL_GLIDE_LIMIT_` flags in `include/softgl_glide.h`).
+When a draw needs a function that the card does not have, the back end
+gives the draw to softgl, and softgl draws it in software:
+
+- The only blend is (source alpha, 1 - source alpha).
+- No alpha test and no color mask.
+- The fog uses the vertex alpha. Thus, no fog with a blend.
+- The alpha is the texture alpha or the vertex alpha. It is not the
+  product of the two.
+- Only square textures. The formats are RGB 565 (stored as ARGB 1555)
+  and ARGB 4444.
+- **A clamped texture wraps.** The card has no clamp mode.
+- The driver is tested in 86Box only. Test it on a real card before you
+  use it.
+
+To select a driver, a DOS program calls
+`sgl_glide_dos(&api, name)`. The name is `"voodoo"`, `"virge"` or
+`NULL`. With `NULL`, the function selects the first card that it finds.
+`glidecube.exe` and `glidetest.exe` take the name as an argument:
+
+```sh
+glidecube 0 virge
+```
+
+![glidecube on the ViRGE/DX card of 86Box](images/glidecube-virge-dos.png)
+
 ## Tests
 
 - `tests/glide.c` runs in `make check`. It gives the back end a fake
@@ -160,19 +213,32 @@ make OUT=build-dos32 CC="clang --config=dos32.cfg" \
   `glide2x.dll` (`tests/wine/fake_glide2x.c`) for Windows 95, and runs
   the example in Wine for 30 frames. It examines the number of opened
   screens, the swaps and the bad vertices. CI runs it.
-- `tests/dos/glidetest.c` is a test of the Voodoo driver for DOS. It
+- `tests/dos/glidetest.c` is a test of the DOS drivers. It
   draws a clear, a flat quad, a smooth triangle, the Z buffer, a
   texture and a blend through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
-  `PASS softgl glide on the Voodoo card`.
+  `PASS softgl glide on the voodoo card` (or `virge`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
+- `tools/setup-86box.sh DIR` builds the 86Box emulator from a fixed
+  commit, and gets its ROM files and a FreeDOS disk image.
+  `tools/test-glide-86box.py` runs a DOS program in 86Box on a Pentium
+  computer with FreeDOS, and examines the output. CI runs `glidetest`
+  on the ViRGE/DX, the ViRGE and the Voodoo Graphics:
+
+  ```sh
+  sh tools/setup-86box.sh ~/86box
+  python3 tools/test-glide-86box.py --card virge375_pci ~/86box \
+    build-dos32/tests/dos/glidetest.exe virge
+  python3 tools/test-glide-86box.py --voodoo ~/86box \
+    build-dos32/tests/dos/glidetest.exe voodoo
+  ```
 
 ## Limits
 
-- **No hardware tests.** The tests use a fake Glide or the Voodoo of
-  DOSBox-X. A test on a real Voodoo card is necessary.
+- **No hardware tests.** The tests use a fake Glide or the emulated
+  cards of DOSBox-X and 86Box. A test on a real Voodoo card is necessary.
 - **One context for each back end.** The size of the color buffer must
   be the size of the screen.
 - **No alpha in the frame.** The Voodoo frame buffer has no alpha

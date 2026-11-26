@@ -1,11 +1,14 @@
-/* glidetest.c - a test of the Voodoo Graphics driver of softgl for
+/* glidetest.c - a test of the Glide drivers of softgl for
  * 32-bit DOS (backends/glide/glide_sst1.c). The test draws with OpenGL
  * through the Glide back end, reads the pixels of the card back through
  * the linear frame buffer, and compares them with the expected colors.
  * It writes "PASS" when all checks are correct.
  *
- * Run it in DOSBox-X with "[voodoo] voodoo_card=software", or on a computer with a
- * Voodoo Graphics card (tools/test-glide-dosbox.sh).
+ * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
+ * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo or a ViRGE
+ * (tools/test-glide-86box.py), or on a computer with one of the cards.
+ *
+ *     glidetest [voodoo | virge]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -95,17 +98,20 @@ static void texture(void) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
 
-/* Opens the card, draws each test scene, reads it back and closes all. */
-int main(void) {
+/* Opens the card, draws each test scene, reads it back and closes all.
+ * The argument can name the driver (voodoo or virge). */
+int main(int argc, char **argv) {
   static uint32_t color[WIDTH * HEIGHT];
   sgl_glide g = {0};
   sgl_context *ctx;
   /* Write each line at once, so that a crash keeps the lines before it. */
   setvbuf(stdout, NULL, _IONBF, 0);
-  if (!sgl_glide_sst1(&api)) {
-    printf("FAIL no driver\n");
+  const char *driver = sgl_glide_dos(&api, argc > 1 ? argv[1] : NULL);
+  if (!driver) {
+    printf("FAIL no 3D card\n");
     return 1;
   }
+  printf("driver %s\n", driver);
   card_triangle = api.DrawTriangle;
   api.DrawTriangle = count_triangle;
   ctx = sgl_create_context(NULL);
@@ -118,10 +124,10 @@ int main(void) {
   g.height = HEIGHT;
   g.flags = SGL_GLIDE_NO_VSYNC;
   if (!sgl_glide_attach(&g, ctx)) {
-    printf("FAIL no Voodoo card\n");
+    printf("FAIL the card does not open\n");
     return 1;
   }
-  printf("Voodoo card open\n");
+  printf("card open\n");
   glViewport(0, 0, WIDTH, HEIGHT);
   glMatrixMode(GL_PROJECTION);
   glOrtho(0, WIDTH, 0, HEIGHT, -1, 1);
@@ -196,6 +202,6 @@ int main(void) {
     printf("%d failures\n", failures);
     return 1;
   }
-  printf("PASS softgl glide on the Voodoo card\n");
+  printf("PASS softgl glide on the %s card\n", driver);
   return 0;
 }
