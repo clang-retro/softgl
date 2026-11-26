@@ -28,11 +28,11 @@ To remove the generic implementation, compile with
 
 ## What the renderer does
 
-The renderer gives all of OpenGL 1.2 (without the optional imaging
-subset) and parts of OpenGL 1.3. It exports the OpenGL 1.1 functions,
+The renderer gives all of OpenGL 1.3 (without the optional imaging
+subset of OpenGL 1.2). It exports the OpenGL 1.1 functions,
 as `opengl32.dll` of Windows NT 4.0 exports them:
 
-- `glGetString(GL_VERSION)` gives `1.2.0`.
+- `glGetString(GL_VERSION)` gives `1.3.0`.
   `glGetString(GL_RENDERER)` gives `clang-retro Generic`.
 - These extensions are available. `wglGetProcAddress` gives their
   functions:
@@ -57,11 +57,17 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
   - `GL_EXT_rescale_normal`
   - `GL_EXT_draw_range_elements` (`glDrawRangeElementsEXT`)
   - `GL_EXT_texture3D` (`glTexImage3DEXT` and `glTexSubImage3DEXT`)
+  - `GL_ARB_texture_cube_map` and `GL_EXT_texture_cube_map`
+  - `GL_ARB_texture_env_combine`, `GL_ARB_texture_env_dot3` and
+    `GL_ARB_texture_env_crossbar` (also the `EXT` names of the first
+    two)
+  - `GL_ARB_texture_compression` and `GL_EXT_texture_compression_s3tc`
+    (`glCompressedTexImage2DARB` and the related functions)
+  - `GL_ARB_multisample` (`glSampleCoverageARB`)
 - `wglGetProcAddress` also gives the functions of these extensions by
   their OpenGL 1.2 and 1.3 names, without the `ARB` or `EXT` suffix
-  (for example `glActiveTexture`, `glDrawRangeElements` and
-  `glTexImage3D`). `GL_VERSION` becomes `1.3.0` when all of OpenGL 1.3
-  is available.
+  (for example `glActiveTexture`, `glDrawRangeElements`,
+  `glTexImage3D` and `glCompressedTexImage2D`).
 - Vertices: immediate mode, vertex arrays, display lists, evaluators
   (`glMap1`, `glMap2`, `glEvalMesh`) and rectangles.
 - Transformation: the modelview and projection matrix stacks, one
@@ -69,16 +75,28 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
   range and six user clip planes.
 - Lighting: eight lights, two-sided lighting, local viewer, spot
   lights, attenuation and `glColorMaterial`.
-- Texture coordinate generation: object linear, eye linear and sphere
-  map, for each texture unit.
+- Texture coordinate generation: object linear, eye linear, sphere
+  map, normal map and reflection map, for each texture unit.
 - Rasterization: points, lines (width and stipple), polygons (fill,
   line and point modes, polygon stipple, culling, polygon offset), flat
   and smooth shading.
-- Textures: 1D, 2D and 3D, mipmaps, nearest and linear filters, the wrap
+- Textures: 1D, 2D, 3D and cube maps, mipmaps, nearest and linear filters, the wrap
   modes (repeat, clamp, clamp to edge, clamp to border and mirrored
-  repeat), the LOD limits, the base and maximum levels, texture objects, the texture environments
-  (`GL_MODULATE`, `GL_DECAL`, `GL_BLEND`, `GL_REPLACE` and `GL_ADD`)
-  and perspective correction.
+  repeat), the LOD limits, the base and maximum levels, texture
+  objects, the texture environments (`GL_MODULATE`, `GL_DECAL`,
+  `GL_BLEND`, `GL_REPLACE`, `GL_ADD` and `GL_COMBINE`) and perspective
+  correction.
+- `GL_COMBINE`: the functions `GL_REPLACE`, `GL_MODULATE`, `GL_ADD`,
+  `GL_ADD_SIGNED`, `GL_INTERPOLATE`, `GL_SUBTRACT`, `GL_DOT3_RGB` and
+  `GL_DOT3_RGBA`, the scales, and the sources of OpenGL 1.4
+  (`GL_TEXTUREn` gives the texel of an other unit).
+- Compressed textures: the four S3TC formats (DXT1, DXT3 and DXT5).
+  The renderer decodes the blocks when it gets the image. It keeps the
+  blocks for `glGetCompressedTexImage`. The generic formats (for
+  example `GL_COMPRESSED_RGB`) are kept without compression.
+- Multisample: the state of OpenGL 1.3 (`GL_MULTISAMPLE`,
+  `glSampleCoverage`). There is no multisample buffer:
+  `GL_SAMPLE_BUFFERS` is 0, and the state has no effect.
 - Separate specular color (`GL_LIGHT_MODEL_COLOR_CONTROL`): the
   renderer adds the specular color after the texture.
 - Normals: `GL_NORMALIZE` and `GL_RESCALE_NORMAL`.
@@ -132,6 +150,21 @@ nearest images and mixes them. Thus a 3D texture with the linear
 filter takes approximately two times the time of a 2D texture. The
 renderer does the work of the r coordinate only for the primitives
 that have a 3D texture on.
+
+### Cube maps
+
+A face of a cube map is square, and not larger than
+`SGL_MAX_CUBE_MAP_SIZE` (default 256). For each pixel, the renderer
+finds the face from the largest component of (s, t, r) and divides the
+other two by it. This is one integer division for each pixel: on the
+68000, a cube map is slower than a 2D texture.
+
+### GL_COMBINE
+
+The renderer reads the texels of all the units before it applies the
+environments, so that a unit can use the texel of an other unit. This
+occurs only when a unit uses `GL_COMBINE`; the other environments keep
+their fast path.
 
 `GL_CLAMP` operates as `GL_CLAMP_TO_EDGE`: the renderer does not keep
 the border texels. Use `GL_CLAMP_TO_BORDER` to get the border color.
@@ -285,8 +318,11 @@ values that OpenGL gives back:
   output is `PASS softgl gl12`.
 - `tests/gl13.c`: two texture units (immediate mode, vertex arrays and
   a display list), a texture matrix for one unit, `glPushAttrib` of
-  the units, `GL_ADD`, `GL_CLAMP_TO_EDGE`, the transpose matrices and
-  the names that `wglGetProcAddress` gives. The output is
+  the units, `GL_ADD`, `GL_CLAMP_TO_EDGE`, the transpose matrices, the
+  names that `wglGetProcAddress` gives, cube maps (the faces, a texel
+  in a face, `GL_NORMAL_MAP` and `GL_REFLECTION_MAP`), `GL_COMBINE`
+  (the functions, the scale, `GL_DOT3_RGB` and a source of an other
+  unit), the S3TC formats and the multisample state. The output is
   `PASS softgl gl13`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
@@ -307,8 +343,9 @@ In clang-retro MFC:
 - Dithering has no effect. The buffer has 8 bits for each component.
 - Smooth points, lines and polygons are drawn without antialiasing.
 - The width and the height of a texture must be powers of two.
-- Of OpenGL 1.3, cube maps, `GL_COMBINE`,
-  compressed textures and multisample are not available yet.
+- There is no multisample buffer. Thus multisample antialiasing has
+  no effect.
+- There is no compressed format for 1D and 3D textures.
 - Pixel rectangles (`glDrawPixels`, `glBitmap`) are not textured.
 - The pixel format tells 32 depth bits. On the 68k, the depth buffer
   has 16 bits (`glGetIntegerv(GL_DEPTH_BITS)` gives 16).

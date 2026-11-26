@@ -448,6 +448,14 @@ GLAPI void APIENTRY glLoadTransposeMatrixf(const GLfloat *m);
 GLAPI void APIENTRY glLoadTransposeMatrixd(const GLdouble *m);
 GLAPI void APIENTRY glMultTransposeMatrixf(const GLfloat *m);
 GLAPI void APIENTRY glMultTransposeMatrixd(const GLdouble *m);
+GLAPI void APIENTRY glSampleCoverage(GLfloat value, GLboolean invert);
+GLAPI void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glCompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data);
+GLAPI void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *img);
 #endif /* GL_VERSION_1_3 */
 
 #ifndef GL_VERSION_1_4
@@ -503,6 +511,14 @@ GLAPI void APIENTRY glMultTransposeMatrixd(const GLdouble *m);
 #define GL_BLEND_COLOR 0x8005
 #define GL_BLEND_EQUATION 0x8009
 #endif /* GL_VERSION_1_4 */
+
+#ifndef GL_EXT_texture_compression_s3tc
+#define GL_EXT_texture_compression_s3tc 1
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif /* GL_EXT_texture_compression_s3tc */
 
 #ifdef __cplusplus
 }

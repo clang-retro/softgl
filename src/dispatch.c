@@ -2877,6 +2877,86 @@ static void APIENTRY nop_CopyTexSubImage3D(GLenum target, GLint level, GLint xof
   (void)width;
   (void)height;
 }
+/* Does nothing: no context is current (glCompressedTexImage1D). */
+static void APIENTRY nop_CompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)internalformat;
+  (void)width;
+  (void)border;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glCompressedTexImage2D). */
+static void APIENTRY nop_CompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)internalformat;
+  (void)width;
+  (void)height;
+  (void)border;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glCompressedTexImage3D). */
+static void APIENTRY nop_CompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)internalformat;
+  (void)width;
+  (void)height;
+  (void)depth;
+  (void)border;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glCompressedTexSubImage1D). */
+static void APIENTRY nop_CompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)xoffset;
+  (void)width;
+  (void)format;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glCompressedTexSubImage2D). */
+static void APIENTRY nop_CompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)xoffset;
+  (void)yoffset;
+  (void)width;
+  (void)height;
+  (void)format;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glCompressedTexSubImage3D). */
+static void APIENTRY nop_CompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data) {
+  (void)target;
+  (void)level;
+  (void)xoffset;
+  (void)yoffset;
+  (void)zoffset;
+  (void)width;
+  (void)height;
+  (void)depth;
+  (void)format;
+  (void)imageSize;
+  (void)data;
+}
+/* Does nothing: no context is current (glGetCompressedTexImage). */
+static void APIENTRY nop_GetCompressedTexImage(GLenum target, GLint level, void *img) {
+  (void)target;
+  (void)level;
+  (void)img;
+}
+/* Does nothing: no context is current (glSampleCoverage). */
+static void APIENTRY nop_SampleCoverage(GLfloat value, GLboolean invert) {
+  (void)value;
+  (void)invert;
+}
 /* Does nothing: no context is current (glActiveTexture). */
 static void APIENTRY nop_ActiveTexture(GLenum texture) {
   (void)texture;
@@ -3751,6 +3831,13 @@ static void APIENTRY save_CopyTexSubImage3D(GLenum target, GLint level, GLint xo
   if (a) a[8].i = height;
   if (sgl_list_executes()) sgl_CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
 }
+/* Records glSampleCoverage in the display list that is compiled. */
+static void APIENTRY save_SampleCoverage(GLfloat value, GLboolean invert) {
+  sgl_cell *a = sgl_list_add(SGL_OP_SampleCoverage, 2);
+  if (a) a[0].f = value;
+  if (a) a[1].u = invert;
+  if (sgl_list_executes()) sgl_SampleCoverage(value, invert);
+}
 /* Records glActiveTexture in the display list that is compiled. */
 static void APIENTRY save_ActiveTexture(GLenum texture) {
   sgl_cell *a = sgl_list_add(SGL_OP_ActiveTexture, 1);
@@ -4137,6 +4224,14 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_TexImage3D,
   nop_TexSubImage3D,
   nop_CopyTexSubImage3D,
+  nop_CompressedTexImage1D,
+  nop_CompressedTexImage2D,
+  nop_CompressedTexImage3D,
+  nop_CompressedTexSubImage1D,
+  nop_CompressedTexSubImage2D,
+  nop_CompressedTexSubImage3D,
+  nop_GetCompressedTexImage,
+  nop_SampleCoverage,
   nop_ActiveTexture,
   nop_ClientActiveTexture,
   nop_MultiTexCoord1s,
@@ -4534,6 +4629,14 @@ const struct sgl_dispatch sgl_exec_table = {
   sgl_TexImage3D,
   sgl_TexSubImage3D,
   sgl_CopyTexSubImage3D,
+  sgl_CompressedTexImage1D,
+  sgl_CompressedTexImage2D,
+  sgl_CompressedTexImage3D,
+  sgl_CompressedTexSubImage1D,
+  sgl_CompressedTexSubImage2D,
+  sgl_CompressedTexSubImage3D,
+  sgl_GetCompressedTexImage,
+  sgl_SampleCoverage,
   sgl_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -4931,6 +5034,14 @@ const struct sgl_dispatch sgl_save_table = {
   save_TexImage3D,
   save_TexSubImage3D,
   save_CopyTexSubImage3D,
+  sgl_CompressedTexImage1D,
+  save_CompressedTexImage2D,
+  sgl_CompressedTexImage3D,
+  sgl_CompressedTexSubImage1D,
+  save_CompressedTexSubImage2D,
+  sgl_CompressedTexSubImage3D,
+  sgl_GetCompressedTexImage,
+  save_SampleCoverage,
   save_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -5243,6 +5354,9 @@ void sgl_play_generated(int op, const sgl_cell *a) {
       break;
     case SGL_OP_CopyTexSubImage3D:
       sgl_CopyTexSubImage3D((GLenum)a[0].u, (GLint)a[1].i, (GLint)a[2].i, (GLint)a[3].i, (GLint)a[4].i, (GLint)a[5].i, (GLint)a[6].i, (GLsizei)a[7].i, (GLsizei)a[8].i);
+      break;
+    case SGL_OP_SampleCoverage:
+      sgl_SampleCoverage((GLfloat)a[0].f, (GLboolean)a[1].u);
       break;
     case SGL_OP_ActiveTexture:
       sgl_ActiveTexture((GLenum)a[0].u);
@@ -6706,6 +6820,46 @@ void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLi
 void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
   SGL_DISPATCH->CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
 }
+void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage1D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage1D(target, level, internalformat, width, border, imageSize, data);
+}
+void APIENTRY glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage2D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+}
+void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage3D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage3D(target, level, internalformat, width, height, depth, border, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage1D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage1D(target, level, xoffset, width, format, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage2D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage3D: an extension, which wglGetProcAddress gives. */
+void APIENTRY glCompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, data);
+}
+void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *img);
+/* glGetCompressedTexImage: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *img) {
+  SGL_DISPATCH->GetCompressedTexImage(target, level, img);
+}
+void APIENTRY glSampleCoverage(GLfloat value, GLboolean invert);
+/* glSampleCoverage: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSampleCoverage(GLfloat value, GLboolean invert) {
+  SGL_DISPATCH->SampleCoverage(value, invert);
+}
 void APIENTRY glActiveTexture(GLenum texture);
 /* glActiveTexture: an extension, which wglGetProcAddress gives. */
 void APIENTRY glActiveTexture(GLenum texture) {
@@ -6906,6 +7060,36 @@ void APIENTRY glClientActiveTextureARB(GLenum texture);
 void APIENTRY glClientActiveTextureARB(GLenum texture) {
   SGL_DISPATCH->ClientActiveTexture(texture);
 }
+void APIENTRY glCompressedTexImage1DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage1DARB: the name of glCompressedTexImage1D in an extension. */
+void APIENTRY glCompressedTexImage1DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage1D(target, level, internalformat, width, border, imageSize, data);
+}
+void APIENTRY glCompressedTexImage2DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage2DARB: the name of glCompressedTexImage2D in an extension. */
+void APIENTRY glCompressedTexImage2DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, data);
+}
+void APIENTRY glCompressedTexImage3DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data);
+/* glCompressedTexImage3DARB: the name of glCompressedTexImage3D in an extension. */
+void APIENTRY glCompressedTexImage3DARB(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexImage3D(target, level, internalformat, width, height, depth, border, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage1DARB(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage1DARB: the name of glCompressedTexSubImage1D in an extension. */
+void APIENTRY glCompressedTexSubImage1DARB(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage1D(target, level, xoffset, width, format, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage2DARB(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage2DARB: the name of glCompressedTexSubImage2D in an extension. */
+void APIENTRY glCompressedTexSubImage2DARB(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, data);
+}
+void APIENTRY glCompressedTexSubImage3DARB(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data);
+/* glCompressedTexSubImage3DARB: the name of glCompressedTexSubImage3D in an extension. */
+void APIENTRY glCompressedTexSubImage3DARB(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data) {
+  SGL_DISPATCH->CompressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, data);
+}
 void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
 /* glCopyTexSubImage3DEXT: the name of glCopyTexSubImage3D in an extension. */
 void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
@@ -6915,6 +7099,11 @@ void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsi
 /* glDrawRangeElementsEXT: the name of glDrawRangeElements in an extension. */
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
   SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
+}
+void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img);
+/* glGetCompressedTexImageARB: the name of glGetCompressedTexImage in an extension. */
+void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img) {
+  SGL_DISPATCH->GetCompressedTexImage(target, level, img);
 }
 void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m);
 /* glLoadTransposeMatrixdARB: the name of glLoadTransposeMatrixd in an extension. */
@@ -7096,6 +7285,11 @@ void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v);
 void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v) {
   SGL_DISPATCH->MultiTexCoord4sv(target, v);
 }
+void APIENTRY glSampleCoverageARB(GLfloat value, GLboolean invert);
+/* glSampleCoverageARB: the name of glSampleCoverage in an extension. */
+void APIENTRY glSampleCoverageARB(GLfloat value, GLboolean invert) {
+  SGL_DISPATCH->SampleCoverage(value, invert);
+}
 void APIENTRY glTexImage3DEXT(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
 /* glTexImage3DEXT: the name of glTexImage3D in an extension. */
 void APIENTRY glTexImage3DEXT(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) {
@@ -7128,6 +7322,14 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glTexImage3D", (void (*)(void))glTexImage3D},
   {"glTexSubImage3D", (void (*)(void))glTexSubImage3D},
   {"glCopyTexSubImage3D", (void (*)(void))glCopyTexSubImage3D},
+  {"glCompressedTexImage1D", (void (*)(void))glCompressedTexImage1D},
+  {"glCompressedTexImage2D", (void (*)(void))glCompressedTexImage2D},
+  {"glCompressedTexImage3D", (void (*)(void))glCompressedTexImage3D},
+  {"glCompressedTexSubImage1D", (void (*)(void))glCompressedTexSubImage1D},
+  {"glCompressedTexSubImage2D", (void (*)(void))glCompressedTexSubImage2D},
+  {"glCompressedTexSubImage3D", (void (*)(void))glCompressedTexSubImage3D},
+  {"glGetCompressedTexImage", (void (*)(void))glGetCompressedTexImage},
+  {"glSampleCoverage", (void (*)(void))glSampleCoverage},
   {"glActiveTexture", (void (*)(void))glActiveTexture},
   {"glClientActiveTexture", (void (*)(void))glClientActiveTexture},
   {"glMultiTexCoord1s", (void (*)(void))glMultiTexCoord1s},
@@ -7168,8 +7370,15 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultTransposeMatrixd", (void (*)(void))glMultTransposeMatrixd},
   {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
   {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
+  {"glCompressedTexImage1DARB", (void (*)(void))glCompressedTexImage1DARB},
+  {"glCompressedTexImage2DARB", (void (*)(void))glCompressedTexImage2DARB},
+  {"glCompressedTexImage3DARB", (void (*)(void))glCompressedTexImage3DARB},
+  {"glCompressedTexSubImage1DARB", (void (*)(void))glCompressedTexSubImage1DARB},
+  {"glCompressedTexSubImage2DARB", (void (*)(void))glCompressedTexSubImage2DARB},
+  {"glCompressedTexSubImage3DARB", (void (*)(void))glCompressedTexSubImage3DARB},
   {"glCopyTexSubImage3DEXT", (void (*)(void))glCopyTexSubImage3DEXT},
   {"glDrawRangeElementsEXT", (void (*)(void))glDrawRangeElementsEXT},
+  {"glGetCompressedTexImageARB", (void (*)(void))glGetCompressedTexImageARB},
   {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
   {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
   {"glMultTransposeMatrixdARB", (void (*)(void))glMultTransposeMatrixdARB},
@@ -7206,6 +7415,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultiTexCoord4ivARB", (void (*)(void))glMultiTexCoord4ivARB},
   {"glMultiTexCoord4sARB", (void (*)(void))glMultiTexCoord4sARB},
   {"glMultiTexCoord4svARB", (void (*)(void))glMultiTexCoord4svARB},
+  {"glSampleCoverageARB", (void (*)(void))glSampleCoverageARB},
   {"glTexImage3DEXT", (void (*)(void))glTexImage3DEXT},
   {"glTexSubImage3DEXT", (void (*)(void))glTexSubImage3DEXT},
   {0, 0}

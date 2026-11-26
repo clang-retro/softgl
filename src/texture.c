@@ -36,8 +36,21 @@ static void free_levels(sgl_texture *t) {
   for (i = 0; i < SGL_MAX_TEXTURE_LEVELS; i++) {
     free(t->level[i].texels);
     free(t->level[i].indices);
+    free(t->level[i].compressed);
     t->level[i].texels = NULL;
     t->level[i].indices = NULL;
+    t->level[i].compressed = NULL;
+  }
+  if (t->faces) {
+    int f;
+    for (f = 0; f < 5; f++)
+      for (i = 0; i < SGL_MAX_TEXTURE_LEVELS; i++) {
+        free(t->faces[f][i].texels);
+        free(t->faces[f][i].indices);
+        free(t->faces[f][i].compressed);
+      }
+    free(t->faces);
+    t->faces = NULL;
   }
 }
 
@@ -48,6 +61,7 @@ static void bind_defaults(sgl_context *c) {
     c->tex_1d[u] = &c->default_1d;
     c->tex_2d[u] = &c->default_2d;
     c->tex_3d[u] = &c->default_3d;
+    c->tex_cube[u] = &c->default_cube;
   }
 }
 
@@ -57,6 +71,7 @@ void sgl_texture_init(sgl_context *c) {
   init_texture(&c->default_1d, 0, GL_TEXTURE_1D);
   init_texture(&c->default_2d, 0, GL_TEXTURE_2D);
   init_texture(&c->default_3d, 0, GL_TEXTURE_3D);
+  init_texture(&c->default_cube, 0, GL_TEXTURE_CUBE_MAP);
   bind_defaults(c);
 }
 
@@ -66,6 +81,7 @@ void sgl_texture_release(sgl_context *c) {
   free_levels(&c->default_1d);
   free_levels(&c->default_2d);
   free_levels(&c->default_3d);
+  free_levels(&c->default_cube);
   bind_defaults(c);
 }
 
@@ -91,10 +107,11 @@ static sgl_texture *find_texture(sgl_shared *s, GLuint name) {
   return t;
 }
 
-/* Gives the texture of texture unit u for the primitives: the 3D
- * texture when it is on, else the 2D texture, else the 1D texture, or
- * NULL. */
+/* Gives the texture of texture unit u for the primitives: the cube map
+ * when it is on, else the 3D texture, else the 2D texture, else the 1D
+ * texture, or NULL. */
 sgl_texture *sgl_unit_texture(sgl_context *c, int u) {
+  if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_CUBE_MAP)]) return c->tex_cube[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_3D)]) return c->tex_3d[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)]) return c->tex_2d[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)]) return c->tex_1d[u];
@@ -105,8 +122,40 @@ sgl_texture *sgl_unit_texture(sgl_context *c, int u) {
  * or NULL when it has no image: then the unit acts as if its texture
  * is off. */
 const sgl_level *sgl_base_level(const sgl_texture *t) {
+  int b, f;
   if (!t || t->base_level >= SGL_MAX_TEXTURE_LEVELS || !t->level[t->base_level].texels) return NULL;
-  return &t->level[t->base_level];
+  b = t->base_level;
+  if (t->target == GL_TEXTURE_CUBE_MAP) {
+    /* A cube map needs the six faces, square and of one size. */
+    if (!t->faces || t->level[b].width != t->level[b].height) return NULL;
+    for (f = 0; f < 5; f++)
+      if (!t->faces[f][b].texels || t->faces[f][b].width != t->level[b].width ||
+          t->faces[f][b].height != t->level[b].height)
+        return NULL;
+  }
+  return &t->level[b];
+}
+
+/* Gives the levels of face face (0 to 5: +X, -X, +Y, -Y, +Z, -Z) of a
+ * texture, or NULL when the face has no levels. Face 0 is the levels of
+ * a texture that is not a cube map. */
+sgl_level *sgl_face_levels(sgl_texture *t, int face) {
+  if (face <= 0) return t->level;
+  return t->faces ? t->faces[face - 1] : NULL;
+}
+
+/* Gives the face (0 to 5) of a target of the images of a cube map, 0
+ * for the other targets, or -1 for GL_TEXTURE_CUBE_MAP itself, which
+ * has no images. */
+/* Tells if target is the target of an image of a cube map face. */
+static int is_face(GLenum target) {
+  return target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+}
+
+static int face_of(GLenum target) {
+  if (is_face(target))
+    return (int)(target - GL_TEXTURE_CUBE_MAP_POSITIVE_X);
+  return target == GL_TEXTURE_CUBE_MAP ? -1 : 0;
 }
 
 /* Gives the texture units that have a texture on, as bits (bit u for
@@ -117,7 +166,7 @@ unsigned sgl_texture_units(const sgl_context *c) {
   if (c->index_mode) return 0;
   for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++)
     if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)] || c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)] ||
-        c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_3D)])
+        c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_3D)] || c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_CUBE_MAP)])
       m |= 1u << u;
   return m;
 }
@@ -129,6 +178,8 @@ static sgl_texture *bound(sgl_context *c, GLenum target) {
   if (target == GL_TEXTURE_2D) return c->tex_2d[u];
   if (target == GL_TEXTURE_1D) return c->tex_1d[u];
   if (target == GL_TEXTURE_3D) return c->tex_3d[u];
+  if (target == GL_TEXTURE_CUBE_MAP || is_face(target))
+    return c->tex_cube[u];
   return NULL;
 }
 
@@ -154,6 +205,14 @@ static GLenum base_format(GLint internal) {
     case GL_INTENSITY: case GL_INTENSITY4: case GL_INTENSITY8: case GL_INTENSITY12:
     case GL_INTENSITY16:
       return GL_INTENSITY;
+    case GL_COMPRESSED_ALPHA: return GL_ALPHA;
+    case GL_COMPRESSED_LUMINANCE: return GL_LUMINANCE;
+    case GL_COMPRESSED_LUMINANCE_ALPHA: return GL_LUMINANCE_ALPHA;
+    case GL_COMPRESSED_INTENSITY: return GL_INTENSITY;
+    case GL_COMPRESSED_RGB: case GL_COMPRESSED_RGB_S3TC_DXT1_EXT: return GL_RGB;
+    case GL_COMPRESSED_RGBA: case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+    case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+      return GL_RGBA;
     case GL_COLOR_INDEX1_EXT: case GL_COLOR_INDEX2_EXT: case GL_COLOR_INDEX4_EXT:
     case GL_COLOR_INDEX8_EXT: case GL_COLOR_INDEX12_EXT: case GL_COLOR_INDEX16_EXT:
       return GL_COLOR_INDEX;
@@ -199,23 +258,35 @@ static void expand_palette(sgl_texture *t, sgl_level *lv) {
   }
 }
 
-/* Computes if the texture has all the levels of a mipmap. */
-static void check_complete(sgl_texture *t) {
-  int i, b = t->base_level, w, h, d;
-  t->complete = 0;
-  if (b >= SGL_MAX_TEXTURE_LEVELS || !t->level[b].texels) return;
-  w = t->level[b].width;
-  h = t->level[b].height;
-  d = t->level[b].depth;
-  for (i = b + 1; i < SGL_MAX_TEXTURE_LEVELS && i <= t->max_level && (w > 1 || h > 1 || d > 1); i++) {
+/* Tells if the levels lv of a texture are all the levels of a mipmap,
+ * from the base level b to the maximum level max. */
+static int chain_complete(const sgl_level *lv, int b, int max) {
+  int i, w, h, d;
+  if (b >= SGL_MAX_TEXTURE_LEVELS || !lv[b].texels) return 0;
+  w = lv[b].width;
+  h = lv[b].height;
+  d = lv[b].depth;
+  for (i = b + 1; i < SGL_MAX_TEXTURE_LEVELS && i <= max && (w > 1 || h > 1 || d > 1); i++) {
     w = w > 1 ? w / 2 : 1;
     h = h > 1 ? h / 2 : 1;
     d = d > 1 ? d / 2 : 1;
-    if (!t->level[i].texels || t->level[i].width != w || t->level[i].height != h ||
-        t->level[i].depth != d)
-      return;
+    if (!lv[i].texels || lv[i].width != w || lv[i].height != h || lv[i].depth != d) return 0;
   }
-  t->complete = 1;
+  return 1;
+}
+
+/* Computes if the texture has all the levels of a mipmap: for a cube
+ * map, on all the faces. */
+static void check_complete(sgl_texture *t) {
+  int f;
+  t->complete = chain_complete(t->level, t->base_level, t->max_level);
+  if (t->target != GL_TEXTURE_CUBE_MAP || !t->complete) return;
+  if (!t->faces) {
+    t->complete = 0;
+    return;
+  }
+  for (f = 0; f < 5; f++)
+    if (!chain_complete(t->faces[f], t->base_level, t->max_level)) t->complete = 0;
 }
 
 /* Gives the pixel store of image z of a 3D image of rows of height h:
@@ -271,12 +342,25 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
     sgl_error(GL_INVALID_VALUE);
     return 0;
   }
-  if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_1D || target == GL_PROXY_TEXTURE_3D)
+  if ((is_face(target) || target == GL_PROXY_TEXTURE_CUBE_MAP) && (w != h || w > SGL_MAX_CUBE_MAP_SIZE + 2)) {
+    /* The faces of a cube map are square. */
+    sgl_error(GL_INVALID_VALUE);
+    return 0;
+  }
+  if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_1D || target == GL_PROXY_TEXTURE_3D ||
+      target == GL_PROXY_TEXTURE_CUBE_MAP)
     return 1;
   t = bound(c, target);
-  if (!t) {
+  if (!t || face_of(target) < 0) {
     sgl_error(GL_INVALID_ENUM);
     return 0;
+  }
+  if (face_of(target) > 0 && !t->faces) {
+    t->faces = (sgl_level(*)[SGL_MAX_TEXTURE_LEVELS])calloc(5, sizeof *t->faces);
+    if (!t->faces) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return 0;
+    }
   }
   if (!base) {
     sgl_error(GL_INVALID_VALUE);
@@ -290,11 +374,14 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
   w -= 2 * border;
   h -= 2 * border;
   d -= 2 * db;
-  lv = &t->level[level];
+  lv = &sgl_face_levels(t, face_of(target))[level];
   n = (size_t)w * h * d;
   free(lv->texels);
   free(lv->indices);
+  free(lv->compressed);
   lv->indices = NULL;
+  lv->compressed = NULL;
+  lv->compressed_size = 0;
   lv->texels = (uint32_t *)malloc(n * 4);
   if (!lv->texels) {
     sgl_error(GL_OUT_OF_MEMORY);
@@ -364,7 +451,8 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
 void APIENTRY sgl_TexImage2D(GLenum target, GLint level, GLint internal, GLsizei w, GLsizei h,
                              GLint border, GLenum format, GLenum type, const void *pixels) {
   sgl_context *c = sgl_ctx;
-  if (target != GL_TEXTURE_2D && target != GL_PROXY_TEXTURE_2D) {
+  if (target != GL_TEXTURE_2D && target != GL_PROXY_TEXTURE_2D && target != GL_PROXY_TEXTURE_CUBE_MAP &&
+      !is_face(target)) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
@@ -400,7 +488,11 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
     sgl_error(GL_INVALID_VALUE);
     return;
   }
-  lv = &t->level[level];
+  if (face_of(target) < 0 || !sgl_face_levels(t, face_of(target))) {
+    sgl_error(face_of(target) < 0 ? GL_INVALID_ENUM : GL_INVALID_VALUE);
+    return;
+  }
+  lv = &sgl_face_levels(t, face_of(target))[level];
   if (!lv->texels || x < 0 || y < 0 || z < 0 || x + w > lv->width || y + h > lv->height ||
       z + d > lv->depth) {
     sgl_error(GL_INVALID_VALUE);
@@ -443,7 +535,7 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
 /* glTexSubImage2D: changes a rectangle of a level of the 2D texture. */
 void APIENTRY sgl_TexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsizei w, GLsizei h,
                                 GLenum format, GLenum type, const void *pixels) {
-  if (target != GL_TEXTURE_2D) {
+  if (target != GL_TEXTURE_2D && !is_face(target)) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
@@ -593,20 +685,21 @@ void APIENTRY sgl_CopyTexSubImage3D(GLenum target, GLint level, GLint xoff, GLin
 void APIENTRY sgl_GetTexImage(GLenum target, GLint level, GLenum format, GLenum type, void *pixels) {
   sgl_context *c = sgl_ctx;
   sgl_texture *t = bound(c, target);
-  if (!t || level < 0 || level >= SGL_MAX_TEXTURE_LEVELS) {
+  const sgl_level *lv;
+  if (!t || face_of(target) < 0 || level < 0 || level >= SGL_MAX_TEXTURE_LEVELS) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  if (!t->level[level].texels) return;
+  if (!sgl_face_levels(t, face_of(target))) return;
+  lv = &sgl_face_levels(t, face_of(target))[level];
+  if (!lv->texels) return;
   /* The images of a 3D texture follow each other as rows. */
-  sgl_pack_texels(c, t->level[level].width, t->level[level].height * t->level[level].depth,
-                  t->level[level].texels, format,
-                  type, pixels);
+  sgl_pack_texels(c, lv->width, lv->height * lv->depth, lv->texels, format, type, pixels);
 }
 
 /* glTexParameterfv: sets a parameter of the bound texture of target. */
 void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *params) {
-  sgl_texture *t = bound(sgl_ctx, target);
+  sgl_texture *t = is_face(target) ? NULL : bound(sgl_ctx, target);
   GLenum v = (GLenum)params[0];
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
@@ -667,7 +760,7 @@ void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *par
 
 /* glGetTexParameterfv: gives a parameter of the bound texture. */
 void APIENTRY sgl_GetTexParameterfv(GLenum target, GLenum pname, GLfloat *params) {
-  sgl_texture *t = bound(sgl_ctx, target);
+  sgl_texture *t = is_face(target) ? NULL : bound(sgl_ctx, target);
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
     return;
@@ -722,12 +815,21 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
                     ? SGL_MAX_3D_TEXTURE_SIZE : 0;
     return;
   }
-  t = bound(c, target);
-  if (!t || level < 0 || level >= SGL_MAX_TEXTURE_LEVELS) {
-    sgl_error(GL_INVALID_VALUE);
+  if (target == GL_PROXY_TEXTURE_CUBE_MAP) {
+    params[0] = pname == GL_TEXTURE_WIDTH || pname == GL_TEXTURE_HEIGHT ? SGL_MAX_CUBE_MAP_SIZE
+                : pname == GL_TEXTURE_DEPTH ? 1 : 0;
     return;
   }
-  lv = &t->level[level];
+  t = bound(c, target);
+  if (!t || face_of(target) < 0 || level < 0 || level >= SGL_MAX_TEXTURE_LEVELS) {
+    sgl_error(t && face_of(target) < 0 ? GL_INVALID_ENUM : GL_INVALID_VALUE);
+    return;
+  }
+  if (!sgl_face_levels(t, face_of(target))) {
+    params[0] = pname == GL_TEXTURE_INTERNAL_FORMAT ? 1 : 0;
+    return;
+  }
+  lv = &sgl_face_levels(t, face_of(target))[level];
   switch (pname) {
     case GL_TEXTURE_WIDTH: params[0] = lv->texels ? lv->width + 2 * lv->border : 0; break;
     case GL_TEXTURE_HEIGHT: params[0] = lv->texels ? lv->height + 2 * lv->border : 0; break;
@@ -735,6 +837,14 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
       params[0] = !lv->texels ? 0 : lv->depth + (t->target == GL_TEXTURE_3D ? 2 * lv->border : 0);
       break;
     case GL_TEXTURE_BORDER: params[0] = lv->border; break;
+    case GL_TEXTURE_COMPRESSED: params[0] = lv->texels && lv->compressed ? GL_TRUE : GL_FALSE; break;
+    case GL_TEXTURE_COMPRESSED_IMAGE_SIZE:
+      if (!lv->compressed) {
+        sgl_error(GL_INVALID_OPERATION);
+        return;
+      }
+      params[0] = (GLint)lv->compressed_size;
+      break;
     case GL_TEXTURE_INTERNAL_FORMAT: params[0] = lv->texels ? (GLint)lv->internal : 1; break;
     case GL_TEXTURE_RED_SIZE: case GL_TEXTURE_GREEN_SIZE: case GL_TEXTURE_BLUE_SIZE:
     case GL_TEXTURE_ALPHA_SIZE: case GL_TEXTURE_LUMINANCE_SIZE: case GL_TEXTURE_INTENSITY_SIZE:
@@ -744,53 +854,113 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
   }
 }
 
-/* glTexEnvfv: sets a parameter of the texture environment. */
+/* Tells if v is a source of GL_COMBINE: GL_TEXTURE, GL_CONSTANT,
+ * GL_PRIMARY_COLOR, GL_PREVIOUS or (GL_ARB_texture_env_crossbar) the
+ * texture of a unit. */
+static int valid_source(GLenum v) {
+  return v == GL_TEXTURE || v == GL_CONSTANT || v == GL_PRIMARY_COLOR || v == GL_PREVIOUS ||
+         (v >= GL_TEXTURE0 && v < GL_TEXTURE0 + SGL_MAX_TEXTURE_UNITS);
+}
+
+/* Gives the member of the state of a unit that a GL_COMBINE parameter
+ * of glTexEnv names, or NULL. *alpha tells if it is an alpha operand. */
+static GLenum *combine_param(sgl_unit_attrib *u, GLenum pname, int *alpha) {
+  *alpha = 0;
+  switch (pname) {
+    case GL_COMBINE_RGB: return &u->combine_rgb;
+    case GL_COMBINE_ALPHA: *alpha = 1; return &u->combine_alpha;
+    case GL_SOURCE0_RGB: case GL_SOURCE1_RGB: case GL_SOURCE2_RGB: return &u->src_rgb[pname - GL_SOURCE0_RGB];
+    case GL_SOURCE0_ALPHA: case GL_SOURCE1_ALPHA: case GL_SOURCE2_ALPHA:
+      return &u->src_alpha[pname - GL_SOURCE0_ALPHA];
+    case GL_OPERAND0_RGB: case GL_OPERAND1_RGB: case GL_OPERAND2_RGB:
+      return &u->op_rgb[pname - GL_OPERAND0_RGB];
+    case GL_OPERAND0_ALPHA: case GL_OPERAND1_ALPHA: case GL_OPERAND2_ALPHA:
+      *alpha = 1;
+      return &u->op_alpha[pname - GL_OPERAND0_ALPHA];
+    default: return NULL;
+  }
+}
+
+/* glTexEnvfv: sets a parameter of the texture environment of the active
+ * texture unit. */
 void APIENTRY sgl_TexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {
   sgl_context *c = sgl_ctx;
   sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
+  GLenum v = (GLenum)params[0], *p;
+  int alpha, ok;
   if (target != GL_TEXTURE_ENV) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
   if (pname == GL_TEXTURE_ENV_MODE) {
-    GLenum m = (GLenum)params[0];
-    if (m != GL_MODULATE && m != GL_DECAL && m != GL_BLEND && m != GL_REPLACE && m != GL_ADD) {
+    if (v != GL_MODULATE && v != GL_DECAL && v != GL_BLEND && v != GL_REPLACE && v != GL_ADD &&
+        v != GL_COMBINE) {
       sgl_error(GL_INVALID_ENUM);
       return;
     }
-    u->env_mode = m;
+    u->env_mode = v;
   } else if (pname == GL_TEXTURE_ENV_COLOR) {
     int i;
     for (i = 0; i < 4; i++) u->env_color[i] = sgl_clamp01(params[i]);
+  } else if (pname == GL_RGB_SCALE || pname == GL_ALPHA_SCALE) {
+    if (params[0] != 1.0f && params[0] != 2.0f && params[0] != 4.0f) {
+      sgl_error(GL_INVALID_VALUE);
+      return;
+    }
+    if (pname == GL_RGB_SCALE)
+      u->rgb_scale = params[0];
+    else
+      u->alpha_scale = params[0];
+  } else if ((p = combine_param(u, pname, &alpha)) != NULL) {
+    if (pname == GL_COMBINE_RGB || pname == GL_COMBINE_ALPHA)
+      ok = v == GL_REPLACE || v == GL_MODULATE || v == GL_ADD || v == GL_ADD_SIGNED ||
+           v == GL_INTERPOLATE || v == GL_SUBTRACT ||
+           (pname == GL_COMBINE_RGB && (v == GL_DOT3_RGB || v == GL_DOT3_RGBA));
+    else if (pname >= GL_SOURCE0_RGB && pname <= GL_SOURCE2_ALPHA)
+      ok = valid_source(v);
+    else
+      ok = v == GL_SRC_ALPHA || v == GL_ONE_MINUS_SRC_ALPHA ||
+           (!alpha && (v == GL_SRC_COLOR || v == GL_ONE_MINUS_SRC_COLOR));
+    if (!ok) {
+      sgl_error(GL_INVALID_ENUM);
+      return;
+    }
+    *p = v;
   } else
     sgl_error(GL_INVALID_ENUM);
 }
 
-/* glGetTexEnvfv: gives a parameter of the texture environment. */
+/* glGetTexEnvfv: gives a parameter of the texture environment of the
+ * active texture unit. */
 void APIENTRY sgl_GetTexEnvfv(GLenum target, GLenum pname, GLfloat *params) {
   sgl_context *c = sgl_ctx;
+  sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
+  GLenum *p;
+  int alpha;
   (void)target;
-  const sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   if (pname == GL_TEXTURE_ENV_MODE)
     params[0] = (GLfloat)u->env_mode;
   else if (pname == GL_TEXTURE_ENV_COLOR)
     memcpy(params, u->env_color, sizeof u->env_color);
+  else if (pname == GL_RGB_SCALE)
+    params[0] = u->rgb_scale;
+  else if (pname == GL_ALPHA_SCALE)
+    params[0] = u->alpha_scale;
+  else if ((p = combine_param(u, pname, &alpha)) != NULL)
+    params[0] = (GLfloat)*p;
   else
     sgl_error(GL_INVALID_ENUM);
 }
 
 /* glGetTexEnviv: as glGetTexEnvfv, as integers. */
 void APIENTRY sgl_GetTexEnviv(GLenum target, GLenum pname, GLint *params) {
-  sgl_context *c = sgl_ctx;
-  (void)target;
-  const sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
-  if (pname == GL_TEXTURE_ENV_MODE)
-    params[0] = (GLint)u->env_mode;
-  else if (pname == GL_TEXTURE_ENV_COLOR) {
-    int i;
-    for (i = 0; i < 4; i++) params[i] = (GLint)(u->env_color[i] * 2147483647.0f);
-  } else
-    sgl_error(GL_INVALID_ENUM);
+  GLfloat f[4];
+  int i;
+  sgl_GetTexEnvfv(target, pname, f);
+  if (pname == GL_TEXTURE_ENV_COLOR)
+    for (i = 0; i < 4; i++) params[i] = (GLint)(f[i] * 2147483647.0f);
+  else
+    params[0] = (GLint)f[0];
 }
 
 /* glTexGenfv: sets a parameter of the generation of a texture
@@ -806,7 +976,8 @@ void APIENTRY sgl_TexGenfv(GLenum coord, GLenum pname, const GLfloat *params) {
   switch (pname) {
     case GL_TEXTURE_GEN_MODE: {
       GLenum m = (GLenum)params[0];
-      if (m != GL_OBJECT_LINEAR && m != GL_EYE_LINEAR && (m != GL_SPHERE_MAP || i > 1)) {
+      if (m != GL_OBJECT_LINEAR && m != GL_EYE_LINEAR && (m != GL_SPHERE_MAP || i > 1) &&
+          ((m != GL_NORMAL_MAP && m != GL_REFLECTION_MAP) || i > 2)) {
         sgl_error(GL_INVALID_ENUM);
         return;
       }
@@ -882,13 +1053,15 @@ void APIENTRY sgl_BindTexture(GLenum target, GLuint name) {
   sgl_context *c = sgl_ctx;
   sgl_shared *s = c->shared;
   sgl_texture *t;
-  if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_3D) {
+  if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_3D &&
+      target != GL_TEXTURE_CUBE_MAP) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
   if (name == 0) {
     t = target == GL_TEXTURE_2D ? &c->default_2d
-        : target == GL_TEXTURE_3D ? &c->default_3d : &c->default_1d;
+        : target == GL_TEXTURE_3D ? &c->default_3d
+        : target == GL_TEXTURE_CUBE_MAP ? &c->default_cube : &c->default_1d;
   } else {
     t = find_texture(s, name);
     if (!t) {
@@ -909,6 +1082,8 @@ void APIENTRY sgl_BindTexture(GLenum target, GLuint name) {
     c->tex_2d[c->a.active_texture] = t;
   else if (target == GL_TEXTURE_3D)
     c->tex_3d[c->a.active_texture] = t;
+  else if (target == GL_TEXTURE_CUBE_MAP)
+    c->tex_cube[c->a.active_texture] = t;
   else
     c->tex_1d[c->a.active_texture] = t;
 }
@@ -931,6 +1106,7 @@ void APIENTRY sgl_DeleteTextures(GLsizei n, const GLuint *textures) {
       if (c->tex_2d[u] == t) c->tex_2d[u] = &c->default_2d;
       if (c->tex_1d[u] == t) c->tex_1d[u] = &c->default_1d;
       if (c->tex_3d[u] == t) c->tex_3d[u] = &c->default_3d;
+      if (c->tex_cube[u] == t) c->tex_cube[u] = &c->default_cube;
     }
     free_levels(t);
     free(t);
@@ -976,6 +1152,11 @@ static void set_palette(sgl_texture *t, int start, int count, GLenum format, GLe
   }
   for (i = 0; i < count; i++) t->palette[start + i] = texel(base_format((GLint)t->palette_format), rgba + i * 4);
   for (i = 0; i < SGL_MAX_TEXTURE_LEVELS; i++) expand_palette(t, &t->level[i]);
+  if (t->faces) {
+    int f;
+    for (f = 0; f < 5; f++)
+      for (i = 0; i < SGL_MAX_TEXTURE_LEVELS; i++) expand_palette(t, &t->faces[f][i]);
+  }
 }
 
 /* glColorTableEXT: sets the palette of the bound texture. For a proxy
@@ -1103,4 +1284,254 @@ void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r
   v[1] = t;
   v[2] = r;
   v[3] = q;
+}
+
+/* Gives the number of bytes of a 4 x 4 block of an S3TC format, or 0
+ * for a format that is not S3TC. */
+static int s3tc_block_bytes(GLenum format) {
+  switch (format) {
+    case GL_COMPRESSED_RGB_S3TC_DXT1_EXT: case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: return 8;
+    case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT: case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT: return 16;
+    default: return 0;
+  }
+}
+
+/* Gives the number of bytes of an S3TC image of w x h pixels. */
+static size_t s3tc_size(GLenum format, int w, int h) {
+  return (size_t)((w + 3) / 4) * (size_t)((h + 3) / 4) * (size_t)s3tc_block_bytes(format);
+}
+
+/* Gives the RGB bytes of a 5-6-5 color of S3TC. */
+static void rgb565(unsigned v, uint8_t out[3]) {
+  unsigned r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+  out[0] = (uint8_t)((r << 3) | (r >> 2));
+  out[1] = (uint8_t)((g << 2) | (g >> 4));
+  out[2] = (uint8_t)((b << 3) | (b >> 2));
+}
+
+/* Decodes the color part of an S3TC block (8 bytes at p) into 16 RGBA
+ * pixels out (row by row). four is 1 for DXT3 and DXT5, which always
+ * use four colors; for DXT1 with c0 <= c1 the fourth color is black,
+ * transparent when alpha1 is 1. */
+static void decode_color_block(const uint8_t *p, int four, int alpha1, uint8_t out[16][4]) {
+  unsigned c0 = (unsigned)p[0] | ((unsigned)p[1] << 8), c1 = (unsigned)p[2] | ((unsigned)p[3] << 8);
+  uint32_t bits = (uint32_t)p[4] | ((uint32_t)p[5] << 8) | ((uint32_t)p[6] << 16) | ((uint32_t)p[7] << 24);
+  uint8_t pal[4][4];
+  int i, k;
+  rgb565(c0, pal[0]);
+  rgb565(c1, pal[1]);
+  pal[0][3] = pal[1][3] = pal[2][3] = pal[3][3] = 255;
+  for (k = 0; k < 3; k++) {
+    if (four || c0 > c1) {
+      pal[2][k] = (uint8_t)((2 * pal[0][k] + pal[1][k]) / 3);
+      pal[3][k] = (uint8_t)((pal[0][k] + 2 * pal[1][k]) / 3);
+    } else {
+      pal[2][k] = (uint8_t)((pal[0][k] + pal[1][k]) / 2);
+      pal[3][k] = 0;
+    }
+  }
+  if (!four && c0 <= c1 && alpha1) pal[3][3] = 0;
+  for (i = 0; i < 16; i++) memcpy(out[i], pal[(bits >> (2 * i)) & 3], 4);
+}
+
+/* Decodes the alpha part of a DXT5 block (8 bytes at p) into the alpha
+ * of 16 pixels. */
+static void decode_dxt5_alpha(const uint8_t *p, uint8_t out[16][4]) {
+  int a0 = p[0], a1 = p[1], i;
+  int pal[8];
+  /* The 48 bits of the indices, 3 bits for each pixel, as two 24-bit
+   * halves (the 68000 has no 64-bit registers). */
+  uint32_t lo = (uint32_t)p[2] | ((uint32_t)p[3] << 8) | ((uint32_t)p[4] << 16);
+  uint32_t hi = (uint32_t)p[5] | ((uint32_t)p[6] << 8) | ((uint32_t)p[7] << 16);
+  pal[0] = a0;
+  pal[1] = a1;
+  if (a0 > a1) {
+    for (i = 1; i < 7; i++) pal[i + 1] = ((7 - i) * a0 + i * a1) / 7;
+  } else {
+    for (i = 1; i < 5; i++) pal[i + 1] = ((5 - i) * a0 + i * a1) / 5;
+    pal[6] = 0;
+    pal[7] = 255;
+  }
+  for (i = 0; i < 16; i++) {
+    unsigned idx = i < 8 ? (lo >> (3 * i)) & 7 : (hi >> (3 * (i - 8))) & 7;
+    out[i][3] = (uint8_t)pal[idx];
+  }
+}
+
+/* Decodes an S3TC image of w x h pixels to RGBA bytes rgba (rows bottom
+ * first, as the blocks are). */
+static void s3tc_decode(GLenum format, int w, int h, const uint8_t *src, uint8_t *rgba) {
+  int bx, by, i, bytes = s3tc_block_bytes(format);
+  for (by = 0; by < (h + 3) / 4; by++)
+    for (bx = 0; bx < (w + 3) / 4; bx++, src += bytes) {
+      uint8_t px[16][4];
+      if (format == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT) {
+        decode_color_block(src + 8, 1, 0, px);
+        for (i = 0; i < 16; i++) {
+          int a = (src[i / 2] >> (4 * (i & 1))) & 15;
+          px[i][3] = (uint8_t)(a * 17);
+        }
+      } else if (format == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) {
+        decode_color_block(src + 8, 1, 0, px);
+        decode_dxt5_alpha(src, px);
+      } else {
+        decode_color_block(src, 0, format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, px);
+      }
+      for (i = 0; i < 16; i++) {
+        int x = bx * 4 + (i & 3), y = by * 4 + i / 4;
+        if (x < w && y < h) memcpy(rgba + ((size_t)y * w + x) * 4, px[i], 4);
+      }
+    }
+}
+
+/* glCompressedTexImage2D: sets a level of the 2D texture or of a face
+ * of the cube map from an S3TC image. The renderer decodes the image;
+ * it keeps the blocks for glGetCompressedTexImage. */
+void APIENTRY sgl_CompressedTexImage2D(GLenum target, GLint level, GLenum internal, GLsizei w, GLsizei h,
+                                       GLint border, GLsizei size, const void *data) {
+  sgl_context *c = sgl_ctx;
+  uint8_t *rgba;
+  sgl_texture *t;
+  sgl_level *lv;
+  if (target != GL_TEXTURE_2D && target != GL_PROXY_TEXTURE_2D && !is_face(target) &&
+      target != GL_PROXY_TEXTURE_CUBE_MAP) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  if (!s3tc_block_bytes(internal)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  if (border != 0 || w <= 0 || h <= 0) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  if ((size_t)size != s3tc_size(internal, w, h)) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  if (target == GL_PROXY_TEXTURE_2D || target == GL_PROXY_TEXTURE_CUBE_MAP) {
+    set_image(c, target, level, (GLint)internal, w, h, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL, &sgl_tight_store);
+    return;
+  }
+  rgba = (uint8_t *)malloc((size_t)w * h * 4);
+  if (!rgba) {
+    sgl_error(GL_OUT_OF_MEMORY);
+    return;
+  }
+  s3tc_decode(internal, w, h, (const uint8_t *)data, rgba);
+  if (set_image(c, target, level, (GLint)internal, w, h, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba,
+                &sgl_tight_store)) {
+    t = bound(c, target);
+    lv = &sgl_face_levels(t, face_of(target))[level];
+    lv->compressed = (uint8_t *)malloc((size_t)size);
+    if (lv->compressed) {
+      memcpy(lv->compressed, data, (size_t)size);
+      lv->compressed_size = (size_t)size;
+    }
+  }
+  free(rgba);
+}
+
+/* glCompressedTexSubImage2D: changes a rectangle of a level from S3TC
+ * blocks. x, y, w and h must be on the edges of the blocks (multiples of
+ * 4, or the edge of the level). */
+void APIENTRY sgl_CompressedTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsizei w,
+                                          GLsizei h, GLenum format, GLsizei size, const void *data) {
+  sgl_context *c = sgl_ctx;
+  sgl_texture *t;
+  sgl_level *lv;
+  uint8_t *rgba;
+  int bytes = s3tc_block_bytes(format), j;
+  if (target != GL_TEXTURE_2D && !is_face(target)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  t = bound(c, target);
+  if (level < 0 || level >= SGL_MAX_TEXTURE_LEVELS || !sgl_face_levels(t, face_of(target))) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  lv = &sgl_face_levels(t, face_of(target))[level];
+  if (!bytes || !lv->compressed || lv->internal != format) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if (x < 0 || y < 0 || w < 0 || h < 0 || x + w > lv->width || y + h > lv->height || (x & 3) || (y & 3) ||
+      ((w & 3) && x + w != lv->width) || ((h & 3) && y + h != lv->height)) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if ((size_t)size != s3tc_size(format, w, h)) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  if (w == 0 || h == 0) return;
+  rgba = (uint8_t *)malloc((size_t)w * h * 4);
+  if (!rgba) {
+    sgl_error(GL_OUT_OF_MEMORY);
+    return;
+  }
+  s3tc_decode(format, w, h, (const uint8_t *)data, rgba);
+  sub_image(c, target, level, x, y, 0, w, h, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba, &sgl_tight_store);
+  free(rgba);
+  /* The kept blocks: each row of blocks of the rectangle. */
+  {
+    int bw = (lv->width + 3) / 4, rw = (w + 3) / 4;
+    for (j = 0; j < (h + 3) / 4; j++)
+      memcpy(lv->compressed + ((size_t)(y / 4 + j) * bw + x / 4) * bytes,
+             (const uint8_t *)data + (size_t)j * rw * bytes, (size_t)rw * bytes);
+  }
+}
+
+/* glGetCompressedTexImage: gives the S3TC blocks of a level. */
+void APIENTRY sgl_GetCompressedTexImage(GLenum target, GLint level, void *img) {
+  sgl_context *c = sgl_ctx;
+  sgl_texture *t;
+  sgl_level *lv;
+  if (target != GL_TEXTURE_2D && !is_face(target)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  t = bound(c, target);
+  if (level < 0 || level >= SGL_MAX_TEXTURE_LEVELS || !sgl_face_levels(t, face_of(target))) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  lv = &sgl_face_levels(t, face_of(target))[level];
+  if (!lv->compressed) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  memcpy(img, lv->compressed, lv->compressed_size);
+}
+
+/* glCompressedTexImage1D: there is no compressed 1D format. */
+void APIENTRY sgl_CompressedTexImage1D(GLenum target, GLint level, GLenum internal, GLsizei w, GLint border,
+                                       GLsizei size, const void *data) {
+  (void)target, (void)internal, (void)level, (void)w, (void)border, (void)size, (void)data;
+  sgl_error(GL_INVALID_ENUM);
+}
+
+/* glCompressedTexImage3D: there is no compressed 3D format. */
+void APIENTRY sgl_CompressedTexImage3D(GLenum target, GLint level, GLenum internal, GLsizei w, GLsizei h,
+                                       GLsizei d, GLint border, GLsizei size, const void *data) {
+  (void)target, (void)internal, (void)level, (void)w, (void)h, (void)d, (void)border, (void)size;
+  (void)data;
+  sgl_error(GL_INVALID_ENUM);
+}
+
+/* glCompressedTexSubImage1D: there is no compressed 1D format. */
+void APIENTRY sgl_CompressedTexSubImage1D(GLenum target, GLint level, GLint x, GLsizei w, GLenum format,
+                                          GLsizei size, const void *data) {
+  (void)target, (void)level, (void)x, (void)w, (void)format, (void)size, (void)data;
+  sgl_error(GL_INVALID_OPERATION);
+}
+
+/* glCompressedTexSubImage3D: there is no compressed 3D format. */
+void APIENTRY sgl_CompressedTexSubImage3D(GLenum target, GLint level, GLint x, GLint y, GLint z, GLsizei w,
+                                          GLsizei h, GLsizei d, GLenum format, GLsizei size, const void *data) {
+  (void)target, (void)level, (void)x, (void)y, (void)z, (void)w, (void)h, (void)d, (void)format;
+  (void)size, (void)data;
+  sgl_error(GL_INVALID_OPERATION);
 }

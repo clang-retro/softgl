@@ -16,13 +16,15 @@ SGL_THREAD const struct sgl_dispatch *sgl_cur = &sgl_nop_table;
  * programs of the Windows SDK look for it. */
 static const char kVendor[] = "clang-retro";
 static const char kRenderer[] = "clang-retro Generic";
-static const char kVersion[] = "1.2.0";
+static const char kVersion[] = "1.3.0";
 static const char kExtensions[] =
     "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
     "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
     "GL_SGIS_texture_edge_clamp GL_EXT_texture_edge_clamp GL_ARB_texture_border_clamp "
     "GL_ARB_texture_mirrored_repeat GL_SGIS_texture_lod GL_EXT_packed_pixels "
-    "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements GL_EXT_texture3D";
+    "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements GL_EXT_texture3D GL_ARB_texture_cube_map GL_EXT_texture_cube_map "
+    "GL_ARB_texture_env_combine GL_EXT_texture_env_combine GL_ARB_texture_env_dot3 GL_EXT_texture_env_dot3 "
+    "GL_ARB_texture_env_crossbar GL_ARB_texture_compression GL_EXT_texture_compression_s3tc GL_ARB_multisample";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -96,6 +98,10 @@ int sgl_cap_index(GLenum cap) {
     case GL_INDEX_LOGIC_OP: return SGL_INDEX_LOGIC_OP;
     case GL_NORMALIZE: return SGL_NORMALIZE;
     case GL_RESCALE_NORMAL: return SGL_RESCALE_NORMAL;
+    case GL_MULTISAMPLE: return SGL_MULTISAMPLE;
+    case GL_SAMPLE_ALPHA_TO_COVERAGE: return SGL_SAMPLE_ALPHA_TO_COVERAGE;
+    case GL_SAMPLE_ALPHA_TO_ONE: return SGL_SAMPLE_ALPHA_TO_ONE;
+    case GL_SAMPLE_COVERAGE: return SGL_SAMPLE_COVERAGE;
     case GL_POINT_SMOOTH: return SGL_POINT_SMOOTH;
     case GL_POLYGON_SMOOTH: return SGL_POLYGON_SMOOTH;
     case GL_POLYGON_STIPPLE: return SGL_POLYGON_STIPPLE;
@@ -104,6 +110,7 @@ int sgl_cap_index(GLenum cap) {
     case GL_TEXTURE_1D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_1D);
     case GL_TEXTURE_2D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_2D);
     case GL_TEXTURE_3D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_3D);
+    case GL_TEXTURE_CUBE_MAP: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_CUBE_MAP);
     case GL_TEXTURE_GEN_S: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_S);
     case GL_TEXTURE_GEN_T: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_T);
     case GL_TEXTURE_GEN_R: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_R);
@@ -150,6 +157,14 @@ static void init_attrib(sgl_attrib *a) {
     a->tex[i][3] = 1.0f;
     a->raster_tex[i][3] = 1.0f;
     u->env_mode = GL_MODULATE;
+    u->combine_rgb = u->combine_alpha = GL_MODULATE;
+    u->src_rgb[0] = u->src_alpha[0] = GL_TEXTURE;
+    u->src_rgb[1] = u->src_alpha[1] = GL_PREVIOUS;
+    u->src_rgb[2] = u->src_alpha[2] = GL_CONSTANT;
+    u->op_rgb[0] = u->op_rgb[1] = GL_SRC_COLOR;
+    u->op_rgb[2] = GL_SRC_ALPHA;
+    u->op_alpha[0] = u->op_alpha[1] = u->op_alpha[2] = GL_SRC_ALPHA;
+    u->rgb_scale = u->alpha_scale = 1.0f;
     for (k = 0; k < 4; k++) u->gen_mode[k] = GL_EYE_LINEAR;
     u->gen_object[0][0] = u->gen_eye[0][0] = 1.0f;
     u->gen_object[1][1] = u->gen_eye[1][1] = 1.0f;
@@ -222,6 +237,9 @@ static void init_attrib(sgl_attrib *a) {
   a->depth_far = 1.0;
   a->matrix_mode = GL_MODELVIEW;
   a->hint_perspective = a->hint_point = a->hint_line = a->hint_polygon = a->hint_fog = GL_DONT_CARE;
+  a->hint_compression = GL_DONT_CARE;
+  a->enabled[SGL_MULTISAMPLE] = 1;
+  a->sample_coverage = 1.0f;
   a->grid1_n = a->grid2_un = a->grid2_vn = 1;
   a->grid1_u2 = a->grid2_u2 = a->grid2_v2 = 1.0f;
 }
@@ -517,6 +535,15 @@ const GLubyte *APIENTRY sgl_GetString(GLenum name) {
   }
 }
 
+/* glSampleCoverage: sets the coverage of the samples. There is no
+ * multisample buffer, so the value has no effect. */
+void APIENTRY sgl_SampleCoverage(GLclampf value, GLboolean invert) {
+  sgl_context *c = outside();
+  if (!c) return;
+  c->a.sample_coverage = sgl_clamp01(value);
+  c->a.sample_invert = invert ? GL_TRUE : GL_FALSE;
+}
+
 /* glHint: sets a hint. The perspective hint GL_FASTEST turns the
  * perspective correction of textures off. */
 void APIENTRY sgl_Hint(GLenum target, GLenum mode) {
@@ -532,6 +559,7 @@ void APIENTRY sgl_Hint(GLenum target, GLenum mode) {
     case GL_LINE_SMOOTH_HINT: c->a.hint_line = mode; break;
     case GL_POLYGON_SMOOTH_HINT: c->a.hint_polygon = mode; break;
     case GL_FOG_HINT: c->a.hint_fog = mode; break;
+    case GL_TEXTURE_COMPRESSION_HINT: c->a.hint_compression = mode; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -867,6 +895,9 @@ static GLbitfield cap_group(int cap) {
     case SGL_POINT_SMOOTH: return GL_POINT_BIT;
     case SGL_SCISSOR_TEST: return GL_SCISSOR_BIT;
     case SGL_STENCIL_TEST: return GL_STENCIL_BUFFER_BIT;
+    case SGL_MULTISAMPLE: case SGL_SAMPLE_ALPHA_TO_COVERAGE: case SGL_SAMPLE_ALPHA_TO_ONE:
+    case SGL_SAMPLE_COVERAGE:
+      return GL_MULTISAMPLE_BIT;
     default: return GL_TEXTURE_BIT;
   }
 }
@@ -888,6 +919,7 @@ void APIENTRY sgl_PushAttrib(GLbitfield mask) {
     s->unit[i].bound_1d = c->tex_1d[i]->name;
     s->unit[i].bound_2d = c->tex_2d[i]->name;
     s->unit[i].bound_3d = c->tex_3d[i]->name;
+    s->unit[i].bound_cube = c->tex_cube[i]->name;
   }
 }
 
@@ -1003,6 +1035,9 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_HINT_BIT, hint_line);
   RESTORE(GL_HINT_BIT, hint_polygon);
   RESTORE(GL_HINT_BIT, hint_fog);
+  RESTORE(GL_HINT_BIT, hint_compression);
+  RESTORE(GL_MULTISAMPLE_BIT, sample_coverage);
+  RESTORE(GL_MULTISAMPLE_BIT, sample_invert);
   RESTORE_ARRAY(GL_SCISSOR_BIT, scissor);
   RESTORE(GL_EVAL_BIT, grid1_n);
   RESTORE(GL_EVAL_BIT, grid2_un);
@@ -1022,6 +1057,7 @@ void APIENTRY sgl_PopAttrib(void) {
       sgl_BindTexture(GL_TEXTURE_1D, s->unit[i].bound_1d);
       sgl_BindTexture(GL_TEXTURE_2D, s->unit[i].bound_2d);
       sgl_BindTexture(GL_TEXTURE_3D, s->unit[i].bound_3d);
+      sgl_BindTexture(GL_TEXTURE_CUBE_MAP, s->unit[i].bound_cube);
     }
     a->active_texture = active;
   }
@@ -1172,6 +1208,7 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_MAX_CLIP_PLANES: v[0] = SGL_MAX_CLIP_PLANES; return 1;
     case GL_MAX_TEXTURE_SIZE: v[0] = SGL_MAX_TEXTURE_SIZE; return 1;
     case GL_MAX_3D_TEXTURE_SIZE: v[0] = SGL_MAX_3D_TEXTURE_SIZE; return 1;
+    case GL_MAX_CUBE_MAP_TEXTURE_SIZE: v[0] = SGL_MAX_CUBE_MAP_SIZE; return 1;
     case GL_MAX_EVAL_ORDER: v[0] = SGL_MAX_EVAL_ORDER; return 1;
     case GL_MAX_PIXEL_MAP_TABLE: v[0] = 256; return 1;
     case GL_MAX_VIEWPORT_DIMS: v[0] = v[1] = 4096; return 2;
@@ -1260,11 +1297,25 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_TEXTURE_BINDING_1D: v[0] = c->tex_1d[u]->name; return 1;
     case GL_TEXTURE_BINDING_2D: v[0] = c->tex_2d[u]->name; return 1;
     case GL_TEXTURE_BINDING_3D: v[0] = c->tex_3d[u]->name; return 1;
+    case GL_TEXTURE_BINDING_CUBE_MAP: v[0] = c->tex_cube[u]->name; return 1;
     case GL_PERSPECTIVE_CORRECTION_HINT: v[0] = a->hint_perspective; *kind = Q_ENUM; return 1;
     case GL_POINT_SMOOTH_HINT: v[0] = a->hint_point; *kind = Q_ENUM; return 1;
     case GL_LINE_SMOOTH_HINT: v[0] = a->hint_line; *kind = Q_ENUM; return 1;
     case GL_POLYGON_SMOOTH_HINT: v[0] = a->hint_polygon; *kind = Q_ENUM; return 1;
     case GL_FOG_HINT: v[0] = a->hint_fog; *kind = Q_ENUM; return 1;
+    case GL_TEXTURE_COMPRESSION_HINT: v[0] = a->hint_compression; *kind = Q_ENUM; return 1;
+    case GL_SAMPLE_BUFFERS: v[0] = 0; return 1;
+    case GL_SAMPLES: v[0] = 0; return 1;
+    case GL_SAMPLE_COVERAGE_VALUE: v[0] = a->sample_coverage; *kind = Q_FLOAT; return 1;
+    case GL_SAMPLE_COVERAGE_INVERT: v[0] = a->sample_invert; *kind = Q_BOOL; return 1;
+    case GL_NUM_COMPRESSED_TEXTURE_FORMATS: v[0] = 4; return 1;
+    case GL_COMPRESSED_TEXTURE_FORMATS:
+      v[0] = GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+      v[1] = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+      v[2] = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
+      v[3] = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+      *kind = Q_ENUM;
+      return 4;
     case GL_LIST_BASE: v[0] = a->list_base; return 1;
     case GL_LIST_INDEX: v[0] = c->compiling ? c->compiling->name : 0; return 1;
     case GL_LIST_MODE: v[0] = c->compiling ? c->list_mode : 0; *kind = Q_ENUM; return 1;

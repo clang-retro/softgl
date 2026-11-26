@@ -94,6 +94,10 @@ typedef uint32_t sgl_depth_t;
 #define SGL_MAX_TEXTURE_LEVELS 11
 #define SGL_MAX_TEXTURE_SIZE 1024
 /* The largest 3D texture: 64 x 64 x 64 texels are 1 MB. */
+/* The largest face of a cube map: 6 faces of 256 x 256 texels are 1.5 MB. */
+#ifndef SGL_MAX_CUBE_MAP_SIZE
+#define SGL_MAX_CUBE_MAP_SIZE 256
+#endif
 #ifndef SGL_MAX_3D_TEXTURE_SIZE
 #define SGL_MAX_3D_TEXTURE_SIZE 64
 #endif
@@ -190,6 +194,8 @@ typedef struct sgl_level {
   int wlog, hlog, dlog;    /* log2 of the size, or -1 */
   GLenum internal;         /* the internal format that was asked for */
   GLenum base;             /* GL_RGBA, GL_RGB, GL_ALPHA, GL_LUMINANCE, ... */
+  uint8_t *compressed;     /* an S3TC level: the blocks as given, for glGetCompressedTexImage */
+  size_t compressed_size;
   GLint border;
 } sgl_level;
 
@@ -198,7 +204,9 @@ typedef struct sgl_texture {
   GLuint name;
   int refs;
   GLenum target;
-  sgl_level level[SGL_MAX_TEXTURE_LEVELS];
+  sgl_level level[SGL_MAX_TEXTURE_LEVELS]; /* a cube map: the face +X */
+  /* A cube map: the faces -X, +Y, -Y, +Z and -Z, or NULL. */
+  sgl_level (*faces)[SGL_MAX_TEXTURE_LEVELS];
   GLenum min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
   GLfloat border_color[4];
   GLint base_level, max_level; /* OpenGL 1.2: the levels that are used */
@@ -247,7 +255,7 @@ typedef struct sgl_map {
 /* The capabilities of each texture unit, in the order of their bits. */
 enum sgl_unit_cap {
   SGL_U_TEXTURE_1D, SGL_U_TEXTURE_2D, SGL_U_GEN_S, SGL_U_GEN_T, SGL_U_GEN_R, SGL_U_GEN_Q,
-  SGL_U_TEXTURE_3D, SGL_UNIT_CAP_COUNT
+  SGL_U_TEXTURE_3D, SGL_U_TEXTURE_CUBE_MAP, SGL_UNIT_CAP_COUNT
 };
 
 /* The bits of the enables, by capability. */
@@ -265,6 +273,7 @@ enum sgl_cap {
   SGL_MAP2_TEXTURE_COORD_1, SGL_MAP2_TEXTURE_COORD_2,
   SGL_MAP2_TEXTURE_COORD_3, SGL_MAP2_TEXTURE_COORD_4, SGL_MAP2_INDEX,
   SGL_INDEX_LOGIC_OP, SGL_RESCALE_NORMAL,
+  SGL_MULTISAMPLE, SGL_SAMPLE_ALPHA_TO_COVERAGE, SGL_SAMPLE_ALPHA_TO_ONE, SGL_SAMPLE_COVERAGE,
   SGL_LIGHT0, /* to SGL_LIGHT0 + 7 */
   SGL_CLIP_PLANE0 = SGL_LIGHT0 + SGL_MAX_LIGHTS, /* to + 5 */
   SGL_UNIT_CAPS = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES, /* the caps of the texture units */
@@ -282,7 +291,12 @@ typedef struct sgl_unit_attrib {
   GLfloat env_color[4];
   GLenum gen_mode[4];
   GLfloat gen_object[4][4], gen_eye[4][4];
-  GLuint bound_1d, bound_2d, bound_3d; /* the bound names, at glPushAttrib */
+  /* GL_COMBINE: the functions, the sources and the operands of the three
+   * arguments, and the scales (1, 2 or 4). */
+  GLenum combine_rgb, combine_alpha;
+  GLenum src_rgb[3], src_alpha[3], op_rgb[3], op_alpha[3];
+  GLfloat rgb_scale, alpha_scale;
+  GLuint bound_1d, bound_2d, bound_3d, bound_cube; /* the bound names, at glPushAttrib */
 } sgl_unit_attrib;
 
 /* The evaluator maps, in the order of the SGL_MAP1_ and SGL_MAP2_ caps. */
@@ -351,6 +365,11 @@ typedef struct sgl_attrib {
   int active_texture;      /* the unit of glActiveTexture, from 0 */
   /* GL_HINT_BIT */
   GLenum hint_perspective, hint_point, hint_line, hint_polygon, hint_fog;
+  GLenum hint_compression; /* GL_TEXTURE_COMPRESSION_HINT */
+  /* GL_MULTISAMPLE_BIT: there is no multisample buffer, so these have
+   * no effect. */
+  GLfloat sample_coverage;
+  GLboolean sample_invert;
   /* GL_SCISSOR_BIT */
   GLint scissor[4];
   /* GL_EVAL_BIT */
@@ -453,9 +472,9 @@ struct sgl_context {
   int call_depth;
 
   /* Textures. */
-  sgl_texture default_1d, default_2d, default_3d;
+  sgl_texture default_1d, default_2d, default_3d, default_cube;
   sgl_texture *tex_1d[SGL_MAX_TEXTURE_UNITS], *tex_2d[SGL_MAX_TEXTURE_UNITS];
-  sgl_texture *tex_3d[SGL_MAX_TEXTURE_UNITS];
+  sgl_texture *tex_3d[SGL_MAX_TEXTURE_UNITS], *tex_cube[SGL_MAX_TEXTURE_UNITS];
 
   /* Evaluators. */
   sgl_map map1[SGL_MAP_TYPES], map2[SGL_MAP_TYPES];
@@ -532,6 +551,7 @@ void sgl_texture_release(sgl_context *c);
 sgl_texture *sgl_unit_texture(sgl_context *c, int u);
 unsigned sgl_texture_units(const sgl_context *c);
 const sgl_level *sgl_base_level(const sgl_texture *t);
+sgl_level *sgl_face_levels(sgl_texture *t, int face);
 
 /* pixels.c */
 size_t sgl_image_bytes(const sgl_pixelstore *ps, int w, int h, GLenum format, GLenum type);
