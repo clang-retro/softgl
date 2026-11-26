@@ -14,6 +14,14 @@
  * padding. Display lists keep their images in this form. */
 const sgl_pixelstore sgl_tight_store = {GL_FALSE, GL_FALSE, 0, 0, 0, 1};
 
+/* Makes the stencil buffer on first use. Gives 0 when there is not
+ * sufficient memory. */
+int sgl_need_stencil(sgl_context *c) {
+  if (c->stencil) return 1;
+  c->stencil = (uint8_t *)calloc(c->depth_size ? c->depth_size : 1, 1);
+  return c->stencil != NULL;
+}
+
 /* Gives the number of components of a pixel format, or 0 for an
  * invalid one. */
 int sgl_format_components(GLenum format) {
@@ -855,7 +863,7 @@ void APIENTRY sgl_Clear(GLbitfield mask) {
       for (x = x0; x < x1; x++) row[x] = (sgl_depth_t)z;
     }
   }
-  if ((mask & GL_STENCIL_BUFFER_BIT) && c->stencil) {
+  if ((mask & GL_STENCIL_BUFFER_BIT) && sgl_need_stencil(c)) {
     for (y = y0; y < y1; y++) {
       uint8_t *row = c->stencil + (size_t)(c->height - 1 - y) * c->width;
       for (x = x0; x < x1; x++)
@@ -951,18 +959,11 @@ static void draw_rect(sgl_context *c, int kind, int w, int h, const uint8_t *rgb
   }
 }
 
-/* Makes the stencil buffer on first use. Gives 0 when there is not
- * sufficient memory. */
-static int need_stencil(sgl_context *c) {
-  if (c->stencil) return 1;
-  c->stencil = (uint8_t *)calloc(c->depth_size ? c->depth_size : 1, 1);
-  return c->stencil != NULL;
-}
 
-/* Unpacks a depth image into window z values of the rasterizer, with
- * the depth scale and bias. */
-static int unpack_depth(sgl_context *c, int w, int h, GLenum type, const void *pixels, int32_t *out) {
-  const sgl_pixelstore *ps = &c->c.unpack;
+/* Unpacks a depth image by the pixel store ps into values 0 to max,
+ * with the depth scale and bias. Gives 0 for an invalid type. */
+int sgl_unpack_depth(sgl_context *c, const sgl_pixelstore *ps, int w, int h, GLenum type,
+                     const void *pixels, uint32_t *out, uint32_t max) {
   int size = type_size(type), x, y;
   const uint8_t *base = (const uint8_t *)pixels;
   size_t rb;
@@ -974,7 +975,8 @@ static int unpack_depth(sgl_context *c, int w, int h, GLenum type, const void *p
     for (x = 0; x < w; x++) {
       GLfloat d = element(row, x, type, ps->swap_bytes);
       d = sgl_clamp01(d * c->a.depth_scale + c->a.depth_bias);
-      out[(size_t)y * w + x] = (int32_t)(d * (GLfloat)SGL_Z_MAX);
+      /* In double: a float of max can be more than max. */
+      out[(size_t)y * w + x] = (uint32_t)((double)d * (double)max);
     }
   }
   return 1;
@@ -1023,7 +1025,7 @@ void APIENTRY sgl_DrawPixels(GLsizei w, GLsizei h, GLenum format, GLenum type, c
   } else if (format == GL_STENCIL_INDEX) {
     int32_t *v = (int32_t *)malloc(n * sizeof(int32_t));
     size_t i;
-    if (!v || !need_stencil(c)) {
+    if (!v || !sgl_need_stencil(c)) {
       free(v);
       sgl_error(GL_OUT_OF_MEMORY);
       return;
@@ -1038,7 +1040,7 @@ void APIENTRY sgl_DrawPixels(GLsizei w, GLsizei h, GLenum format, GLenum type, c
       sgl_error(GL_OUT_OF_MEMORY);
       return;
     }
-    if (unpack_depth(c, w, h, type, pixels, v)) draw_rect(c, RECT_DEPTH, w, h, NULL, v);
+    if (sgl_unpack_depth(c, &c->c.unpack, w, h, type, pixels, (uint32_t *)v, SGL_Z_MAX)) draw_rect(c, RECT_DEPTH, w, h, NULL, v);
     free(v);
   } else {
     uint8_t *px = (uint8_t *)malloc(n * 4);
@@ -1084,7 +1086,7 @@ static void read_stencil(sgl_context *c, int x, int y, int w, int h, int32_t *ou
 /* Reads w x h values of the depth buffer at x, y as window z values of
  * the rasterizer, rows bottom first. Values outside the buffer are the
  * far plane. */
-static void read_depth(sgl_context *c, int x, int y, int w, int h, int32_t *out) {
+void sgl_read_depth(sgl_context *c, int x, int y, int w, int h, int32_t *out) {
   int i, j;
   for (j = 0; j < h; j++)
     for (i = 0; i < w; i++) {
@@ -1120,7 +1122,7 @@ void APIENTRY sgl_ReadPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum form
       sgl_error(GL_OUT_OF_MEMORY);
       return;
     }
-    read_depth(c, x, y, w, h, d);
+    sgl_read_depth(c, x, y, w, h, d);
     for (i = 0; i < n; i++) {
       GLfloat v = sgl_clamp01((GLfloat)(uint32_t)d[i] / (GLfloat)SGL_Z_MAX * c->a.depth_scale +
                               c->a.depth_bias);
@@ -1193,7 +1195,7 @@ void APIENTRY sgl_CopyPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum type
     return;
   }
   if (type == GL_DEPTH) {
-    read_depth(c, x, y, w, h, v);
+    sgl_read_depth(c, x, y, w, h, v);
     for (i = 0; i < n; i++) {
       GLfloat d = sgl_clamp01((GLfloat)(uint32_t)v[i] / (GLfloat)SGL_Z_MAX * c->a.depth_scale +
                               c->a.depth_bias);
@@ -1201,7 +1203,7 @@ void APIENTRY sgl_CopyPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum type
     }
     draw_rect(c, RECT_DEPTH, w, h, NULL, v);
   } else if (type == GL_STENCIL) {
-    if (need_stencil(c)) {
+    if (sgl_need_stencil(c)) {
       read_stencil(c, x, y, w, h, v);
       for (i = 0; i < n; i++) v[i] = shift_index(c, v[i], c->a.map_stencil, MAP_S_TO_S);
       draw_rect(c, RECT_STENCIL, w, h, NULL, v);

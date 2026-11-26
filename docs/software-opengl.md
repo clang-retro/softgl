@@ -28,11 +28,11 @@ To remove the generic implementation, compile with
 
 ## What the renderer does
 
-The renderer gives all of OpenGL 1.3 (without the optional imaging
+The renderer gives all of OpenGL 1.4 (without the optional imaging
 subset of OpenGL 1.2). It exports the OpenGL 1.1 functions,
 as `opengl32.dll` of Windows NT 4.0 exports them:
 
-- `glGetString(GL_VERSION)` gives `1.3.0`.
+- `glGetString(GL_VERSION)` gives `1.4.0`.
   `glGetString(GL_RENDERER)` gives `clang-retro Generic`.
 - These extensions are available. `wglGetProcAddress` gives their
   functions:
@@ -64,10 +64,26 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
   - `GL_ARB_texture_compression` and `GL_EXT_texture_compression_s3tc`
     (`glCompressedTexImage2DARB` and the related functions)
   - `GL_ARB_multisample` (`glSampleCoverageARB`)
+  - `GL_EXT_blend_color`, `GL_EXT_blend_minmax`,
+    `GL_EXT_blend_subtract`, `GL_EXT_blend_func_separate` and
+    `GL_NV_blend_square` (`glBlendColorEXT`, `glBlendEquationEXT` and
+    `glBlendFuncSeparateEXT`)
+  - `GL_EXT_stencil_wrap` and `GL_EXT_texture_lod_bias`
+  - `GL_SGIS_generate_mipmap`
+  - `GL_ARB_depth_texture` and `GL_ARB_shadow`
+  - `GL_ARB_window_pos` (`glWindowPos*ARB`)
+  - `GL_EXT_multi_draw_arrays` (`glMultiDrawArraysEXT` and
+    `glMultiDrawElementsEXT`)
+  - `GL_ARB_point_parameters` and `GL_EXT_point_parameters`
+    (`glPointParameterfARB` and the related functions)
+  - `GL_EXT_secondary_color` (`glSecondaryColor3*EXT` and
+    `glSecondaryColorPointerEXT`)
+  - `GL_EXT_fog_coord` (`glFogCoord*EXT` and `glFogCoordPointerEXT`)
 - `wglGetProcAddress` also gives the functions of these extensions by
-  their OpenGL 1.2 and 1.3 names, without the `ARB` or `EXT` suffix
-  (for example `glActiveTexture`, `glDrawRangeElements`,
-  `glTexImage3D` and `glCompressedTexImage2D`).
+  their OpenGL 1.2, 1.3 and 1.4 names, without the `ARB` or `EXT`
+  suffix (for example `glActiveTexture`, `glDrawRangeElements`,
+  `glTexImage3D`, `glCompressedTexImage2D`, `glBlendFuncSeparate` and
+  `glWindowPos2i`).
 - Vertices: immediate mode, vertex arrays, display lists, evaluators
   (`glMap1`, `glMap2`, `glEvalMesh`) and rectangles.
 - Transformation: the modelview and projection matrix stacks, one
@@ -80,9 +96,11 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
 - Rasterization: points, lines (width and stipple), polygons (fill,
   line and point modes, polygon stipple, culling, polygon offset), flat
   and smooth shading.
-- Textures: 1D, 2D, 3D and cube maps, mipmaps, nearest and linear filters, the wrap
-  modes (repeat, clamp, clamp to edge, clamp to border and mirrored
-  repeat), the LOD limits, the base and maximum levels, texture
+- Textures: 1D, 2D, 3D and cube maps, depth textures, mipmaps (also
+  generated: `GL_GENERATE_MIPMAP`), nearest and linear filters, the
+  wrap modes (repeat, clamp, clamp to edge, clamp to border and
+  mirrored repeat), the LOD limits and the LOD bias (of the texture
+  and of the unit), the base and maximum levels, texture
   objects, the texture environments (`GL_MODULATE`, `GL_DECAL`,
   `GL_BLEND`, `GL_REPLACE`, `GL_ADD` and `GL_COMBINE`) and perspective
   correction.
@@ -99,12 +117,33 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
   `GL_SAMPLE_BUFFERS` is 0, and the state has no effect.
 - Separate specular color (`GL_LIGHT_MODEL_COLOR_CONTROL`): the
   renderer adds the specular color after the texture.
+- Secondary color (OpenGL 1.4): without lighting, `GL_COLOR_SUM` adds
+  the current secondary color (`glSecondaryColor3f` or the secondary
+  color array) after the texture.
+- Fog coordinate (OpenGL 1.4): with `GL_FOG_COORDINATE_SOURCE` set to
+  `GL_FOG_COORDINATE`, the fog uses the current fog coordinate
+  (`glFogCoordf` or the fog coordinate array) in place of the eye
+  distance.
+- Points: the size, and the point parameters of OpenGL 1.4 (the
+  distance attenuation and the minimum and maximum size). The fade
+  threshold applies to multisample rasterization only, thus it has no
+  effect.
+- `glWindowPos` (OpenGL 1.4) sets the raster position in window
+  coordinates. `glMultiDrawArrays` and `glMultiDrawElements` draw
+  some ranges of the arrays in one call.
 - Normals: `GL_NORMALIZE` and `GL_RESCALE_NORMAL`.
 - Multitexture: 2 texture units (see below). Each unit has its own
   enables, binding, environment, coordinate generation, texture
   matrix, current coordinates and coordinate array.
-- Per-fragment operations: fog, scissor, alpha test, stencil, depth
-  test, blending, the logical operation (`glLogicOp`) and color mask.
+- Per-fragment operations: fog, scissor, alpha test, stencil (with
+  `GL_INCR_WRAP` and `GL_DECR_WRAP`), depth test, blending, the
+  logical operation (`glLogicOp`) and color mask.
+- Blending of OpenGL 1.4: separate factors for RGB and for alpha
+  (`glBlendFuncSeparate`), the constant color (`glBlendColor`), the
+  equations `GL_FUNC_ADD`, `GL_FUNC_SUBTRACT`,
+  `GL_FUNC_REVERSE_SUBTRACT`, `GL_MIN` and `GL_MAX`
+  (`glBlendEquation`), `GL_SRC_COLOR` as a source factor and
+  `GL_DST_COLOR` as a destination factor.
 - Pixels: the packed pixel types of OpenGL 1.2, with `GL_BGR` and
   `GL_BGRA`. `glDrawPixels`, `glReadPixels`, `glCopyPixels`, `glBitmap`,
   the pixel store and zoom. Color, color index, stencil and depth
@@ -168,6 +207,33 @@ their fast path.
 
 `GL_CLAMP` operates as `GL_CLAMP_TO_EDGE`: the renderer does not keep
 the border texels. Use `GL_CLAMP_TO_BORDER` to get the border color.
+
+### Depth textures and shadows
+
+A texture with a depth format (`GL_DEPTH_COMPONENT`,
+`GL_DEPTH_COMPONENT16`, `GL_DEPTH_COMPONENT24` or
+`GL_DEPTH_COMPONENT32`) is 1D or 2D. Each texel keeps the depth in 30
+bits. `glCopyTexImage2D` and `glCopyTexSubImage2D` copy the depth
+buffer into a depth texture. `GL_TEXTURE_DEPTH_SIZE` gives 24.
+
+With `GL_TEXTURE_COMPARE_MODE` set to `GL_COMPARE_R_TO_TEXTURE`, the
+renderer compares the r coordinate with the depth of the texel by
+`GL_TEXTURE_COMPARE_FUNC`. The result is 0 or 1. `GL_DEPTH_TEXTURE_MODE`
+makes the result (or the depth, without the comparison) a luminance,
+an intensity or an alpha. The linear filter mixes the results of the
+four nearest texels: the edge of a shadow is soft.
+
+The comparison needs the r coordinate for each pixel. Thus a shadow
+texture takes approximately the time of a 3D texture with the nearest
+filter.
+
+### Generated mipmaps
+
+With `GL_GENERATE_MIPMAP` on, a change of the base level (by
+`glTexImage`, `glTexSubImage` or `glCopyTexImage`) makes all the
+levels after it again. Each texel is the mean of the 2, 4 or 8 texels
+of the level before it. This occurs when the image changes, not when
+the renderer draws.
 
 ### Color index mode
 
@@ -324,6 +390,13 @@ values that OpenGL gives back:
   (the functions, the scale, `GL_DOT3_RGB` and a source of an other
   unit), the S3TC formats and the multisample state. The output is
   `PASS softgl gl13`.
+- `tests/gl14.c`: the blend factors, the constant color and the
+  equations, the stencil wrap, the LOD bias, the generated mipmaps,
+  `glWindowPos`, `glMultiDrawArrays`, the point parameters, the
+  secondary color (immediate mode, array and display list), the fog
+  coordinate, the depth textures (from pixels and from the depth
+  buffer) and the shadow comparison. The output is
+  `PASS softgl gl14`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
 Atari TOS (68000) with the clang-retro toolchain.
@@ -346,6 +419,8 @@ In clang-retro MFC:
 - There is no multisample buffer. Thus multisample antialiasing has
   no effect.
 - There is no compressed format for 1D and 3D textures.
+- A depth texture is 1D or 2D: a 3D texture or a cube map with a depth
+  format is not permitted, as in OpenGL 1.4.
 - Pixel rectangles (`glDrawPixels`, `glBitmap`) are not textured.
 - The pixel format tells 32 depth bits. On the 68k, the depth buffer
   has 16 bits (`glGetIntegerv(GL_DEPTH_BITS)` gives 16).

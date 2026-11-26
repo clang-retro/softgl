@@ -403,9 +403,12 @@ static void tex_coords(sgl_context *c, int u, const GLfloat obj[4], const GLfloa
   }
 }
 
-/* Gives the fog factor at eye position eye: 1 is no fog. */
+/* Gives the fog factor at eye position eye: 1 is no fog. The distance
+ * is the eye z, or the current fog coordinate when GL_FOG_COORDINATE_SOURCE
+ * is GL_FOG_COORDINATE (OpenGL 1.4). */
 static GLfloat fog_factor(const sgl_context *c, const GLfloat eye[4]) {
-  GLfloat z = eye[2] < 0.0f ? -eye[2] : eye[2], f;
+  GLfloat z = c->a.fog_source == GL_FOG_COORDINATE ? c->a.fog_coord : eye[2], f;
+  if (z < 0.0f) z = -z;
   switch (c->a.fog_mode) {
     case GL_LINEAR:
       if (c->a.fog_end == c->a.fog_start) return 1.0f;
@@ -478,6 +481,11 @@ void sgl_transform_vertex(sgl_context *c, const GLfloat obj[4], sgl_vertex *v) {
     }
   } else {
     memcpy(v->color[0], c->a.color, sizeof v->color[0]);
+    if (c->sec_on) {
+      /* GL_COLOR_SUM without lighting: the current secondary color. */
+      memcpy(v->spec[0], c->a.color2, sizeof v->spec[0]);
+      memcpy(v->spec[1], c->a.color2, sizeof v->spec[1]);
+    }
   }
   if (c->tex_coords) {
     unsigned m = c->tex_coords;
@@ -746,12 +754,17 @@ void APIENTRY sgl_Begin(GLenum mode) {
   }
   sgl_update_matrices(c);
   c->lit = c->a.enabled[SGL_LIGHTING];
-  c->sec_on = c->lit && !c->index_mode && c->a.color_control == GL_SEPARATE_SPECULAR_COLOR;
+  /* The secondary color: of the lighting with GL_SEPARATE_SPECULAR_COLOR,
+   * or the current one with GL_COLOR_SUM and no lighting. */
+  c->sec_on = !c->index_mode && (c->lit ? c->a.color_control == GL_SEPARATE_SPECULAR_COLOR
+                                         : c->a.enabled[SGL_COLOR_SUM]);
+  c->point_atten = c->a.point_atten[0] != 1.0f || c->a.point_atten[1] != 0.0f ||
+                   c->a.point_atten[2] != 0.0f;
   c->clip_user = 0;
   for (i = 0; i < SGL_MAX_CLIP_PLANES; i++)
     if (c->a.enabled[SGL_CLIP_PLANE0 + i]) c->clip_user |= 1u << i;
   c->need_normal = 0;
-  c->need_eye = c->lit || c->a.enabled[SGL_FOG] || c->clip_user;
+  c->need_eye = c->lit || c->a.enabled[SGL_FOG] || c->clip_user || c->point_atten;
   /* The units with a texture on need texture coordinates; feedback
    * needs those of unit 0. */
   c->tex_units = sgl_texture_units(c);
@@ -927,6 +940,17 @@ void APIENTRY sgl_Color4f(GLfloat r, GLfloat g, GLfloat b, GLfloat a) {
   if (c->a.enabled[SGL_COLOR_MATERIAL]) color_material(c);
 }
 
+/* glSecondaryColor3f (OpenGL 1.4): sets the current secondary color. */
+void APIENTRY sgl_SecondaryColor3f(GLfloat r, GLfloat g, GLfloat b) {
+  GLfloat *v = sgl_ctx->a.color2;
+  v[0] = r;
+  v[1] = g;
+  v[2] = b;
+}
+
+/* glFogCoordf (OpenGL 1.4): sets the current fog coordinate. */
+void APIENTRY sgl_FogCoordf(GLfloat coord) { sgl_ctx->a.fog_coord = coord; }
+
 /* glNormal3f: sets the current normal. */
 void APIENTRY sgl_Normal3f(GLfloat x, GLfloat y, GLfloat z) {
   GLfloat *n = sgl_ctx->a.normal;
@@ -991,6 +1015,29 @@ void APIENTRY sgl_RasterPos4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
     memcpy(c->a.raster_color, v.color[0], sizeof c->a.raster_color);
   memcpy(c->a.raster_tex, c->a.tex, sizeof c->a.raster_tex);
   c->a.raster_distance = sqrtf(v.eye[0] * v.eye[0] + v.eye[1] * v.eye[1] + v.eye[2] * v.eye[2]);
+}
+
+/* glWindowPos3f (OpenGL 1.4): sets the raster position in window
+ * coordinates, without the transformation, the lighting and the
+ * clipping. z is mapped by the depth range. */
+void APIENTRY sgl_WindowPos3f(GLfloat x, GLfloat y, GLfloat z) {
+  sgl_context *c = sgl_ctx;
+  GLfloat n = (GLfloat)c->a.depth_near, f = (GLfloat)c->a.depth_far;
+  if (c->prim != SGL_NO_PRIM) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  c->a.raster_valid = GL_TRUE;
+  c->a.raster_pos[0] = x;
+  c->a.raster_pos[1] = y;
+  c->a.raster_pos[2] = n + sgl_clamp01(z) * (f - n);
+  c->a.raster_pos[3] = 1.0f;
+  if (c->index_mode)
+    c->a.raster_index = c->a.index;
+  else
+    memcpy(c->a.raster_color, c->a.color, sizeof c->a.raster_color);
+  memcpy(c->a.raster_tex, c->a.tex, sizeof c->a.raster_tex);
+  c->a.raster_distance = c->a.fog_source == GL_FOG_COORDINATE ? c->a.fog_coord : 0.0f;
 }
 
 /* Gives the sides (bit 0 front, bit 1 back) of a face of glMaterial,
@@ -1144,7 +1191,7 @@ void APIENTRY sgl_LightModelfv(GLenum pname, const GLfloat *params) {
     case GL_LIGHT_MODEL_LOCAL_VIEWER: c->a.local_viewer = params[0] != 0.0f; break;
     case GL_LIGHT_MODEL_TWO_SIDE: c->a.two_side = params[0] != 0.0f; break;
     case GL_LIGHT_MODEL_COLOR_CONTROL: {
-      GLenum v = (GLenum)params[0];
+      GLenum v = sgl_enum(params[0]);
       if (v != GL_SINGLE_COLOR && v != GL_SEPARATE_SPECULAR_COLOR) {
         sgl_error(GL_INVALID_ENUM);
         return;
@@ -1173,7 +1220,7 @@ void APIENTRY sgl_ColorMaterial(GLenum face, GLenum mode) {
 void APIENTRY sgl_Fogfv(GLenum pname, const GLfloat *params) {
   sgl_context *c = sgl_ctx;
   switch (pname) {
-    case GL_FOG_MODE: c->a.fog_mode = (GLenum)params[0]; break;
+    case GL_FOG_MODE: c->a.fog_mode = sgl_enum(params[0]); break;
     case GL_FOG_DENSITY: c->a.fog_density = params[0]; break;
     case GL_FOG_START: c->a.fog_start = params[0]; break;
     case GL_FOG_END: c->a.fog_end = params[0]; break;
@@ -1183,6 +1230,15 @@ void APIENTRY sgl_Fogfv(GLenum pname, const GLfloat *params) {
       break;
     }
     case GL_FOG_INDEX: c->a.fog_index = params[0]; break;
+    case GL_FOG_COORDINATE_SOURCE: {
+      GLenum v = sgl_enum(params[0]);
+      if (v != GL_FOG_COORDINATE && v != GL_FRAGMENT_DEPTH) {
+        sgl_error(GL_INVALID_ENUM);
+        break;
+      }
+      c->a.fog_source = v;
+      break;
+    }
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }

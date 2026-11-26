@@ -47,6 +47,11 @@ GL_H = os.path.join(ROOT, "include", "GL", "gl.h")
 OUT_H = os.path.join(ROOT, "src", "dispatch.h")
 OUT_C = os.path.join(ROOT, "src", "dispatch.c")
 
+# The C types of the suffixes of the families.
+SUFFIX_TYPE = {"b": "GLbyte", "s": "GLshort", "i": "GLint", "f": "GLfloat",
+               "d": "GLdouble", "ub": "GLubyte", "us": "GLushort",
+               "ui": "GLuint"}
+
 # The extensions of the generic implementation of Windows, which
 # wglGetProcAddress gives. Each is (return type, name, parameters).
 EXTENSIONS = [
@@ -83,6 +88,31 @@ def multitexcoord():
     return out
 
 
+def secondarycolor():
+    """Give the glSecondaryColor3 family of OpenGL 1.4, in the form of
+    EXTENSIONS."""
+    out = []
+    for t in ("b", "s", "i", "f", "d", "ub", "us", "ui"):
+        typ = SUFFIX_TYPE[t]
+        out.append(("void", "SecondaryColor3%s" % t, "%s red, %s green, %s blue" % (typ, typ, typ)))
+        out.append(("void", "SecondaryColor3%sv" % t, "const %s *v" % typ))
+    return out
+
+
+def windowpos():
+    """Give the glWindowPos family of OpenGL 1.4, in the form of
+    EXTENSIONS."""
+    out = []
+    types = {"s": "GLshort", "i": "GLint", "f": "GLfloat", "d": "GLdouble"}
+    for n in (2, 3):
+        for t in "sifd":
+            names = ["x", "y", "z"][:n]
+            out.append(("void", "WindowPos%d%s" % (n, t),
+                        ", ".join("%s %s" % (types[t], x) for x in names)))
+            out.append(("void", "WindowPos%d%sv" % (n, t), "const %s *v" % types[t]))
+    return out
+
+
 # The functions of OpenGL 1.2 to 1.5 that the renderer has. On Windows,
 # opengl32.dll does not export them: wglGetProcAddress gives them.
 EXTENSIONS += [
@@ -105,7 +135,24 @@ EXTENSIONS += [
     ("void", "LoadTransposeMatrixd", "const GLdouble *m"),
     ("void", "MultTransposeMatrixf", "const GLfloat *m"),
     ("void", "MultTransposeMatrixd", "const GLdouble *m"),
-]
+] + [
+    ("void", "BlendFuncSeparate", "GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha"),
+    ("void", "BlendColor", "GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha"),
+    ("void", "BlendEquation", "GLenum mode"),
+    ("void", "FogCoordf", "GLfloat coord"),
+    ("void", "FogCoordfv", "const GLfloat *coord"),
+    ("void", "FogCoordd", "GLdouble coord"),
+    ("void", "FogCoorddv", "const GLdouble *coord"),
+    ("void", "FogCoordPointer", "GLenum type, GLsizei stride, const void *pointer"),
+    ("void", "MultiDrawArrays", "GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount"),
+    ("void", "MultiDrawElements", "GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount"),
+    ("void", "PointParameterf", "GLenum pname, GLfloat param"),
+    ("void", "PointParameterfv", "GLenum pname, const GLfloat *params"),
+    ("void", "PointParameteri", "GLenum pname, GLint param"),
+    ("void", "PointParameteriv", "GLenum pname, const GLint *params"),
+] + secondarycolor() + [
+    ("void", "SecondaryColorPointer", "GLint size, GLenum type, GLsizei stride, const void *pointer"),
+] + windowpos()
 
 # Other names of the functions: the names of the ARB and EXT extensions
 # that became part of OpenGL. Each is exported and given by
@@ -118,7 +165,14 @@ ALIASES = dict(
                                 "MultTransposeMatrixf", "MultTransposeMatrixd", "SampleCoverage",
                                 "CompressedTexImage1D", "CompressedTexImage2D", "CompressedTexImage3D",
                                 "CompressedTexSubImage1D", "CompressedTexSubImage2D",
-                                "CompressedTexSubImage3D", "GetCompressedTexImage")])
+                                "CompressedTexSubImage3D", "GetCompressedTexImage",
+                                "PointParameterf", "PointParameterfv")]
+    + [(n + "EXT", n) for n in ("BlendFuncSeparate", "BlendColor", "BlendEquation", "FogCoordf",
+                                "FogCoordfv", "FogCoordd", "FogCoorddv", "FogCoordPointer",
+                                "MultiDrawArrays", "MultiDrawElements", "PointParameterf",
+                                "PointParameterfv", "SecondaryColorPointer")]
+    + [(name + "EXT", name) for _, name, _ in secondarycolor()]
+    + [(name + "ARB", name) for _, name, _ in windowpos()])
 
 # Functions that the specification does not put in display lists: they
 # run at once, also while a list is compiled.
@@ -133,13 +187,14 @@ GetColorTableEXT GetColorTableParameterivEXT GetColorTableParameterfvEXT
 ColorPointerEXT EdgeFlagPointerEXT GetPointervEXT IndexPointerEXT
 NormalPointerEXT TexCoordPointerEXT VertexPointerEXT GetCompressedTexImage
 CompressedTexImage1D CompressedTexImage3D CompressedTexSubImage1D CompressedTexSubImage3D
+FogCoordPointer SecondaryColorPointer
 """.split())
 
 # Functions that call the canonical functions through the current table.
 # They are hand-written and the same in both tables.
 THROUGH = set("""
 DrawArrays DrawElements DrawRangeElements ArrayElement ArrayElementEXT DrawArraysEXT
-Map1d Map2d PixelMapuiv PixelMapusv
+Map1d Map2d PixelMapuiv PixelMapusv MultiDrawArrays MultiDrawElements
 """.split())
 
 # Canonical functions whose save function is hand-written (save_NAME in
@@ -163,6 +218,7 @@ POINTER_COUNTS = {
     ("TexEnvfv", "params"): "sgl_pname_count(pname)",
     ("TexGenfv", "params"): "sgl_pname_count(pname)",
     ("Fogfv", "params"): "sgl_pname_count(pname)",
+    ("PointParameterfv", "params"): "sgl_pname_count(pname)",
     ("LoadMatrixf", "m"): "16",
     ("MultMatrixf", "m"): "16",
     ("LoadTransposeMatrixf", "m"): "16",
@@ -176,9 +232,6 @@ POINTER_COUNTS = {
 # when a color or a normal is normalized.
 INT_MAX = {"b": "127.0f", "s": "32767.0f", "i": "2147483647.0f",
            "ub": "255.0f", "us": "65535.0f", "ui": "4294967295.0f"}
-SUFFIX_TYPE = {"b": "GLbyte", "s": "GLshort", "i": "GLint", "f": "GLfloat",
-               "d": "GLdouble", "ub": "GLubyte", "us": "GLushort",
-               "ui": "GLuint"}
 
 
 def parse_header():
@@ -281,6 +334,33 @@ def converter(name, params):
         if n == 3:
             vals.append("1.0f")
         return "SGL_DISPATCH->Color4f(%s);" % ", ".join(vals)
+    m = re.match(r"^SecondaryColor3(b|s|i|f|d|ub|us|ui)(v?)$", name)
+    if m:
+        t, v = m.group(1), m.group(2)
+        if name == "SecondaryColor3f":
+            return None
+        if v:
+            vals = [scalar(t, "v[%d]" % i, True) for i in range(3)]
+        else:
+            vals = [scalar(t, ps[i][1], True) for i in range(3)]
+        return "SGL_DISPATCH->SecondaryColor3f(%s);" % ", ".join(vals)
+    m = re.match(r"^WindowPos([23])(s|i|f|d)(v?)$", name)
+    if m:
+        n, t, v = int(m.group(1)), m.group(2), m.group(3)
+        if name == "WindowPos3f":
+            return None
+        if v:
+            vals = [scalar(t, "v[%d]" % i, False) for i in range(n)]
+        else:
+            vals = [scalar(t, ps[i][1], False) for i in range(n)]
+        vals += ["0.0f"][: 3 - n]
+        return "SGL_DISPATCH->WindowPos3f(%s);" % ", ".join(vals)
+    m = re.match(r"^FogCoord(f|d)(v?)$", name)
+    if m:
+        t, v = m.group(1), m.group(2)
+        if name == "FogCoordf":
+            return None
+        return "SGL_DISPATCH->FogCoordf(%s);" % scalar(t, "coord[0]" if v else "coord", False)
     m = re.match(r"^Normal3(b|s|i|f|d)(v?)$", name)
     if m:
         t, v = m.group(1), m.group(2)
@@ -324,7 +404,7 @@ def converter(name, params):
         return "SGL_DISPATCH->EdgeFlag(flag[0]);"
     # The parameter families: a scalar or a vector of float, int or
     # double, to the float vector form.
-    m = re.match(r"^(Light|Material|LightModel|TexParameter|TexEnv|TexGen|Fog)(d|f|i)(v?)$", name)
+    m = re.match(r"^(Light|Material|LightModel|TexParameter|TexEnv|TexGen|Fog|PointParameter)(d|f|i)(v?)$", name)
     if m:
         base, t, v = m.group(1), m.group(2), m.group(3)
         target = base + "fv"

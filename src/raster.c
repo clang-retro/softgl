@@ -31,8 +31,12 @@ static int wrap_of(GLenum mode) {
   }
 }
 
+/* The kinds of fetch of a texture unit. */
+enum { FETCH_PLAIN, FETCH_3D, FETCH_CUBE, FETCH_DEPTH };
+
 /* The state of one texture unit for one primitive. */
 typedef struct tunit {
+  int kind;                     /* a FETCH_ value */
   const uint32_t *texels;
   int tw, th, wmask, hmask, wlog;
   int hlog, dmask;              /* a 3D texture: images of 1 << (wlog + hlog) texels */
@@ -45,6 +49,12 @@ typedef struct tunit {
   int three_d;                  /* a 3D texture: r selects the image */
   int cube;                     /* a cube map: s, t and r select the face and the texel */
   const uint32_t *face[6];      /* a cube map: the texels of each face */
+  /* A depth texture (OpenGL 1.4): the texels are depths of
+   * SGL_TEX_DEPTH_MAX. cmp is the function of GL_TEXTURE_COMPARE_FUNC
+   * when the compare mode is GL_COMPARE_R_TO_TEXTURE, or 0. */
+  int depth;
+  GLenum cmp;
+  uint32_t border_depth;
   /* GL_COMBINE: the functions, the sources (SRC_ values or the index of
    * a texture of the frag) and the operands of the arguments, and the
    * scales as shifts. */
@@ -65,7 +75,9 @@ typedef struct frag {
   int depth_test, depth_write;
   GLenum depth_func;
   int blend;
-  GLenum bsrc, bdst;
+  GLenum bsrc, bdst, bsrc_a, bdst_a; /* the factors of RGB and of alpha */
+  GLenum beq;                   /* the blend equation */
+  int bc[4];                    /* the constant color of blending, 0 to 255 */
   int alpha_test;
   GLenum afunc;
   int aref;
@@ -100,10 +112,16 @@ static void setup_texture(frag *f, int k, int u, const sgl_texture *t, GLfloat r
   const sgl_level *lv;
   int base = t->base_level, level = base, linear, i;
   GLenum filter;
-  /* lambda = log2(rho), in the limits of GL_TEXTURE_MIN_LOD and
-   * GL_TEXTURE_MAX_LOD. The logarithm is only needed when the texture
-   * is minified. */
-  GLfloat lambda = rho <= 1.0f ? 0.0f : logf(rho) * 1.442695f;
+  /* lambda = log2(rho) + the bias of the texture and of the unit, in
+   * the limits of GL_TEXTURE_MIN_LOD and GL_TEXTURE_MAX_LOD. Without a
+   * bias, the logarithm is only needed when the texture is minified. */
+  GLfloat bias = t->lod_bias + ua->lod_bias, lambda;
+  if (bias > SGL_MAX_LOD_BIAS) bias = SGL_MAX_LOD_BIAS;
+  if (bias < -SGL_MAX_LOD_BIAS) bias = -SGL_MAX_LOD_BIAS;
+  if (bias == 0.0f)
+    lambda = rho <= 1.0f ? 0.0f : logf(rho) * 1.442695f;
+  else
+    lambda = (rho > 0.0f ? logf(rho) * 1.442695f : -2.0f * SGL_MAX_LOD_BIAS) + bias;
   if (lambda < t->min_lod) lambda = t->min_lod;
   if (lambda > t->max_lod) lambda = t->max_lod;
   if (lambda <= 0.0f) {
@@ -151,6 +169,16 @@ static void setup_texture(frag *f, int k, int u, const sgl_texture *t, GLfloat r
   x->env = ua->env_mode;
   x->base = lv->base;
   x->one_d = t->target == GL_TEXTURE_1D;
+  x->depth = lv->base == GL_DEPTH_COMPONENT;
+  x->cmp = 0;
+  if (x->depth) {
+    /* The texel of a depth texture is a luminance, an intensity or an
+     * alpha (GL_DEPTH_TEXTURE_MODE). */
+    x->base = t->depth_mode;
+    if (t->compare_mode == GL_COMPARE_R_TO_TEXTURE) x->cmp = t->compare_func;
+    x->border_depth = (uint32_t)(sgl_clamp01(t->border_color[0]) * (GLfloat)SGL_TEX_DEPTH_MAX);
+  }
+  x->kind = x->three_d ? FETCH_3D : x->cube ? FETCH_CUBE : x->depth ? FETCH_DEPTH : FETCH_PLAIN;
   x->envc[0] = (int)(ua->env_color[0] * 255.0f + 0.5f);
   x->envc[1] = (int)(ua->env_color[1] * 255.0f + 0.5f);
   x->envc[2] = (int)(ua->env_color[2] * 255.0f + 0.5f);
@@ -218,9 +246,19 @@ static void setup_frag(frag *f, sgl_context *c) {
   f->depth_test = a->enabled[SGL_DEPTH_TEST];
   f->depth_write = f->depth_test && a->depth_mask;
   f->depth_func = a->depth_func;
-  f->blend = a->enabled[SGL_BLEND] && !(a->blend_src == GL_ONE && a->blend_dst == GL_ZERO);
+  /* Blending that gives the source is off. */
+  f->blend = a->enabled[SGL_BLEND] &&
+             !(a->blend_eq == GL_FUNC_ADD && a->blend_src == GL_ONE && a->blend_dst == GL_ZERO &&
+               a->blend_src_alpha == GL_ONE && a->blend_dst_alpha == GL_ZERO);
   f->bsrc = a->blend_src;
   f->bdst = a->blend_dst;
+  f->bsrc_a = a->blend_src_alpha;
+  f->bdst_a = a->blend_dst_alpha;
+  f->beq = a->blend_eq;
+  f->bc[0] = (int)(a->blend_color[0] * 255.0f + 0.5f);
+  f->bc[1] = (int)(a->blend_color[1] * 255.0f + 0.5f);
+  f->bc[2] = (int)(a->blend_color[2] * 255.0f + 0.5f);
+  f->bc[3] = (int)(a->blend_color[3] * 255.0f + 0.5f);
   f->alpha_test = a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS;
   f->afunc = a->alpha_func;
   f->aref = (int)(a->alpha_ref * 255.0f + 0.5f);
@@ -228,7 +266,9 @@ static void setup_frag(frag *f, sgl_context *c) {
   f->fogc[0] = (int)(a->fog_color[0] * 255.0f + 0.5f);
   f->fogc[1] = (int)(a->fog_color[1] * 255.0f + 0.5f);
   f->fogc[2] = (int)(a->fog_color[2] * 255.0f + 0.5f);
-  f->stencil = a->enabled[SGL_STENCIL_TEST];
+  /* The stencil buffer is made on first use: when the test is on before
+   * a glClear of the stencil buffer, it is all 0. */
+  f->stencil = a->enabled[SGL_STENCIL_TEST] && sgl_need_stencil(c);
   f->keep = (a->color_mask[3] ? 0 : 0xFF000000u) | (a->color_mask[0] ? 0 : 0x00FF0000u) |
             (a->color_mask[1] ? 0 : 0x0000FF00u) | (a->color_mask[2] ? 0 : 0x000000FFu);
   f->masked = f->keep != 0;
@@ -274,6 +314,20 @@ static inline uint32_t logic(GLenum op, uint32_t s, uint32_t d) {
     case GL_OR_INVERTED: return ~s | d;
     case GL_NAND: return ~(s & d);
     default: return 0xFFFFFFFFu; /* GL_SET */
+  }
+}
+
+/* Gives 1 when the comparison func of a and b passes. */
+static inline int compare(GLenum func, uint32_t a, uint32_t b) {
+  switch (func) {
+    case GL_NEVER: return 0;
+    case GL_LESS: return a < b;
+    case GL_EQUAL: return a == b;
+    case GL_LEQUAL: return a <= b;
+    case GL_GREATER: return a > b;
+    case GL_NOTEQUAL: return a != b;
+    case GL_GEQUAL: return a >= b;
+    default: return 1;
   }
 }
 
@@ -402,13 +456,63 @@ static uint32_t fetch_cube(const tunit *f, int32_t s, int32_t t, int32_t r) {
   return fetch_at(f, f->face[face], sc, tc);
 }
 
+/* Gives the depth texel at x, y (texel indices from wrap_coord) of a
+ * unit. */
+static inline uint32_t depth_at(const tunit *f, int x, int y) {
+  if ((x | y) < 0) return f->border_depth;
+  return f->texels[(y << f->wlog) + x];
+}
+
+/* Gives the value (0 to 255) of the depth texel d of a unit: the
+ * result of the comparison with ref, or the depth. */
+static inline int depth_value(const tunit *f, uint32_t d, uint32_t ref) {
+  if (!f->cmp) return (int)(d >> 22);
+  return compare(f->cmp, ref, d) ? 255 : 0;
+}
+
+/* Gives a texel of a depth texture at s, t (texel units, 16.16). r is
+ * the reference of the comparison, in units of SGL_TEX_DEPTH_MAX. The
+ * linear filter mixes the results of four comparisons, which makes
+ * the edges of shadows soft. */
+static uint32_t fetch_depth(const tunit *f, int32_t s, int32_t t, int32_t r) {
+  uint32_t ref = r < 0 ? 0 : ((uint32_t)r > SGL_TEX_DEPTH_MAX ? SGL_TEX_DEPTH_MAX : (uint32_t)r);
+  int v;
+  if (!f->linear) {
+    v = depth_value(f, depth_at(f, wrap_coord(s >> 16, f->wmask, f->wrap_s), wrap_coord(t >> 16, f->hmask, f->wrap_t)),
+                    ref);
+  } else {
+    int32_t u = s - 0x8000, w = t - 0x8000;
+    int x0 = u >> 16, y0 = w >> 16, fx = (u >> 8) & 0xFF, fy = (w >> 8) & 0xFF;
+    int x1 = wrap_coord(x0 + 1, f->wmask, f->wrap_s), y1 = wrap_coord(y0 + 1, f->hmask, f->wrap_t);
+    int c00, c10, c01, c11, top, bot;
+    x0 = wrap_coord(x0, f->wmask, f->wrap_s);
+    y0 = wrap_coord(y0, f->hmask, f->wrap_t);
+    c00 = depth_value(f, depth_at(f, x0, y0), ref);
+    c10 = depth_value(f, depth_at(f, x1, y0), ref);
+    c01 = depth_value(f, depth_at(f, x0, y1), ref);
+    c11 = depth_value(f, depth_at(f, x1, y1), ref);
+    top = c00 + (SGL_MUL16(c10 - c00, fx) >> 8);
+    bot = c01 + (SGL_MUL16(c11 - c01, fx) >> 8);
+    v = top + (SGL_MUL16(bot - top, fy) >> 8);
+  }
+  switch (f->base) {
+    case GL_INTENSITY: return (uint32_t)v * 0x01010101u;
+    case GL_ALPHA: return ((uint32_t)v << 24) | 0x00FFFFFFu;
+    default: return 0xFF000000u | (uint32_t)v * 0x010101u;
+  }
+}
+
 /* Gives a texel of the texture of a unit at s, t and, for a 3D
  * texture, r (texel units, 16.16). For a cube map, s, t and r are the
- * direction (16.16). */
+ * direction (16.16). For a depth texture, r is the reference of the
+ * comparison. */
 static inline uint32_t fetch(const tunit *f, int32_t s, int32_t t, int32_t r) {
-  if (f->three_d) return fetch3(f, s, t, r);
-  if (f->cube) return fetch_cube(f, s, t, r);
-  return fetch_at(f, f->texels, s, t);
+  switch (f->kind) {
+    case FETCH_PLAIN: return fetch_at(f, f->texels, s, t);
+    case FETCH_3D: return fetch3(f, s, t, r);
+    case FETCH_CUBE: return fetch_cube(f, s, t, r);
+    default: return fetch_depth(f, s, t, r);
+  }
 }
 
 /* Sets the scales of texture k of a primitive: from the texture
@@ -420,7 +524,7 @@ static void set_scales(GLfloat *ss, GLfloat *ts, GLfloat *ps, const tunit *x) {
   }
   *ss = (GLfloat)x->tw * 65536.0f;
   *ts = x->one_d ? 0.0f : (GLfloat)x->th * 65536.0f;
-  *ps = x->three_d ? (GLfloat)(x->dmask + 1) * 65536.0f : 0.0f;
+  *ps = x->three_d ? (GLfloat)(x->dmask + 1) * 65536.0f : x->cmp ? (GLfloat)SGL_TEX_DEPTH_MAX : 0.0f;
 }
 
 /* Gives a + b, not more than 255. */
@@ -592,8 +696,9 @@ static void env_all(const frag *f, const uint32_t *tx, int rgba[4]) {
 }
 
 /* Gives a blend factor (0 to 255) of one component. s is the source
- * color, d the destination, sa and da their alphas. */
-static inline int factor(GLenum f, int s, int d, int sa, int da) {
+ * color, d the destination, sa and da their alphas; cc is the component
+ * of the constant color and ca its alpha. */
+static inline int factor(GLenum f, int s, int d, int sa, int da, int cc, int ca) {
   switch (f) {
     case GL_ZERO: return 0;
     case GL_ONE: return 255;
@@ -609,23 +714,33 @@ static inline int factor(GLenum f, int s, int d, int sa, int da) {
       int m = 255 - da;
       return sa < m ? sa : m;
     }
+    case GL_CONSTANT_COLOR: return cc;
+    case GL_ONE_MINUS_CONSTANT_COLOR: return 255 - cc;
+    case GL_CONSTANT_ALPHA: return ca;
+    case GL_ONE_MINUS_CONSTANT_ALPHA: return 255 - ca;
     default: return 255;
   }
 }
 
-/* Gives 1 when the comparison func of a and b passes. */
-static inline int compare(GLenum func, uint32_t a, uint32_t b) {
-  switch (func) {
-    case GL_NEVER: return 0;
-    case GL_LESS: return a < b;
-    case GL_EQUAL: return a == b;
-    case GL_LEQUAL: return a <= b;
-    case GL_GREATER: return a > b;
-    case GL_NOTEQUAL: return a != b;
-    case GL_GEQUAL: return a >= b;
-    default: return 1;
+/* Gives one blended component (0 to 255) by the blend equation eq: s
+ * and d are the source and the destination, fs and fd their factors. */
+static inline int blend_eq(GLenum eq, int s, int d, int fs, int fd) {
+  int v;
+  if (eq == GL_FUNC_ADD) {
+    /* The usual equation first. */
+    v = mul255(s, fs) + mul255(d, fd);
+    return v > 255 ? 255 : v;
   }
+  switch (eq) {
+    case GL_FUNC_SUBTRACT: v = mul255(s, fs) - mul255(d, fd); break;
+    case GL_FUNC_REVERSE_SUBTRACT: v = mul255(d, fd) - mul255(s, fs); break;
+    case GL_MIN: return s < d ? s : d;
+    case GL_MAX: return s > d ? s : d;
+    default: v = mul255(s, fs) + mul255(d, fd); break;
+  }
+  return v < 0 ? 0 : (v > 255 ? 255 : v);
 }
+
 
 /* Applies a stencil operation to the value *s. */
 static void stencil_op(const sgl_context *c, GLenum op, uint8_t *s) {
@@ -636,6 +751,8 @@ static void stencil_op(const sgl_context *c, GLenum op, uint8_t *s) {
     case GL_INCR: if (v < 255) v++; break;
     case GL_DECR: if (v > 0) v--; break;
     case GL_INVERT: v = (uint8_t)~v; break;
+    case GL_INCR_WRAP: v++; break; /* OpenGL 1.4: 255 becomes 0 */
+    case GL_DECR_WRAP: v--; break;
     default: return;
   }
   *s = (uint8_t)((*s & ~w) | (v & w));
@@ -671,20 +788,20 @@ static inline void finish(const frag *f, uint32_t *px, int rgba[4], int fogf) {
   }
   if (f->blend) {
     uint32_t d = *px;
-    int dr = (int)((d >> 16) & 0xFF), dg = (int)((d >> 8) & 0xFF), db = (int)(d & 0xFF);
-    int da = (int)(d >> 24), sa = rgba[3], k;
-    int r = mul255(rgba[0], factor(f->bsrc, rgba[0], dr, sa, da)) +
-            mul255(dr, factor(f->bdst, rgba[0], dr, sa, da));
-    int g = mul255(rgba[1], factor(f->bsrc, rgba[1], dg, sa, da)) +
-            mul255(dg, factor(f->bdst, rgba[1], dg, sa, da));
-    int b = mul255(rgba[2], factor(f->bsrc, rgba[2], db, sa, da)) +
-            mul255(db, factor(f->bdst, rgba[2], db, sa, da));
-    k = f->bsrc == GL_SRC_ALPHA_SATURATE ? 255 : factor(f->bsrc, sa, da, sa, da);
-    rgba[3] = mul255(sa, k) + mul255(da, factor(f->bdst, sa, da, sa, da));
-    rgba[0] = r > 255 ? 255 : r;
-    rgba[1] = g > 255 ? 255 : g;
-    rgba[2] = b > 255 ? 255 : b;
-    if (rgba[3] > 255) rgba[3] = 255;
+    int dc[3], i, da = (int)(d >> 24), sa = rgba[3], ca = f->bc[3];
+    dc[0] = (int)((d >> 16) & 0xFF);
+    dc[1] = (int)((d >> 8) & 0xFF);
+    dc[2] = (int)(d & 0xFF);
+    for (i = 0; i < 3; i++) {
+      int s = rgba[i];
+      rgba[i] = blend_eq(f->beq, s, dc[i], factor(f->bsrc, s, dc[i], sa, da, f->bc[i], ca),
+                         factor(f->bdst, s, dc[i], sa, da, f->bc[i], ca));
+    }
+    /* For alpha, the color factors are those of alpha, and
+     * GL_SRC_ALPHA_SATURATE is 1. */
+    rgba[3] = blend_eq(f->beq, sa, da,
+                       f->bsrc_a == GL_SRC_ALPHA_SATURATE ? 255 : factor(f->bsrc_a, sa, da, sa, da, ca, ca),
+                       factor(f->bdst_a, sa, da, sa, da, ca, ca));
   }
   out = ((uint32_t)rgba[3] << 24) | ((uint32_t)rgba[0] << 16) | ((uint32_t)rgba[1] << 8) | (uint32_t)rgba[2];
   if (f->logic) out = logic(f->logic_op, out, *px);
@@ -1134,7 +1251,7 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
       }
       setup_texture(&f, k, us[k], tex, rho);
       set_scales(&t.sscale[k], &t.tscale[k], &t.pscale[k], &f.tu[k]);
-      if (f.tu[k].three_d || f.tu[k].cube) t.three_d = 1;
+      if (f.tu[k].three_d || f.tu[k].cube || f.tu[k].cmp) t.three_d = 1;
     }
     f.ntex = n;
     finish_textures(&f);
@@ -1368,7 +1485,8 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
 void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat offset) {
   frag f;
   tri t;
-  int size = (int)(c->a.point_size + 0.5f), x0, y0, x, y, k, rgba[4];
+  int size, x0, y0, x, y, k, rgba[4];
+  GLfloat sz = c->a.point_size;
   GLfloat tc[SGL_MAX_TEXTURE_UNITS][4];
   uint32_t z = (uint32_t)fix(sgl_clamp01(a->win[2]) * (GLfloat)SGL_Z_MAX);
   (void)offset;
@@ -1381,6 +1499,18 @@ void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat off
     t.flat_sec[1] = byte(a->spec[side][1]);
     t.flat_sec[2] = byte(a->spec[side][2]);
   }
+  if (c->point_atten) {
+    /* OpenGL 1.4: the size changes by sqrt(1 / (a + b d + c d^2)) for
+     * the distance d from the eye. */
+    const GLfloat *k3 = c->a.point_atten;
+    GLfloat d = sqrtf(a->eye[0] * a->eye[0] + a->eye[1] * a->eye[1] + a->eye[2] * a->eye[2]);
+    GLfloat q = k3[0] + k3[1] * d + k3[2] * d * d;
+    sz = q > 0.0f ? sz / sqrtf(q) : SGL_MAX_POINT_SIZE;
+  }
+  if (sz < c->a.point_min) sz = c->a.point_min;
+  if (sz > c->a.point_max) sz = c->a.point_max;
+  if (sz > SGL_MAX_POINT_SIZE) sz = SGL_MAX_POINT_SIZE;
+  size = (int)(sz + 0.5f);
   if (size < 1) size = 1;
   x0 = (int)floorf(a->win[0] - (GLfloat)(size - 1) * 0.5f);
   y0 = (int)floorf(a->win[1] - (GLfloat)(size - 1) * 0.5f);

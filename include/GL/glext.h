@@ -510,6 +510,53 @@ GLAPI void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *im
 #define GL_ONE_MINUS_CONSTANT_ALPHA 0x8004
 #define GL_BLEND_COLOR 0x8005
 #define GL_BLEND_EQUATION 0x8009
+GLAPI void APIENTRY glBlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
+GLAPI void APIENTRY glBlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+GLAPI void APIENTRY glBlendEquation(GLenum mode);
+GLAPI void APIENTRY glFogCoordf(GLfloat coord);
+GLAPI void APIENTRY glFogCoordfv(const GLfloat *coord);
+GLAPI void APIENTRY glFogCoordd(GLdouble coord);
+GLAPI void APIENTRY glFogCoorddv(const GLdouble *coord);
+GLAPI void APIENTRY glFogCoordPointer(GLenum type, GLsizei stride, const void *pointer);
+GLAPI void APIENTRY glMultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+GLAPI void APIENTRY glMultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount);
+GLAPI void APIENTRY glPointParameterf(GLenum pname, GLfloat param);
+GLAPI void APIENTRY glPointParameterfv(GLenum pname, const GLfloat *params);
+GLAPI void APIENTRY glPointParameteri(GLenum pname, GLint param);
+GLAPI void APIENTRY glPointParameteriv(GLenum pname, const GLint *params);
+GLAPI void APIENTRY glSecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue);
+GLAPI void APIENTRY glSecondaryColor3bv(const GLbyte *v);
+GLAPI void APIENTRY glSecondaryColor3s(GLshort red, GLshort green, GLshort blue);
+GLAPI void APIENTRY glSecondaryColor3sv(const GLshort *v);
+GLAPI void APIENTRY glSecondaryColor3i(GLint red, GLint green, GLint blue);
+GLAPI void APIENTRY glSecondaryColor3iv(const GLint *v);
+GLAPI void APIENTRY glSecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue);
+GLAPI void APIENTRY glSecondaryColor3fv(const GLfloat *v);
+GLAPI void APIENTRY glSecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue);
+GLAPI void APIENTRY glSecondaryColor3dv(const GLdouble *v);
+GLAPI void APIENTRY glSecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue);
+GLAPI void APIENTRY glSecondaryColor3ubv(const GLubyte *v);
+GLAPI void APIENTRY glSecondaryColor3us(GLushort red, GLushort green, GLushort blue);
+GLAPI void APIENTRY glSecondaryColor3usv(const GLushort *v);
+GLAPI void APIENTRY glSecondaryColor3ui(GLuint red, GLuint green, GLuint blue);
+GLAPI void APIENTRY glSecondaryColor3uiv(const GLuint *v);
+GLAPI void APIENTRY glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
+GLAPI void APIENTRY glWindowPos2s(GLshort x, GLshort y);
+GLAPI void APIENTRY glWindowPos2sv(const GLshort *v);
+GLAPI void APIENTRY glWindowPos2i(GLint x, GLint y);
+GLAPI void APIENTRY glWindowPos2iv(const GLint *v);
+GLAPI void APIENTRY glWindowPos2f(GLfloat x, GLfloat y);
+GLAPI void APIENTRY glWindowPos2fv(const GLfloat *v);
+GLAPI void APIENTRY glWindowPos2d(GLdouble x, GLdouble y);
+GLAPI void APIENTRY glWindowPos2dv(const GLdouble *v);
+GLAPI void APIENTRY glWindowPos3s(GLshort x, GLshort y, GLshort z);
+GLAPI void APIENTRY glWindowPos3sv(const GLshort *v);
+GLAPI void APIENTRY glWindowPos3i(GLint x, GLint y, GLint z);
+GLAPI void APIENTRY glWindowPos3iv(const GLint *v);
+GLAPI void APIENTRY glWindowPos3f(GLfloat x, GLfloat y, GLfloat z);
+GLAPI void APIENTRY glWindowPos3fv(const GLfloat *v);
+GLAPI void APIENTRY glWindowPos3d(GLdouble x, GLdouble y, GLdouble z);
+GLAPI void APIENTRY glWindowPos3dv(const GLdouble *v);
 #endif /* GL_VERSION_1_4 */
 
 #ifndef GL_EXT_texture_compression_s3tc

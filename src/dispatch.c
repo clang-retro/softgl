@@ -922,6 +922,161 @@ static void APIENTRY cv_MultTransposeMatrixd(const GLdouble *m) {
   for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];
   SGL_DISPATCH->MultTransposeMatrixf(f);
 }
+/* Converts the arguments of glFogCoordfv for the canonical function. */
+static void APIENTRY cv_FogCoordfv(const GLfloat *coord) {
+  SGL_DISPATCH->FogCoordf(coord[0]);
+}
+/* Converts the arguments of glFogCoordd for the canonical function. */
+static void APIENTRY cv_FogCoordd(GLdouble coord) {
+  SGL_DISPATCH->FogCoordf((GLfloat)coord);
+}
+/* Converts the arguments of glFogCoorddv for the canonical function. */
+static void APIENTRY cv_FogCoorddv(const GLdouble *coord) {
+  SGL_DISPATCH->FogCoordf((GLfloat)coord[0]);
+}
+/* Converts the arguments of glPointParameterf for the canonical function. */
+static void APIENTRY cv_PointParameterf(GLenum pname, GLfloat param) {
+  GLfloat p[4];
+  p[0] = (GLfloat)param;
+  p[1] = p[2] = p[3] = 0.0f;
+  SGL_DISPATCH->PointParameterfv(pname, p);
+}
+/* Converts the arguments of glPointParameteri for the canonical function. */
+static void APIENTRY cv_PointParameteri(GLenum pname, GLint param) {
+  GLfloat p[4];
+  p[0] = (GLfloat)param;
+  p[1] = p[2] = p[3] = 0.0f;
+  SGL_DISPATCH->PointParameterfv(pname, p);
+}
+/* Converts the arguments of glPointParameteriv for the canonical function. */
+static void APIENTRY cv_PointParameteriv(GLenum pname, const GLint *params) {
+  GLfloat p[16];
+  int i, n = sgl_pname_count(pname);
+  int norm = sgl_pname_is_color(pname);
+  (void)norm;
+  for (i = 0; i < n && i < 16; i++) p[i] = (norm ? (GLfloat)params[i] / 2147483647.0f : (GLfloat)params[i]);
+  SGL_DISPATCH->PointParameterfv(pname, p);
+}
+/* Converts the arguments of glSecondaryColor3b for the canonical function. */
+static void APIENTRY cv_SecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 127.0f, (GLfloat)green / 127.0f, (GLfloat)blue / 127.0f);
+}
+/* Converts the arguments of glSecondaryColor3bv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3bv(const GLbyte *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 127.0f, (GLfloat)v[1] / 127.0f, (GLfloat)v[2] / 127.0f);
+}
+/* Converts the arguments of glSecondaryColor3s for the canonical function. */
+static void APIENTRY cv_SecondaryColor3s(GLshort red, GLshort green, GLshort blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 32767.0f, (GLfloat)green / 32767.0f, (GLfloat)blue / 32767.0f);
+}
+/* Converts the arguments of glSecondaryColor3sv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3sv(const GLshort *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 32767.0f, (GLfloat)v[1] / 32767.0f, (GLfloat)v[2] / 32767.0f);
+}
+/* Converts the arguments of glSecondaryColor3i for the canonical function. */
+static void APIENTRY cv_SecondaryColor3i(GLint red, GLint green, GLint blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 2147483647.0f, (GLfloat)green / 2147483647.0f, (GLfloat)blue / 2147483647.0f);
+}
+/* Converts the arguments of glSecondaryColor3iv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3iv(const GLint *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 2147483647.0f, (GLfloat)v[1] / 2147483647.0f, (GLfloat)v[2] / 2147483647.0f);
+}
+/* Converts the arguments of glSecondaryColor3fv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3fv(const GLfloat *v) {
+  SGL_DISPATCH->SecondaryColor3f(v[0], v[1], v[2]);
+}
+/* Converts the arguments of glSecondaryColor3d for the canonical function. */
+static void APIENTRY cv_SecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red, (GLfloat)green, (GLfloat)blue);
+}
+/* Converts the arguments of glSecondaryColor3dv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3dv(const GLdouble *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2]);
+}
+/* Converts the arguments of glSecondaryColor3ub for the canonical function. */
+static void APIENTRY cv_SecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 255.0f, (GLfloat)green / 255.0f, (GLfloat)blue / 255.0f);
+}
+/* Converts the arguments of glSecondaryColor3ubv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3ubv(const GLubyte *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 255.0f, (GLfloat)v[1] / 255.0f, (GLfloat)v[2] / 255.0f);
+}
+/* Converts the arguments of glSecondaryColor3us for the canonical function. */
+static void APIENTRY cv_SecondaryColor3us(GLushort red, GLushort green, GLushort blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 65535.0f, (GLfloat)green / 65535.0f, (GLfloat)blue / 65535.0f);
+}
+/* Converts the arguments of glSecondaryColor3usv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3usv(const GLushort *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 65535.0f, (GLfloat)v[1] / 65535.0f, (GLfloat)v[2] / 65535.0f);
+}
+/* Converts the arguments of glSecondaryColor3ui for the canonical function. */
+static void APIENTRY cv_SecondaryColor3ui(GLuint red, GLuint green, GLuint blue) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)red / 4294967295.0f, (GLfloat)green / 4294967295.0f, (GLfloat)blue / 4294967295.0f);
+}
+/* Converts the arguments of glSecondaryColor3uiv for the canonical function. */
+static void APIENTRY cv_SecondaryColor3uiv(const GLuint *v) {
+  SGL_DISPATCH->SecondaryColor3f((GLfloat)v[0] / 4294967295.0f, (GLfloat)v[1] / 4294967295.0f, (GLfloat)v[2] / 4294967295.0f);
+}
+/* Converts the arguments of glWindowPos2s for the canonical function. */
+static void APIENTRY cv_WindowPos2s(GLshort x, GLshort y) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, 0.0f);
+}
+/* Converts the arguments of glWindowPos2sv for the canonical function. */
+static void APIENTRY cv_WindowPos2sv(const GLshort *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], 0.0f);
+}
+/* Converts the arguments of glWindowPos2i for the canonical function. */
+static void APIENTRY cv_WindowPos2i(GLint x, GLint y) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, 0.0f);
+}
+/* Converts the arguments of glWindowPos2iv for the canonical function. */
+static void APIENTRY cv_WindowPos2iv(const GLint *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], 0.0f);
+}
+/* Converts the arguments of glWindowPos2f for the canonical function. */
+static void APIENTRY cv_WindowPos2f(GLfloat x, GLfloat y) {
+  SGL_DISPATCH->WindowPos3f(x, y, 0.0f);
+}
+/* Converts the arguments of glWindowPos2fv for the canonical function. */
+static void APIENTRY cv_WindowPos2fv(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos3f(v[0], v[1], 0.0f);
+}
+/* Converts the arguments of glWindowPos2d for the canonical function. */
+static void APIENTRY cv_WindowPos2d(GLdouble x, GLdouble y) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, 0.0f);
+}
+/* Converts the arguments of glWindowPos2dv for the canonical function. */
+static void APIENTRY cv_WindowPos2dv(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], 0.0f);
+}
+/* Converts the arguments of glWindowPos3s for the canonical function. */
+static void APIENTRY cv_WindowPos3s(GLshort x, GLshort y, GLshort z) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, (GLfloat)z);
+}
+/* Converts the arguments of glWindowPos3sv for the canonical function. */
+static void APIENTRY cv_WindowPos3sv(const GLshort *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2]);
+}
+/* Converts the arguments of glWindowPos3i for the canonical function. */
+static void APIENTRY cv_WindowPos3i(GLint x, GLint y, GLint z) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, (GLfloat)z);
+}
+/* Converts the arguments of glWindowPos3iv for the canonical function. */
+static void APIENTRY cv_WindowPos3iv(const GLint *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2]);
+}
+/* Converts the arguments of glWindowPos3fv for the canonical function. */
+static void APIENTRY cv_WindowPos3fv(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos3f(v[0], v[1], v[2]);
+}
+/* Converts the arguments of glWindowPos3d for the canonical function. */
+static void APIENTRY cv_WindowPos3d(GLdouble x, GLdouble y, GLdouble z) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)x, (GLfloat)y, (GLfloat)z);
+}
+/* Converts the arguments of glWindowPos3dv for the canonical function. */
+static void APIENTRY cv_WindowPos3dv(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos3f((GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2]);
+}
 
 /* The functions of the table when no context is current: each does
  * nothing and gives zero. */
@@ -3165,6 +3320,244 @@ static void APIENTRY nop_MultTransposeMatrixf(const GLfloat *m) {
 static void APIENTRY nop_MultTransposeMatrixd(const GLdouble *m) {
   (void)m;
 }
+/* Does nothing: no context is current (glBlendFuncSeparate). */
+static void APIENTRY nop_BlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) {
+  (void)sfactorRGB;
+  (void)dfactorRGB;
+  (void)sfactorAlpha;
+  (void)dfactorAlpha;
+}
+/* Does nothing: no context is current (glBlendColor). */
+static void APIENTRY nop_BlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
+  (void)red;
+  (void)green;
+  (void)blue;
+  (void)alpha;
+}
+/* Does nothing: no context is current (glBlendEquation). */
+static void APIENTRY nop_BlendEquation(GLenum mode) {
+  (void)mode;
+}
+/* Does nothing: no context is current (glFogCoordf). */
+static void APIENTRY nop_FogCoordf(GLfloat coord) {
+  (void)coord;
+}
+/* Does nothing: no context is current (glFogCoordfv). */
+static void APIENTRY nop_FogCoordfv(const GLfloat *coord) {
+  (void)coord;
+}
+/* Does nothing: no context is current (glFogCoordd). */
+static void APIENTRY nop_FogCoordd(GLdouble coord) {
+  (void)coord;
+}
+/* Does nothing: no context is current (glFogCoorddv). */
+static void APIENTRY nop_FogCoorddv(const GLdouble *coord) {
+  (void)coord;
+}
+/* Does nothing: no context is current (glFogCoordPointer). */
+static void APIENTRY nop_FogCoordPointer(GLenum type, GLsizei stride, const void *pointer) {
+  (void)type;
+  (void)stride;
+  (void)pointer;
+}
+/* Does nothing: no context is current (glMultiDrawArrays). */
+static void APIENTRY nop_MultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount) {
+  (void)mode;
+  (void)first;
+  (void)count;
+  (void)drawcount;
+}
+/* Does nothing: no context is current (glMultiDrawElements). */
+static void APIENTRY nop_MultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount) {
+  (void)mode;
+  (void)count;
+  (void)type;
+  (void)indices;
+  (void)drawcount;
+}
+/* Does nothing: no context is current (glPointParameterf). */
+static void APIENTRY nop_PointParameterf(GLenum pname, GLfloat param) {
+  (void)pname;
+  (void)param;
+}
+/* Does nothing: no context is current (glPointParameterfv). */
+static void APIENTRY nop_PointParameterfv(GLenum pname, const GLfloat *params) {
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glPointParameteri). */
+static void APIENTRY nop_PointParameteri(GLenum pname, GLint param) {
+  (void)pname;
+  (void)param;
+}
+/* Does nothing: no context is current (glPointParameteriv). */
+static void APIENTRY nop_PointParameteriv(GLenum pname, const GLint *params) {
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glSecondaryColor3b). */
+static void APIENTRY nop_SecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3bv). */
+static void APIENTRY nop_SecondaryColor3bv(const GLbyte *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3s). */
+static void APIENTRY nop_SecondaryColor3s(GLshort red, GLshort green, GLshort blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3sv). */
+static void APIENTRY nop_SecondaryColor3sv(const GLshort *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3i). */
+static void APIENTRY nop_SecondaryColor3i(GLint red, GLint green, GLint blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3iv). */
+static void APIENTRY nop_SecondaryColor3iv(const GLint *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3f). */
+static void APIENTRY nop_SecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3fv). */
+static void APIENTRY nop_SecondaryColor3fv(const GLfloat *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3d). */
+static void APIENTRY nop_SecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3dv). */
+static void APIENTRY nop_SecondaryColor3dv(const GLdouble *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3ub). */
+static void APIENTRY nop_SecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3ubv). */
+static void APIENTRY nop_SecondaryColor3ubv(const GLubyte *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3us). */
+static void APIENTRY nop_SecondaryColor3us(GLushort red, GLushort green, GLushort blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3usv). */
+static void APIENTRY nop_SecondaryColor3usv(const GLushort *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColor3ui). */
+static void APIENTRY nop_SecondaryColor3ui(GLuint red, GLuint green, GLuint blue) {
+  (void)red;
+  (void)green;
+  (void)blue;
+}
+/* Does nothing: no context is current (glSecondaryColor3uiv). */
+static void APIENTRY nop_SecondaryColor3uiv(const GLuint *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glSecondaryColorPointer). */
+static void APIENTRY nop_SecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer) {
+  (void)size;
+  (void)type;
+  (void)stride;
+  (void)pointer;
+}
+/* Does nothing: no context is current (glWindowPos2s). */
+static void APIENTRY nop_WindowPos2s(GLshort x, GLshort y) {
+  (void)x;
+  (void)y;
+}
+/* Does nothing: no context is current (glWindowPos2sv). */
+static void APIENTRY nop_WindowPos2sv(const GLshort *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos2i). */
+static void APIENTRY nop_WindowPos2i(GLint x, GLint y) {
+  (void)x;
+  (void)y;
+}
+/* Does nothing: no context is current (glWindowPos2iv). */
+static void APIENTRY nop_WindowPos2iv(const GLint *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos2f). */
+static void APIENTRY nop_WindowPos2f(GLfloat x, GLfloat y) {
+  (void)x;
+  (void)y;
+}
+/* Does nothing: no context is current (glWindowPos2fv). */
+static void APIENTRY nop_WindowPos2fv(const GLfloat *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos2d). */
+static void APIENTRY nop_WindowPos2d(GLdouble x, GLdouble y) {
+  (void)x;
+  (void)y;
+}
+/* Does nothing: no context is current (glWindowPos2dv). */
+static void APIENTRY nop_WindowPos2dv(const GLdouble *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos3s). */
+static void APIENTRY nop_WindowPos3s(GLshort x, GLshort y, GLshort z) {
+  (void)x;
+  (void)y;
+  (void)z;
+}
+/* Does nothing: no context is current (glWindowPos3sv). */
+static void APIENTRY nop_WindowPos3sv(const GLshort *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos3i). */
+static void APIENTRY nop_WindowPos3i(GLint x, GLint y, GLint z) {
+  (void)x;
+  (void)y;
+  (void)z;
+}
+/* Does nothing: no context is current (glWindowPos3iv). */
+static void APIENTRY nop_WindowPos3iv(const GLint *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos3f). */
+static void APIENTRY nop_WindowPos3f(GLfloat x, GLfloat y, GLfloat z) {
+  (void)x;
+  (void)y;
+  (void)z;
+}
+/* Does nothing: no context is current (glWindowPos3fv). */
+static void APIENTRY nop_WindowPos3fv(const GLfloat *v) {
+  (void)v;
+}
+/* Does nothing: no context is current (glWindowPos3d). */
+static void APIENTRY nop_WindowPos3d(GLdouble x, GLdouble y, GLdouble z) {
+  (void)x;
+  (void)y;
+  (void)z;
+}
+/* Does nothing: no context is current (glWindowPos3dv). */
+static void APIENTRY nop_WindowPos3dv(const GLdouble *v) {
+  (void)v;
+}
 
 /* Records glCullFace in the display list that is compiled. */
 static void APIENTRY save_CullFace(GLenum mode) {
@@ -3866,6 +4259,59 @@ static void APIENTRY save_MultTransposeMatrixf(const GLfloat *m) {
   if (a) a[0].p = sgl_list_copy(m, (size_t)(16) * sizeof(GLfloat));
   if (sgl_list_executes()) sgl_MultTransposeMatrixf(m);
 }
+/* Records glBlendFuncSeparate in the display list that is compiled. */
+static void APIENTRY save_BlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) {
+  sgl_cell *a = sgl_list_add(SGL_OP_BlendFuncSeparate, 4);
+  if (a) a[0].u = sfactorRGB;
+  if (a) a[1].u = dfactorRGB;
+  if (a) a[2].u = sfactorAlpha;
+  if (a) a[3].u = dfactorAlpha;
+  if (sgl_list_executes()) sgl_BlendFuncSeparate(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
+}
+/* Records glBlendColor in the display list that is compiled. */
+static void APIENTRY save_BlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
+  sgl_cell *a = sgl_list_add(SGL_OP_BlendColor, 4);
+  if (a) a[0].f = red;
+  if (a) a[1].f = green;
+  if (a) a[2].f = blue;
+  if (a) a[3].f = alpha;
+  if (sgl_list_executes()) sgl_BlendColor(red, green, blue, alpha);
+}
+/* Records glBlendEquation in the display list that is compiled. */
+static void APIENTRY save_BlendEquation(GLenum mode) {
+  sgl_cell *a = sgl_list_add(SGL_OP_BlendEquation, 1);
+  if (a) a[0].u = mode;
+  if (sgl_list_executes()) sgl_BlendEquation(mode);
+}
+/* Records glFogCoordf in the display list that is compiled. */
+static void APIENTRY save_FogCoordf(GLfloat coord) {
+  sgl_cell *a = sgl_list_add(SGL_OP_FogCoordf, 1);
+  if (a) a[0].f = coord;
+  if (sgl_list_executes()) sgl_FogCoordf(coord);
+}
+/* Records glPointParameterfv in the display list that is compiled. */
+static void APIENTRY save_PointParameterfv(GLenum pname, const GLfloat *params) {
+  sgl_cell *a = sgl_list_add(SGL_OP_PointParameterfv, 2);
+  if (a) a[0].u = pname;
+  if (a) a[1].p = sgl_list_copy(params, (size_t)(sgl_pname_count(pname)) * sizeof(GLfloat));
+  if (sgl_list_executes()) sgl_PointParameterfv(pname, params);
+}
+/* Records glSecondaryColor3f in the display list that is compiled. */
+static void APIENTRY save_SecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue) {
+  sgl_cell *a = sgl_list_add(SGL_OP_SecondaryColor3f, 3);
+  if (a) a[0].f = red;
+  if (a) a[1].f = green;
+  if (a) a[2].f = blue;
+  if (sgl_list_executes()) sgl_SecondaryColor3f(red, green, blue);
+}
+/* Records glWindowPos3f in the display list that is compiled. */
+static void APIENTRY save_WindowPos3f(GLfloat x, GLfloat y, GLfloat z) {
+  sgl_cell *a = sgl_list_add(SGL_OP_WindowPos3f, 3);
+  if (a) a[0].f = x;
+  if (a) a[1].f = y;
+  if (a) a[2].f = z;
+  if (sgl_list_executes()) sgl_WindowPos3f(x, y, z);
+}
 
 /* The table when no context is current. */
 const struct sgl_dispatch sgl_nop_table = {
@@ -4270,6 +4716,53 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_LoadTransposeMatrixd,
   nop_MultTransposeMatrixf,
   nop_MultTransposeMatrixd,
+  nop_BlendFuncSeparate,
+  nop_BlendColor,
+  nop_BlendEquation,
+  nop_FogCoordf,
+  nop_FogCoordfv,
+  nop_FogCoordd,
+  nop_FogCoorddv,
+  nop_FogCoordPointer,
+  nop_MultiDrawArrays,
+  nop_MultiDrawElements,
+  nop_PointParameterf,
+  nop_PointParameterfv,
+  nop_PointParameteri,
+  nop_PointParameteriv,
+  nop_SecondaryColor3b,
+  nop_SecondaryColor3bv,
+  nop_SecondaryColor3s,
+  nop_SecondaryColor3sv,
+  nop_SecondaryColor3i,
+  nop_SecondaryColor3iv,
+  nop_SecondaryColor3f,
+  nop_SecondaryColor3fv,
+  nop_SecondaryColor3d,
+  nop_SecondaryColor3dv,
+  nop_SecondaryColor3ub,
+  nop_SecondaryColor3ubv,
+  nop_SecondaryColor3us,
+  nop_SecondaryColor3usv,
+  nop_SecondaryColor3ui,
+  nop_SecondaryColor3uiv,
+  nop_SecondaryColorPointer,
+  nop_WindowPos2s,
+  nop_WindowPos2sv,
+  nop_WindowPos2i,
+  nop_WindowPos2iv,
+  nop_WindowPos2f,
+  nop_WindowPos2fv,
+  nop_WindowPos2d,
+  nop_WindowPos2dv,
+  nop_WindowPos3s,
+  nop_WindowPos3sv,
+  nop_WindowPos3i,
+  nop_WindowPos3iv,
+  nop_WindowPos3f,
+  nop_WindowPos3fv,
+  nop_WindowPos3d,
+  nop_WindowPos3dv,
 };
 
 /* The table for execution. */
@@ -4675,6 +5168,53 @@ const struct sgl_dispatch sgl_exec_table = {
   cv_LoadTransposeMatrixd,
   sgl_MultTransposeMatrixf,
   cv_MultTransposeMatrixd,
+  sgl_BlendFuncSeparate,
+  sgl_BlendColor,
+  sgl_BlendEquation,
+  sgl_FogCoordf,
+  cv_FogCoordfv,
+  cv_FogCoordd,
+  cv_FogCoorddv,
+  sgl_FogCoordPointer,
+  sgl_MultiDrawArrays,
+  sgl_MultiDrawElements,
+  cv_PointParameterf,
+  sgl_PointParameterfv,
+  cv_PointParameteri,
+  cv_PointParameteriv,
+  cv_SecondaryColor3b,
+  cv_SecondaryColor3bv,
+  cv_SecondaryColor3s,
+  cv_SecondaryColor3sv,
+  cv_SecondaryColor3i,
+  cv_SecondaryColor3iv,
+  sgl_SecondaryColor3f,
+  cv_SecondaryColor3fv,
+  cv_SecondaryColor3d,
+  cv_SecondaryColor3dv,
+  cv_SecondaryColor3ub,
+  cv_SecondaryColor3ubv,
+  cv_SecondaryColor3us,
+  cv_SecondaryColor3usv,
+  cv_SecondaryColor3ui,
+  cv_SecondaryColor3uiv,
+  sgl_SecondaryColorPointer,
+  cv_WindowPos2s,
+  cv_WindowPos2sv,
+  cv_WindowPos2i,
+  cv_WindowPos2iv,
+  cv_WindowPos2f,
+  cv_WindowPos2fv,
+  cv_WindowPos2d,
+  cv_WindowPos2dv,
+  cv_WindowPos3s,
+  cv_WindowPos3sv,
+  cv_WindowPos3i,
+  cv_WindowPos3iv,
+  sgl_WindowPos3f,
+  cv_WindowPos3fv,
+  cv_WindowPos3d,
+  cv_WindowPos3dv,
 };
 
 /* The table for the compilation of a display list. */
@@ -5080,6 +5620,53 @@ const struct sgl_dispatch sgl_save_table = {
   cv_LoadTransposeMatrixd,
   save_MultTransposeMatrixf,
   cv_MultTransposeMatrixd,
+  save_BlendFuncSeparate,
+  save_BlendColor,
+  save_BlendEquation,
+  save_FogCoordf,
+  cv_FogCoordfv,
+  cv_FogCoordd,
+  cv_FogCoorddv,
+  sgl_FogCoordPointer,
+  sgl_MultiDrawArrays,
+  sgl_MultiDrawElements,
+  cv_PointParameterf,
+  save_PointParameterfv,
+  cv_PointParameteri,
+  cv_PointParameteriv,
+  cv_SecondaryColor3b,
+  cv_SecondaryColor3bv,
+  cv_SecondaryColor3s,
+  cv_SecondaryColor3sv,
+  cv_SecondaryColor3i,
+  cv_SecondaryColor3iv,
+  save_SecondaryColor3f,
+  cv_SecondaryColor3fv,
+  cv_SecondaryColor3d,
+  cv_SecondaryColor3dv,
+  cv_SecondaryColor3ub,
+  cv_SecondaryColor3ubv,
+  cv_SecondaryColor3us,
+  cv_SecondaryColor3usv,
+  cv_SecondaryColor3ui,
+  cv_SecondaryColor3uiv,
+  sgl_SecondaryColorPointer,
+  cv_WindowPos2s,
+  cv_WindowPos2sv,
+  cv_WindowPos2i,
+  cv_WindowPos2iv,
+  cv_WindowPos2f,
+  cv_WindowPos2fv,
+  cv_WindowPos2d,
+  cv_WindowPos2dv,
+  cv_WindowPos3s,
+  cv_WindowPos3sv,
+  cv_WindowPos3i,
+  cv_WindowPos3iv,
+  save_WindowPos3f,
+  cv_WindowPos3fv,
+  cv_WindowPos3d,
+  cv_WindowPos3dv,
 };
 
 /* Plays the generated command with code op and arguments a back. */
@@ -5369,6 +5956,27 @@ void sgl_play_generated(int op, const sgl_cell *a) {
       break;
     case SGL_OP_MultTransposeMatrixf:
       sgl_MultTransposeMatrixf((const GLfloat *)a[0].p);
+      break;
+    case SGL_OP_BlendFuncSeparate:
+      sgl_BlendFuncSeparate((GLenum)a[0].u, (GLenum)a[1].u, (GLenum)a[2].u, (GLenum)a[3].u);
+      break;
+    case SGL_OP_BlendColor:
+      sgl_BlendColor((GLclampf)a[0].f, (GLclampf)a[1].f, (GLclampf)a[2].f, (GLclampf)a[3].f);
+      break;
+    case SGL_OP_BlendEquation:
+      sgl_BlendEquation((GLenum)a[0].u);
+      break;
+    case SGL_OP_FogCoordf:
+      sgl_FogCoordf((GLfloat)a[0].f);
+      break;
+    case SGL_OP_PointParameterfv:
+      sgl_PointParameterfv((GLenum)a[0].u, (const GLfloat *)a[1].p);
+      break;
+    case SGL_OP_SecondaryColor3f:
+      sgl_SecondaryColor3f((GLfloat)a[0].f, (GLfloat)a[1].f, (GLfloat)a[2].f);
+      break;
+    case SGL_OP_WindowPos3f:
+      sgl_WindowPos3f((GLfloat)a[0].f, (GLfloat)a[1].f, (GLfloat)a[2].f);
       break;
     default:
       (void)a;
@@ -7050,10 +7658,260 @@ void APIENTRY glMultTransposeMatrixd(const GLdouble *m);
 void APIENTRY glMultTransposeMatrixd(const GLdouble *m) {
   SGL_DISPATCH->MultTransposeMatrixd(m);
 }
+void APIENTRY glBlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
+/* glBlendFuncSeparate: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) {
+  SGL_DISPATCH->BlendFuncSeparate(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
+}
+void APIENTRY glBlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+/* glBlendColor: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
+  SGL_DISPATCH->BlendColor(red, green, blue, alpha);
+}
+void APIENTRY glBlendEquation(GLenum mode);
+/* glBlendEquation: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBlendEquation(GLenum mode) {
+  SGL_DISPATCH->BlendEquation(mode);
+}
+void APIENTRY glFogCoordf(GLfloat coord);
+/* glFogCoordf: an extension, which wglGetProcAddress gives. */
+void APIENTRY glFogCoordf(GLfloat coord) {
+  SGL_DISPATCH->FogCoordf(coord);
+}
+void APIENTRY glFogCoordfv(const GLfloat *coord);
+/* glFogCoordfv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glFogCoordfv(const GLfloat *coord) {
+  SGL_DISPATCH->FogCoordfv(coord);
+}
+void APIENTRY glFogCoordd(GLdouble coord);
+/* glFogCoordd: an extension, which wglGetProcAddress gives. */
+void APIENTRY glFogCoordd(GLdouble coord) {
+  SGL_DISPATCH->FogCoordd(coord);
+}
+void APIENTRY glFogCoorddv(const GLdouble *coord);
+/* glFogCoorddv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glFogCoorddv(const GLdouble *coord) {
+  SGL_DISPATCH->FogCoorddv(coord);
+}
+void APIENTRY glFogCoordPointer(GLenum type, GLsizei stride, const void *pointer);
+/* glFogCoordPointer: an extension, which wglGetProcAddress gives. */
+void APIENTRY glFogCoordPointer(GLenum type, GLsizei stride, const void *pointer) {
+  SGL_DISPATCH->FogCoordPointer(type, stride, pointer);
+}
+void APIENTRY glMultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+/* glMultiDrawArrays: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount) {
+  SGL_DISPATCH->MultiDrawArrays(mode, first, count, drawcount);
+}
+void APIENTRY glMultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount);
+/* glMultiDrawElements: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount) {
+  SGL_DISPATCH->MultiDrawElements(mode, count, type, indices, drawcount);
+}
+void APIENTRY glPointParameterf(GLenum pname, GLfloat param);
+/* glPointParameterf: an extension, which wglGetProcAddress gives. */
+void APIENTRY glPointParameterf(GLenum pname, GLfloat param) {
+  SGL_DISPATCH->PointParameterf(pname, param);
+}
+void APIENTRY glPointParameterfv(GLenum pname, const GLfloat *params);
+/* glPointParameterfv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glPointParameterfv(GLenum pname, const GLfloat *params) {
+  SGL_DISPATCH->PointParameterfv(pname, params);
+}
+void APIENTRY glPointParameteri(GLenum pname, GLint param);
+/* glPointParameteri: an extension, which wglGetProcAddress gives. */
+void APIENTRY glPointParameteri(GLenum pname, GLint param) {
+  SGL_DISPATCH->PointParameteri(pname, param);
+}
+void APIENTRY glPointParameteriv(GLenum pname, const GLint *params);
+/* glPointParameteriv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glPointParameteriv(GLenum pname, const GLint *params) {
+  SGL_DISPATCH->PointParameteriv(pname, params);
+}
+void APIENTRY glSecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue);
+/* glSecondaryColor3b: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue) {
+  SGL_DISPATCH->SecondaryColor3b(red, green, blue);
+}
+void APIENTRY glSecondaryColor3bv(const GLbyte *v);
+/* glSecondaryColor3bv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3bv(const GLbyte *v) {
+  SGL_DISPATCH->SecondaryColor3bv(v);
+}
+void APIENTRY glSecondaryColor3s(GLshort red, GLshort green, GLshort blue);
+/* glSecondaryColor3s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3s(GLshort red, GLshort green, GLshort blue) {
+  SGL_DISPATCH->SecondaryColor3s(red, green, blue);
+}
+void APIENTRY glSecondaryColor3sv(const GLshort *v);
+/* glSecondaryColor3sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3sv(const GLshort *v) {
+  SGL_DISPATCH->SecondaryColor3sv(v);
+}
+void APIENTRY glSecondaryColor3i(GLint red, GLint green, GLint blue);
+/* glSecondaryColor3i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3i(GLint red, GLint green, GLint blue) {
+  SGL_DISPATCH->SecondaryColor3i(red, green, blue);
+}
+void APIENTRY glSecondaryColor3iv(const GLint *v);
+/* glSecondaryColor3iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3iv(const GLint *v) {
+  SGL_DISPATCH->SecondaryColor3iv(v);
+}
+void APIENTRY glSecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue);
+/* glSecondaryColor3f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue) {
+  SGL_DISPATCH->SecondaryColor3f(red, green, blue);
+}
+void APIENTRY glSecondaryColor3fv(const GLfloat *v);
+/* glSecondaryColor3fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3fv(const GLfloat *v) {
+  SGL_DISPATCH->SecondaryColor3fv(v);
+}
+void APIENTRY glSecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue);
+/* glSecondaryColor3d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue) {
+  SGL_DISPATCH->SecondaryColor3d(red, green, blue);
+}
+void APIENTRY glSecondaryColor3dv(const GLdouble *v);
+/* glSecondaryColor3dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3dv(const GLdouble *v) {
+  SGL_DISPATCH->SecondaryColor3dv(v);
+}
+void APIENTRY glSecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue);
+/* glSecondaryColor3ub: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue) {
+  SGL_DISPATCH->SecondaryColor3ub(red, green, blue);
+}
+void APIENTRY glSecondaryColor3ubv(const GLubyte *v);
+/* glSecondaryColor3ubv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3ubv(const GLubyte *v) {
+  SGL_DISPATCH->SecondaryColor3ubv(v);
+}
+void APIENTRY glSecondaryColor3us(GLushort red, GLushort green, GLushort blue);
+/* glSecondaryColor3us: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3us(GLushort red, GLushort green, GLushort blue) {
+  SGL_DISPATCH->SecondaryColor3us(red, green, blue);
+}
+void APIENTRY glSecondaryColor3usv(const GLushort *v);
+/* glSecondaryColor3usv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3usv(const GLushort *v) {
+  SGL_DISPATCH->SecondaryColor3usv(v);
+}
+void APIENTRY glSecondaryColor3ui(GLuint red, GLuint green, GLuint blue);
+/* glSecondaryColor3ui: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3ui(GLuint red, GLuint green, GLuint blue) {
+  SGL_DISPATCH->SecondaryColor3ui(red, green, blue);
+}
+void APIENTRY glSecondaryColor3uiv(const GLuint *v);
+/* glSecondaryColor3uiv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColor3uiv(const GLuint *v) {
+  SGL_DISPATCH->SecondaryColor3uiv(v);
+}
+void APIENTRY glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
+/* glSecondaryColorPointer: an extension, which wglGetProcAddress gives. */
+void APIENTRY glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer) {
+  SGL_DISPATCH->SecondaryColorPointer(size, type, stride, pointer);
+}
+void APIENTRY glWindowPos2s(GLshort x, GLshort y);
+/* glWindowPos2s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2s(GLshort x, GLshort y) {
+  SGL_DISPATCH->WindowPos2s(x, y);
+}
+void APIENTRY glWindowPos2sv(const GLshort *v);
+/* glWindowPos2sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2sv(const GLshort *v) {
+  SGL_DISPATCH->WindowPos2sv(v);
+}
+void APIENTRY glWindowPos2i(GLint x, GLint y);
+/* glWindowPos2i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2i(GLint x, GLint y) {
+  SGL_DISPATCH->WindowPos2i(x, y);
+}
+void APIENTRY glWindowPos2iv(const GLint *v);
+/* glWindowPos2iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2iv(const GLint *v) {
+  SGL_DISPATCH->WindowPos2iv(v);
+}
+void APIENTRY glWindowPos2f(GLfloat x, GLfloat y);
+/* glWindowPos2f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2f(GLfloat x, GLfloat y) {
+  SGL_DISPATCH->WindowPos2f(x, y);
+}
+void APIENTRY glWindowPos2fv(const GLfloat *v);
+/* glWindowPos2fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2fv(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos2fv(v);
+}
+void APIENTRY glWindowPos2d(GLdouble x, GLdouble y);
+/* glWindowPos2d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2d(GLdouble x, GLdouble y) {
+  SGL_DISPATCH->WindowPos2d(x, y);
+}
+void APIENTRY glWindowPos2dv(const GLdouble *v);
+/* glWindowPos2dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos2dv(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos2dv(v);
+}
+void APIENTRY glWindowPos3s(GLshort x, GLshort y, GLshort z);
+/* glWindowPos3s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3s(GLshort x, GLshort y, GLshort z) {
+  SGL_DISPATCH->WindowPos3s(x, y, z);
+}
+void APIENTRY glWindowPos3sv(const GLshort *v);
+/* glWindowPos3sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3sv(const GLshort *v) {
+  SGL_DISPATCH->WindowPos3sv(v);
+}
+void APIENTRY glWindowPos3i(GLint x, GLint y, GLint z);
+/* glWindowPos3i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3i(GLint x, GLint y, GLint z) {
+  SGL_DISPATCH->WindowPos3i(x, y, z);
+}
+void APIENTRY glWindowPos3iv(const GLint *v);
+/* glWindowPos3iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3iv(const GLint *v) {
+  SGL_DISPATCH->WindowPos3iv(v);
+}
+void APIENTRY glWindowPos3f(GLfloat x, GLfloat y, GLfloat z);
+/* glWindowPos3f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3f(GLfloat x, GLfloat y, GLfloat z) {
+  SGL_DISPATCH->WindowPos3f(x, y, z);
+}
+void APIENTRY glWindowPos3fv(const GLfloat *v);
+/* glWindowPos3fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3fv(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos3fv(v);
+}
+void APIENTRY glWindowPos3d(GLdouble x, GLdouble y, GLdouble z);
+/* glWindowPos3d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3d(GLdouble x, GLdouble y, GLdouble z) {
+  SGL_DISPATCH->WindowPos3d(x, y, z);
+}
+void APIENTRY glWindowPos3dv(const GLdouble *v);
+/* glWindowPos3dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glWindowPos3dv(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos3dv(v);
+}
 void APIENTRY glActiveTextureARB(GLenum texture);
 /* glActiveTextureARB: the name of glActiveTexture in an extension. */
 void APIENTRY glActiveTextureARB(GLenum texture) {
   SGL_DISPATCH->ActiveTexture(texture);
+}
+void APIENTRY glBlendColorEXT(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+/* glBlendColorEXT: the name of glBlendColor in an extension. */
+void APIENTRY glBlendColorEXT(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
+  SGL_DISPATCH->BlendColor(red, green, blue, alpha);
+}
+void APIENTRY glBlendEquationEXT(GLenum mode);
+/* glBlendEquationEXT: the name of glBlendEquation in an extension. */
+void APIENTRY glBlendEquationEXT(GLenum mode) {
+  SGL_DISPATCH->BlendEquation(mode);
+}
+void APIENTRY glBlendFuncSeparateEXT(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
+/* glBlendFuncSeparateEXT: the name of glBlendFuncSeparate in an extension. */
+void APIENTRY glBlendFuncSeparateEXT(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) {
+  SGL_DISPATCH->BlendFuncSeparate(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
 }
 void APIENTRY glClientActiveTextureARB(GLenum texture);
 /* glClientActiveTextureARB: the name of glClientActiveTexture in an extension. */
@@ -7100,6 +7958,31 @@ void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsi
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
   SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
 }
+void APIENTRY glFogCoordPointerEXT(GLenum type, GLsizei stride, const void *pointer);
+/* glFogCoordPointerEXT: the name of glFogCoordPointer in an extension. */
+void APIENTRY glFogCoordPointerEXT(GLenum type, GLsizei stride, const void *pointer) {
+  SGL_DISPATCH->FogCoordPointer(type, stride, pointer);
+}
+void APIENTRY glFogCoorddEXT(GLdouble coord);
+/* glFogCoorddEXT: the name of glFogCoordd in an extension. */
+void APIENTRY glFogCoorddEXT(GLdouble coord) {
+  SGL_DISPATCH->FogCoordd(coord);
+}
+void APIENTRY glFogCoorddvEXT(const GLdouble *coord);
+/* glFogCoorddvEXT: the name of glFogCoorddv in an extension. */
+void APIENTRY glFogCoorddvEXT(const GLdouble *coord) {
+  SGL_DISPATCH->FogCoorddv(coord);
+}
+void APIENTRY glFogCoordfEXT(GLfloat coord);
+/* glFogCoordfEXT: the name of glFogCoordf in an extension. */
+void APIENTRY glFogCoordfEXT(GLfloat coord) {
+  SGL_DISPATCH->FogCoordf(coord);
+}
+void APIENTRY glFogCoordfvEXT(const GLfloat *coord);
+/* glFogCoordfvEXT: the name of glFogCoordfv in an extension. */
+void APIENTRY glFogCoordfvEXT(const GLfloat *coord) {
+  SGL_DISPATCH->FogCoordfv(coord);
+}
 void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img);
 /* glGetCompressedTexImageARB: the name of glGetCompressedTexImage in an extension. */
 void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img) {
@@ -7124,6 +8007,16 @@ void APIENTRY glMultTransposeMatrixfARB(const GLfloat *m);
 /* glMultTransposeMatrixfARB: the name of glMultTransposeMatrixf in an extension. */
 void APIENTRY glMultTransposeMatrixfARB(const GLfloat *m) {
   SGL_DISPATCH->MultTransposeMatrixf(m);
+}
+void APIENTRY glMultiDrawArraysEXT(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+/* glMultiDrawArraysEXT: the name of glMultiDrawArrays in an extension. */
+void APIENTRY glMultiDrawArraysEXT(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount) {
+  SGL_DISPATCH->MultiDrawArrays(mode, first, count, drawcount);
+}
+void APIENTRY glMultiDrawElementsEXT(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount);
+/* glMultiDrawElementsEXT: the name of glMultiDrawElements in an extension. */
+void APIENTRY glMultiDrawElementsEXT(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount) {
+  SGL_DISPATCH->MultiDrawElements(mode, count, type, indices, drawcount);
 }
 void APIENTRY glMultiTexCoord1dARB(GLenum target, GLdouble s);
 /* glMultiTexCoord1dARB: the name of glMultiTexCoord1d in an extension. */
@@ -7285,10 +8178,115 @@ void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v);
 void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v) {
   SGL_DISPATCH->MultiTexCoord4sv(target, v);
 }
+void APIENTRY glPointParameterfARB(GLenum pname, GLfloat param);
+/* glPointParameterfARB: the name of glPointParameterf in an extension. */
+void APIENTRY glPointParameterfARB(GLenum pname, GLfloat param) {
+  SGL_DISPATCH->PointParameterf(pname, param);
+}
+void APIENTRY glPointParameterfEXT(GLenum pname, GLfloat param);
+/* glPointParameterfEXT: the name of glPointParameterf in an extension. */
+void APIENTRY glPointParameterfEXT(GLenum pname, GLfloat param) {
+  SGL_DISPATCH->PointParameterf(pname, param);
+}
+void APIENTRY glPointParameterfvARB(GLenum pname, const GLfloat *params);
+/* glPointParameterfvARB: the name of glPointParameterfv in an extension. */
+void APIENTRY glPointParameterfvARB(GLenum pname, const GLfloat *params) {
+  SGL_DISPATCH->PointParameterfv(pname, params);
+}
+void APIENTRY glPointParameterfvEXT(GLenum pname, const GLfloat *params);
+/* glPointParameterfvEXT: the name of glPointParameterfv in an extension. */
+void APIENTRY glPointParameterfvEXT(GLenum pname, const GLfloat *params) {
+  SGL_DISPATCH->PointParameterfv(pname, params);
+}
 void APIENTRY glSampleCoverageARB(GLfloat value, GLboolean invert);
 /* glSampleCoverageARB: the name of glSampleCoverage in an extension. */
 void APIENTRY glSampleCoverageARB(GLfloat value, GLboolean invert) {
   SGL_DISPATCH->SampleCoverage(value, invert);
+}
+void APIENTRY glSecondaryColor3bEXT(GLbyte red, GLbyte green, GLbyte blue);
+/* glSecondaryColor3bEXT: the name of glSecondaryColor3b in an extension. */
+void APIENTRY glSecondaryColor3bEXT(GLbyte red, GLbyte green, GLbyte blue) {
+  SGL_DISPATCH->SecondaryColor3b(red, green, blue);
+}
+void APIENTRY glSecondaryColor3bvEXT(const GLbyte *v);
+/* glSecondaryColor3bvEXT: the name of glSecondaryColor3bv in an extension. */
+void APIENTRY glSecondaryColor3bvEXT(const GLbyte *v) {
+  SGL_DISPATCH->SecondaryColor3bv(v);
+}
+void APIENTRY glSecondaryColor3dEXT(GLdouble red, GLdouble green, GLdouble blue);
+/* glSecondaryColor3dEXT: the name of glSecondaryColor3d in an extension. */
+void APIENTRY glSecondaryColor3dEXT(GLdouble red, GLdouble green, GLdouble blue) {
+  SGL_DISPATCH->SecondaryColor3d(red, green, blue);
+}
+void APIENTRY glSecondaryColor3dvEXT(const GLdouble *v);
+/* glSecondaryColor3dvEXT: the name of glSecondaryColor3dv in an extension. */
+void APIENTRY glSecondaryColor3dvEXT(const GLdouble *v) {
+  SGL_DISPATCH->SecondaryColor3dv(v);
+}
+void APIENTRY glSecondaryColor3fEXT(GLfloat red, GLfloat green, GLfloat blue);
+/* glSecondaryColor3fEXT: the name of glSecondaryColor3f in an extension. */
+void APIENTRY glSecondaryColor3fEXT(GLfloat red, GLfloat green, GLfloat blue) {
+  SGL_DISPATCH->SecondaryColor3f(red, green, blue);
+}
+void APIENTRY glSecondaryColor3fvEXT(const GLfloat *v);
+/* glSecondaryColor3fvEXT: the name of glSecondaryColor3fv in an extension. */
+void APIENTRY glSecondaryColor3fvEXT(const GLfloat *v) {
+  SGL_DISPATCH->SecondaryColor3fv(v);
+}
+void APIENTRY glSecondaryColor3iEXT(GLint red, GLint green, GLint blue);
+/* glSecondaryColor3iEXT: the name of glSecondaryColor3i in an extension. */
+void APIENTRY glSecondaryColor3iEXT(GLint red, GLint green, GLint blue) {
+  SGL_DISPATCH->SecondaryColor3i(red, green, blue);
+}
+void APIENTRY glSecondaryColor3ivEXT(const GLint *v);
+/* glSecondaryColor3ivEXT: the name of glSecondaryColor3iv in an extension. */
+void APIENTRY glSecondaryColor3ivEXT(const GLint *v) {
+  SGL_DISPATCH->SecondaryColor3iv(v);
+}
+void APIENTRY glSecondaryColor3sEXT(GLshort red, GLshort green, GLshort blue);
+/* glSecondaryColor3sEXT: the name of glSecondaryColor3s in an extension. */
+void APIENTRY glSecondaryColor3sEXT(GLshort red, GLshort green, GLshort blue) {
+  SGL_DISPATCH->SecondaryColor3s(red, green, blue);
+}
+void APIENTRY glSecondaryColor3svEXT(const GLshort *v);
+/* glSecondaryColor3svEXT: the name of glSecondaryColor3sv in an extension. */
+void APIENTRY glSecondaryColor3svEXT(const GLshort *v) {
+  SGL_DISPATCH->SecondaryColor3sv(v);
+}
+void APIENTRY glSecondaryColor3ubEXT(GLubyte red, GLubyte green, GLubyte blue);
+/* glSecondaryColor3ubEXT: the name of glSecondaryColor3ub in an extension. */
+void APIENTRY glSecondaryColor3ubEXT(GLubyte red, GLubyte green, GLubyte blue) {
+  SGL_DISPATCH->SecondaryColor3ub(red, green, blue);
+}
+void APIENTRY glSecondaryColor3ubvEXT(const GLubyte *v);
+/* glSecondaryColor3ubvEXT: the name of glSecondaryColor3ubv in an extension. */
+void APIENTRY glSecondaryColor3ubvEXT(const GLubyte *v) {
+  SGL_DISPATCH->SecondaryColor3ubv(v);
+}
+void APIENTRY glSecondaryColor3uiEXT(GLuint red, GLuint green, GLuint blue);
+/* glSecondaryColor3uiEXT: the name of glSecondaryColor3ui in an extension. */
+void APIENTRY glSecondaryColor3uiEXT(GLuint red, GLuint green, GLuint blue) {
+  SGL_DISPATCH->SecondaryColor3ui(red, green, blue);
+}
+void APIENTRY glSecondaryColor3uivEXT(const GLuint *v);
+/* glSecondaryColor3uivEXT: the name of glSecondaryColor3uiv in an extension. */
+void APIENTRY glSecondaryColor3uivEXT(const GLuint *v) {
+  SGL_DISPATCH->SecondaryColor3uiv(v);
+}
+void APIENTRY glSecondaryColor3usEXT(GLushort red, GLushort green, GLushort blue);
+/* glSecondaryColor3usEXT: the name of glSecondaryColor3us in an extension. */
+void APIENTRY glSecondaryColor3usEXT(GLushort red, GLushort green, GLushort blue) {
+  SGL_DISPATCH->SecondaryColor3us(red, green, blue);
+}
+void APIENTRY glSecondaryColor3usvEXT(const GLushort *v);
+/* glSecondaryColor3usvEXT: the name of glSecondaryColor3usv in an extension. */
+void APIENTRY glSecondaryColor3usvEXT(const GLushort *v) {
+  SGL_DISPATCH->SecondaryColor3usv(v);
+}
+void APIENTRY glSecondaryColorPointerEXT(GLint size, GLenum type, GLsizei stride, const void *pointer);
+/* glSecondaryColorPointerEXT: the name of glSecondaryColorPointer in an extension. */
+void APIENTRY glSecondaryColorPointerEXT(GLint size, GLenum type, GLsizei stride, const void *pointer) {
+  SGL_DISPATCH->SecondaryColorPointer(size, type, stride, pointer);
 }
 void APIENTRY glTexImage3DEXT(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
 /* glTexImage3DEXT: the name of glTexImage3D in an extension. */
@@ -7299,6 +8297,86 @@ void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLin
 /* glTexSubImage3DEXT: the name of glTexSubImage3D in an extension. */
 void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels) {
   SGL_DISPATCH->TexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+}
+void APIENTRY glWindowPos2dARB(GLdouble x, GLdouble y);
+/* glWindowPos2dARB: the name of glWindowPos2d in an extension. */
+void APIENTRY glWindowPos2dARB(GLdouble x, GLdouble y) {
+  SGL_DISPATCH->WindowPos2d(x, y);
+}
+void APIENTRY glWindowPos2dvARB(const GLdouble *v);
+/* glWindowPos2dvARB: the name of glWindowPos2dv in an extension. */
+void APIENTRY glWindowPos2dvARB(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos2dv(v);
+}
+void APIENTRY glWindowPos2fARB(GLfloat x, GLfloat y);
+/* glWindowPos2fARB: the name of glWindowPos2f in an extension. */
+void APIENTRY glWindowPos2fARB(GLfloat x, GLfloat y) {
+  SGL_DISPATCH->WindowPos2f(x, y);
+}
+void APIENTRY glWindowPos2fvARB(const GLfloat *v);
+/* glWindowPos2fvARB: the name of glWindowPos2fv in an extension. */
+void APIENTRY glWindowPos2fvARB(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos2fv(v);
+}
+void APIENTRY glWindowPos2iARB(GLint x, GLint y);
+/* glWindowPos2iARB: the name of glWindowPos2i in an extension. */
+void APIENTRY glWindowPos2iARB(GLint x, GLint y) {
+  SGL_DISPATCH->WindowPos2i(x, y);
+}
+void APIENTRY glWindowPos2ivARB(const GLint *v);
+/* glWindowPos2ivARB: the name of glWindowPos2iv in an extension. */
+void APIENTRY glWindowPos2ivARB(const GLint *v) {
+  SGL_DISPATCH->WindowPos2iv(v);
+}
+void APIENTRY glWindowPos2sARB(GLshort x, GLshort y);
+/* glWindowPos2sARB: the name of glWindowPos2s in an extension. */
+void APIENTRY glWindowPos2sARB(GLshort x, GLshort y) {
+  SGL_DISPATCH->WindowPos2s(x, y);
+}
+void APIENTRY glWindowPos2svARB(const GLshort *v);
+/* glWindowPos2svARB: the name of glWindowPos2sv in an extension. */
+void APIENTRY glWindowPos2svARB(const GLshort *v) {
+  SGL_DISPATCH->WindowPos2sv(v);
+}
+void APIENTRY glWindowPos3dARB(GLdouble x, GLdouble y, GLdouble z);
+/* glWindowPos3dARB: the name of glWindowPos3d in an extension. */
+void APIENTRY glWindowPos3dARB(GLdouble x, GLdouble y, GLdouble z) {
+  SGL_DISPATCH->WindowPos3d(x, y, z);
+}
+void APIENTRY glWindowPos3dvARB(const GLdouble *v);
+/* glWindowPos3dvARB: the name of glWindowPos3dv in an extension. */
+void APIENTRY glWindowPos3dvARB(const GLdouble *v) {
+  SGL_DISPATCH->WindowPos3dv(v);
+}
+void APIENTRY glWindowPos3fARB(GLfloat x, GLfloat y, GLfloat z);
+/* glWindowPos3fARB: the name of glWindowPos3f in an extension. */
+void APIENTRY glWindowPos3fARB(GLfloat x, GLfloat y, GLfloat z) {
+  SGL_DISPATCH->WindowPos3f(x, y, z);
+}
+void APIENTRY glWindowPos3fvARB(const GLfloat *v);
+/* glWindowPos3fvARB: the name of glWindowPos3fv in an extension. */
+void APIENTRY glWindowPos3fvARB(const GLfloat *v) {
+  SGL_DISPATCH->WindowPos3fv(v);
+}
+void APIENTRY glWindowPos3iARB(GLint x, GLint y, GLint z);
+/* glWindowPos3iARB: the name of glWindowPos3i in an extension. */
+void APIENTRY glWindowPos3iARB(GLint x, GLint y, GLint z) {
+  SGL_DISPATCH->WindowPos3i(x, y, z);
+}
+void APIENTRY glWindowPos3ivARB(const GLint *v);
+/* glWindowPos3ivARB: the name of glWindowPos3iv in an extension. */
+void APIENTRY glWindowPos3ivARB(const GLint *v) {
+  SGL_DISPATCH->WindowPos3iv(v);
+}
+void APIENTRY glWindowPos3sARB(GLshort x, GLshort y, GLshort z);
+/* glWindowPos3sARB: the name of glWindowPos3s in an extension. */
+void APIENTRY glWindowPos3sARB(GLshort x, GLshort y, GLshort z) {
+  SGL_DISPATCH->WindowPos3s(x, y, z);
+}
+void APIENTRY glWindowPos3svARB(const GLshort *v);
+/* glWindowPos3svARB: the name of glWindowPos3sv in an extension. */
+void APIENTRY glWindowPos3svARB(const GLshort *v) {
+  SGL_DISPATCH->WindowPos3sv(v);
 }
 
 /* The extension functions by name, for wglGetProcAddress. */
@@ -7368,7 +8446,57 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glLoadTransposeMatrixd", (void (*)(void))glLoadTransposeMatrixd},
   {"glMultTransposeMatrixf", (void (*)(void))glMultTransposeMatrixf},
   {"glMultTransposeMatrixd", (void (*)(void))glMultTransposeMatrixd},
+  {"glBlendFuncSeparate", (void (*)(void))glBlendFuncSeparate},
+  {"glBlendColor", (void (*)(void))glBlendColor},
+  {"glBlendEquation", (void (*)(void))glBlendEquation},
+  {"glFogCoordf", (void (*)(void))glFogCoordf},
+  {"glFogCoordfv", (void (*)(void))glFogCoordfv},
+  {"glFogCoordd", (void (*)(void))glFogCoordd},
+  {"glFogCoorddv", (void (*)(void))glFogCoorddv},
+  {"glFogCoordPointer", (void (*)(void))glFogCoordPointer},
+  {"glMultiDrawArrays", (void (*)(void))glMultiDrawArrays},
+  {"glMultiDrawElements", (void (*)(void))glMultiDrawElements},
+  {"glPointParameterf", (void (*)(void))glPointParameterf},
+  {"glPointParameterfv", (void (*)(void))glPointParameterfv},
+  {"glPointParameteri", (void (*)(void))glPointParameteri},
+  {"glPointParameteriv", (void (*)(void))glPointParameteriv},
+  {"glSecondaryColor3b", (void (*)(void))glSecondaryColor3b},
+  {"glSecondaryColor3bv", (void (*)(void))glSecondaryColor3bv},
+  {"glSecondaryColor3s", (void (*)(void))glSecondaryColor3s},
+  {"glSecondaryColor3sv", (void (*)(void))glSecondaryColor3sv},
+  {"glSecondaryColor3i", (void (*)(void))glSecondaryColor3i},
+  {"glSecondaryColor3iv", (void (*)(void))glSecondaryColor3iv},
+  {"glSecondaryColor3f", (void (*)(void))glSecondaryColor3f},
+  {"glSecondaryColor3fv", (void (*)(void))glSecondaryColor3fv},
+  {"glSecondaryColor3d", (void (*)(void))glSecondaryColor3d},
+  {"glSecondaryColor3dv", (void (*)(void))glSecondaryColor3dv},
+  {"glSecondaryColor3ub", (void (*)(void))glSecondaryColor3ub},
+  {"glSecondaryColor3ubv", (void (*)(void))glSecondaryColor3ubv},
+  {"glSecondaryColor3us", (void (*)(void))glSecondaryColor3us},
+  {"glSecondaryColor3usv", (void (*)(void))glSecondaryColor3usv},
+  {"glSecondaryColor3ui", (void (*)(void))glSecondaryColor3ui},
+  {"glSecondaryColor3uiv", (void (*)(void))glSecondaryColor3uiv},
+  {"glSecondaryColorPointer", (void (*)(void))glSecondaryColorPointer},
+  {"glWindowPos2s", (void (*)(void))glWindowPos2s},
+  {"glWindowPos2sv", (void (*)(void))glWindowPos2sv},
+  {"glWindowPos2i", (void (*)(void))glWindowPos2i},
+  {"glWindowPos2iv", (void (*)(void))glWindowPos2iv},
+  {"glWindowPos2f", (void (*)(void))glWindowPos2f},
+  {"glWindowPos2fv", (void (*)(void))glWindowPos2fv},
+  {"glWindowPos2d", (void (*)(void))glWindowPos2d},
+  {"glWindowPos2dv", (void (*)(void))glWindowPos2dv},
+  {"glWindowPos3s", (void (*)(void))glWindowPos3s},
+  {"glWindowPos3sv", (void (*)(void))glWindowPos3sv},
+  {"glWindowPos3i", (void (*)(void))glWindowPos3i},
+  {"glWindowPos3iv", (void (*)(void))glWindowPos3iv},
+  {"glWindowPos3f", (void (*)(void))glWindowPos3f},
+  {"glWindowPos3fv", (void (*)(void))glWindowPos3fv},
+  {"glWindowPos3d", (void (*)(void))glWindowPos3d},
+  {"glWindowPos3dv", (void (*)(void))glWindowPos3dv},
   {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
+  {"glBlendColorEXT", (void (*)(void))glBlendColorEXT},
+  {"glBlendEquationEXT", (void (*)(void))glBlendEquationEXT},
+  {"glBlendFuncSeparateEXT", (void (*)(void))glBlendFuncSeparateEXT},
   {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
   {"glCompressedTexImage1DARB", (void (*)(void))glCompressedTexImage1DARB},
   {"glCompressedTexImage2DARB", (void (*)(void))glCompressedTexImage2DARB},
@@ -7378,11 +8506,18 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glCompressedTexSubImage3DARB", (void (*)(void))glCompressedTexSubImage3DARB},
   {"glCopyTexSubImage3DEXT", (void (*)(void))glCopyTexSubImage3DEXT},
   {"glDrawRangeElementsEXT", (void (*)(void))glDrawRangeElementsEXT},
+  {"glFogCoordPointerEXT", (void (*)(void))glFogCoordPointerEXT},
+  {"glFogCoorddEXT", (void (*)(void))glFogCoorddEXT},
+  {"glFogCoorddvEXT", (void (*)(void))glFogCoorddvEXT},
+  {"glFogCoordfEXT", (void (*)(void))glFogCoordfEXT},
+  {"glFogCoordfvEXT", (void (*)(void))glFogCoordfvEXT},
   {"glGetCompressedTexImageARB", (void (*)(void))glGetCompressedTexImageARB},
   {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
   {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
   {"glMultTransposeMatrixdARB", (void (*)(void))glMultTransposeMatrixdARB},
   {"glMultTransposeMatrixfARB", (void (*)(void))glMultTransposeMatrixfARB},
+  {"glMultiDrawArraysEXT", (void (*)(void))glMultiDrawArraysEXT},
+  {"glMultiDrawElementsEXT", (void (*)(void))glMultiDrawElementsEXT},
   {"glMultiTexCoord1dARB", (void (*)(void))glMultiTexCoord1dARB},
   {"glMultiTexCoord1dvARB", (void (*)(void))glMultiTexCoord1dvARB},
   {"glMultiTexCoord1fARB", (void (*)(void))glMultiTexCoord1fARB},
@@ -7415,8 +8550,45 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultiTexCoord4ivARB", (void (*)(void))glMultiTexCoord4ivARB},
   {"glMultiTexCoord4sARB", (void (*)(void))glMultiTexCoord4sARB},
   {"glMultiTexCoord4svARB", (void (*)(void))glMultiTexCoord4svARB},
+  {"glPointParameterfARB", (void (*)(void))glPointParameterfARB},
+  {"glPointParameterfEXT", (void (*)(void))glPointParameterfEXT},
+  {"glPointParameterfvARB", (void (*)(void))glPointParameterfvARB},
+  {"glPointParameterfvEXT", (void (*)(void))glPointParameterfvEXT},
   {"glSampleCoverageARB", (void (*)(void))glSampleCoverageARB},
+  {"glSecondaryColor3bEXT", (void (*)(void))glSecondaryColor3bEXT},
+  {"glSecondaryColor3bvEXT", (void (*)(void))glSecondaryColor3bvEXT},
+  {"glSecondaryColor3dEXT", (void (*)(void))glSecondaryColor3dEXT},
+  {"glSecondaryColor3dvEXT", (void (*)(void))glSecondaryColor3dvEXT},
+  {"glSecondaryColor3fEXT", (void (*)(void))glSecondaryColor3fEXT},
+  {"glSecondaryColor3fvEXT", (void (*)(void))glSecondaryColor3fvEXT},
+  {"glSecondaryColor3iEXT", (void (*)(void))glSecondaryColor3iEXT},
+  {"glSecondaryColor3ivEXT", (void (*)(void))glSecondaryColor3ivEXT},
+  {"glSecondaryColor3sEXT", (void (*)(void))glSecondaryColor3sEXT},
+  {"glSecondaryColor3svEXT", (void (*)(void))glSecondaryColor3svEXT},
+  {"glSecondaryColor3ubEXT", (void (*)(void))glSecondaryColor3ubEXT},
+  {"glSecondaryColor3ubvEXT", (void (*)(void))glSecondaryColor3ubvEXT},
+  {"glSecondaryColor3uiEXT", (void (*)(void))glSecondaryColor3uiEXT},
+  {"glSecondaryColor3uivEXT", (void (*)(void))glSecondaryColor3uivEXT},
+  {"glSecondaryColor3usEXT", (void (*)(void))glSecondaryColor3usEXT},
+  {"glSecondaryColor3usvEXT", (void (*)(void))glSecondaryColor3usvEXT},
+  {"glSecondaryColorPointerEXT", (void (*)(void))glSecondaryColorPointerEXT},
   {"glTexImage3DEXT", (void (*)(void))glTexImage3DEXT},
   {"glTexSubImage3DEXT", (void (*)(void))glTexSubImage3DEXT},
+  {"glWindowPos2dARB", (void (*)(void))glWindowPos2dARB},
+  {"glWindowPos2dvARB", (void (*)(void))glWindowPos2dvARB},
+  {"glWindowPos2fARB", (void (*)(void))glWindowPos2fARB},
+  {"glWindowPos2fvARB", (void (*)(void))glWindowPos2fvARB},
+  {"glWindowPos2iARB", (void (*)(void))glWindowPos2iARB},
+  {"glWindowPos2ivARB", (void (*)(void))glWindowPos2ivARB},
+  {"glWindowPos2sARB", (void (*)(void))glWindowPos2sARB},
+  {"glWindowPos2svARB", (void (*)(void))glWindowPos2svARB},
+  {"glWindowPos3dARB", (void (*)(void))glWindowPos3dARB},
+  {"glWindowPos3dvARB", (void (*)(void))glWindowPos3dvARB},
+  {"glWindowPos3fARB", (void (*)(void))glWindowPos3fARB},
+  {"glWindowPos3fvARB", (void (*)(void))glWindowPos3fvARB},
+  {"glWindowPos3iARB", (void (*)(void))glWindowPos3iARB},
+  {"glWindowPos3ivARB", (void (*)(void))glWindowPos3ivARB},
+  {"glWindowPos3sARB", (void (*)(void))glWindowPos3sARB},
+  {"glWindowPos3svARB", (void (*)(void))glWindowPos3svARB},
   {0, 0}
 };

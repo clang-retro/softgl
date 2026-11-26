@@ -102,6 +102,10 @@ typedef uint32_t sgl_depth_t;
 #define SGL_MAX_3D_TEXTURE_SIZE 64
 #endif
 #define SGL_MAX_EVAL_ORDER 16
+#define SGL_MAX_LOD_BIAS 11.0f /* GL_MAX_TEXTURE_LOD_BIAS: the levels of a mipmap */
+#define SGL_MAX_POINT_SIZE 64.0f
+/* The largest depth of a texel of a depth texture (30 bits). */
+#define SGL_TEX_DEPTH_MAX 0x3FFFFFFFu
 #define SGL_SHINE_TABLE 256
 #define SGL_SHINE_CACHE 4
 /* The texture units (GL_ARB_multitexture). Each unit costs memory in
@@ -212,6 +216,9 @@ typedef struct sgl_texture {
   GLint base_level, max_level; /* OpenGL 1.2: the levels that are used */
   GLfloat min_lod, max_lod;
   GLfloat priority;
+  GLfloat lod_bias;        /* OpenGL 1.4: GL_TEXTURE_LOD_BIAS of the texture */
+  GLboolean generate_mipmap; /* OpenGL 1.4: GL_GENERATE_MIPMAP */
+  GLenum compare_mode, compare_func, depth_mode; /* OpenGL 1.4: depth textures */
   uint32_t palette[256];   /* GL_EXT_paletted_texture */
   int palette_size;
   GLenum palette_format;
@@ -274,6 +281,7 @@ enum sgl_cap {
   SGL_MAP2_TEXTURE_COORD_3, SGL_MAP2_TEXTURE_COORD_4, SGL_MAP2_INDEX,
   SGL_INDEX_LOGIC_OP, SGL_RESCALE_NORMAL,
   SGL_MULTISAMPLE, SGL_SAMPLE_ALPHA_TO_COVERAGE, SGL_SAMPLE_ALPHA_TO_ONE, SGL_SAMPLE_COVERAGE,
+  SGL_COLOR_SUM,
   SGL_LIGHT0, /* to SGL_LIGHT0 + 7 */
   SGL_CLIP_PLANE0 = SGL_LIGHT0 + SGL_MAX_LIGHTS, /* to + 5 */
   SGL_UNIT_CAPS = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES, /* the caps of the texture units */
@@ -296,6 +304,7 @@ typedef struct sgl_unit_attrib {
   GLenum combine_rgb, combine_alpha;
   GLenum src_rgb[3], src_alpha[3], op_rgb[3], op_alpha[3];
   GLfloat rgb_scale, alpha_scale;
+  GLfloat lod_bias;        /* GL_TEXTURE_LOD_BIAS of GL_TEXTURE_FILTER_CONTROL */
   GLuint bound_1d, bound_2d, bound_3d, bound_cube; /* the bound names, at glPushAttrib */
 } sgl_unit_attrib;
 
@@ -308,6 +317,8 @@ typedef struct sgl_attrib {
   uint8_t enabled[SGL_CAP_COUNT];
   /* GL_CURRENT_BIT */
   GLfloat color[4], normal[3], index;
+  GLfloat color2[4];       /* OpenGL 1.4: the secondary color */
+  GLfloat fog_coord;       /* OpenGL 1.4: the fog coordinate */
   GLfloat tex[SGL_MAX_TEXTURE_UNITS][4];
   GLfloat raster_pos[4], raster_color[4];
   GLfloat raster_tex[SGL_MAX_TEXTURE_UNITS][4];
@@ -315,6 +326,8 @@ typedef struct sgl_attrib {
   GLboolean raster_valid, edge;
   /* GL_POINT_BIT, GL_LINE_BIT */
   GLfloat point_size, line_width;
+  /* OpenGL 1.4: the point parameters. */
+  GLfloat point_min, point_max, point_fade, point_atten[3];
   GLint line_repeat;
   GLushort line_pattern;
   /* GL_POLYGON_BIT */
@@ -340,6 +353,7 @@ typedef struct sgl_attrib {
   /* GL_FOG_BIT */
   GLenum fog_mode;
   GLfloat fog_color[4], fog_density, fog_start, fog_end, fog_index;
+  GLenum fog_source;       /* GL_FOG_COORDINATE or GL_FRAGMENT_DEPTH */
   /* GL_DEPTH_BUFFER_BIT */
   GLenum depth_func;
   GLboolean depth_mask;
@@ -347,6 +361,10 @@ typedef struct sgl_attrib {
   /* GL_COLOR_BUFFER_BIT */
   GLenum alpha_func, blend_src, blend_dst, logic_op, draw_buffer;
   GLclampf alpha_ref;
+  /* OpenGL 1.4: the alpha factors (blend_src and blend_dst are those of
+   * RGB), the constant color and the equation. */
+  GLenum blend_src_alpha, blend_dst_alpha, blend_eq;
+  GLfloat blend_color[4];
   GLfloat clear_color[4], clear_index;
   GLboolean color_mask[4];
   GLuint index_mask;
@@ -366,6 +384,7 @@ typedef struct sgl_attrib {
   /* GL_HINT_BIT */
   GLenum hint_perspective, hint_point, hint_line, hint_polygon, hint_fog;
   GLenum hint_compression; /* GL_TEXTURE_COMPRESSION_HINT */
+  GLenum hint_mipmap;      /* GL_GENERATE_MIPMAP_HINT */
   /* GL_MULTISAMPLE_BIT: there is no multisample buffer, so these have
    * no effect. */
   GLfloat sample_coverage;
@@ -402,6 +421,7 @@ typedef struct sgl_pixelstore {
 typedef struct sgl_client {
   GLbitfield mask;
   sgl_array vertex, normal, color, index, edge;
+  sgl_array color2, fog;   /* OpenGL 1.4: the secondary color and fog coordinate */
   sgl_array tex[SGL_MAX_TEXTURE_UNITS];
   int client_active;       /* the unit of glClientActiveTexture, from 0 */
   sgl_pixelstore pack, unpack;
@@ -452,6 +472,7 @@ struct sgl_context {
   unsigned tex_units;      /* the texture units that are on (bits) */
   unsigned tex_coords;     /* the units whose coordinates the vertices have */
   int sec_on;              /* the vertices have a secondary color to add */
+  int point_atten;         /* the point size changes with the distance */
   const GLfloat *flat_spec;/* the secondary color of flat shading */
   sgl_vertex *clipverts;   /* the vertices that clipping makes */
   int nclip, maxclip;
@@ -562,6 +583,10 @@ void sgl_pack_texels(sgl_context *c, int w, int h, const uint32_t *texels, GLenu
 void sgl_unpack_index(const sgl_pixelstore *ps, int w, int h, GLenum type,
                       const void *pixels, uint8_t *out);
 int sgl_format_components(GLenum format);
+int sgl_unpack_depth(sgl_context *c, const sgl_pixelstore *ps, int w, int h, GLenum type,
+                     const void *pixels, uint32_t *out, uint32_t max);
+int sgl_need_stencil(sgl_context *c);
+void sgl_read_depth(sgl_context *c, int x, int y, int w, int h, int32_t *out);
 extern const sgl_pixelstore sgl_tight_store;
 
 /* list.c */
@@ -587,6 +612,10 @@ int sgl_map_k(GLenum target);
 
 /* extension.c: the extension procedures by name. */
 extern const struct sgl_proc sgl_extension_procs[];
+
+/* Gives the enum of a float parameter, or 0 when it is negative or too
+ * large: the conversion of such a float to GLenum is undefined. */
+static inline GLenum sgl_enum(GLfloat f) { return f >= 0.0f && f < 4294967040.0f ? (GLenum)f : 0; }
 
 /* Clamps a float to [0, 1]. */
 static inline GLfloat sgl_clamp01(GLfloat x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }

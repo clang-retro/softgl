@@ -26,6 +26,9 @@ static void init_texture(sgl_texture *t, GLuint name, GLenum target) {
   t->min_lod = -1000.0f;
   t->max_lod = 1000.0f;
   t->priority = 1.0f;
+  t->compare_mode = GL_NONE;
+  t->compare_func = GL_LEQUAL;
+  t->depth_mode = GL_LUMINANCE;
   t->palette_format = GL_RGBA;
   t->refs = 1;
 }
@@ -213,6 +216,9 @@ static GLenum base_format(GLint internal) {
     case GL_COMPRESSED_RGBA: case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
     case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
       return GL_RGBA;
+    case GL_DEPTH_COMPONENT: case GL_DEPTH_COMPONENT16: case GL_DEPTH_COMPONENT24:
+    case GL_DEPTH_COMPONENT32:
+      return GL_DEPTH_COMPONENT;
     case GL_COLOR_INDEX1_EXT: case GL_COLOR_INDEX2_EXT: case GL_COLOR_INDEX4_EXT:
     case GL_COLOR_INDEX8_EXT: case GL_COLOR_INDEX12_EXT: case GL_COLOR_INDEX16_EXT:
       return GL_COLOR_INDEX;
@@ -320,6 +326,80 @@ static void unpack_index_images(const sgl_pixelstore *ps, int three, int W, int 
   }
 }
 
+/* Makes the levels after the base level of face face of a texture from
+ * the base level (GL_GENERATE_MIPMAP of OpenGL 1.4). Each texel of a
+ * level is the mean of the 2, 4 or 8 texels of the level before. */
+static void generate_mipmaps(sgl_texture *t, int face) {
+  sgl_level *lv = sgl_face_levels(t, face);
+  int i;
+  if (!lv || t->base_level >= SGL_MAX_TEXTURE_LEVELS || !lv[t->base_level].texels) return;
+  for (i = t->base_level; i + 1 < SGL_MAX_TEXTURE_LEVELS && i < t->max_level; i++) {
+    const sgl_level *src = &lv[i];
+    sgl_level *dst = &lv[i + 1];
+    int w = src->width, h = src->height, d = src->depth, x, y, z;
+    int sx = w > 1 ? 2 : 1, sy = h > 1 ? 2 : 1, sz = d > 1 ? 2 : 1, n = sx * sy * sz;
+    /* n is 2, 4 or 8: the mean is a shift, without a 64-bit division. */
+    int sh = (sx > 1) + (sy > 1) + (sz > 1);
+    int nw = w / sx, nh = h / sy, nd = d / sz;
+    uint32_t *out;
+    if (n == 1) break;
+    out = (uint32_t *)malloc((size_t)nw * nh * nd * 4);
+    if (!out) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    for (z = 0; z < nd; z++)
+      for (y = 0; y < nh; y++)
+        for (x = 0; x < nw; x++) {
+          /* The sums: of the four components, or of the depth. */
+          uint32_t sum[4] = {0, 0, 0, 0};
+          uint64_t dsum = 0;
+          int i2, j2, k2, ch;
+          for (k2 = 0; k2 < sz; k2++)
+            for (j2 = 0; j2 < sy; j2++)
+              for (i2 = 0; i2 < sx; i2++) {
+                uint32_t v = src->texels[((size_t)(z * sz + k2) * h + (size_t)(y * sy + j2)) * w +
+                                         (size_t)(x * sx + i2)];
+                if (src->base == GL_DEPTH_COMPONENT) {
+                  dsum += v;
+                } else {
+                  for (ch = 0; ch < 4; ch++) sum[ch] += (v >> (ch * 8)) & 0xFF;
+                }
+              }
+          if (src->base == GL_DEPTH_COMPONENT) {
+            out[((size_t)z * nh + y) * nw + x] = (uint32_t)(dsum >> sh);
+          } else {
+            uint32_t v = 0;
+            for (ch = 0; ch < 4; ch++) v |= ((sum[ch] + (uint32_t)n / 2) >> sh) << (ch * 8);
+            out[((size_t)z * nh + y) * nw + x] = v;
+          }
+        }
+    free(dst->texels);
+    free(dst->indices);
+    free(dst->compressed);
+    dst->texels = out;
+    dst->indices = NULL;
+    dst->compressed = NULL;
+    dst->compressed_size = 0;
+    dst->width = nw;
+    dst->height = nh;
+    dst->depth = nd;
+    dst->wlog = log2_exact(nw);
+    dst->hlog = log2_exact(nh);
+    dst->dlog = log2_exact(nd);
+    dst->internal = src->internal;
+    dst->base = src->base;
+    dst->border = 0;
+  }
+  check_complete(t);
+}
+
+/* Makes the mipmap of face face of texture t again when the image of
+ * level level changed and t has GL_GENERATE_MIPMAP. */
+static void changed_level(sgl_texture *t, int face, int level) {
+  if (t->generate_mipmap && level == t->base_level) generate_mipmaps(t, face);
+}
+
 /* Tells if target is a target of glTexImage3D. */
 static int is_3d(GLenum target) { return target == GL_TEXTURE_3D || target == GL_PROXY_TEXTURE_3D; }
 
@@ -368,6 +448,13 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
   }
   if (sgl_format_components(format) == 0) {
     sgl_error(GL_INVALID_ENUM);
+    return 0;
+  }
+  /* A depth texture (OpenGL 1.4) is 1D or 2D, and takes depth pixels
+   * only. */
+  if ((base == GL_DEPTH_COMPONENT) != (format == GL_DEPTH_COMPONENT) ||
+      (base == GL_DEPTH_COMPONENT && target != GL_TEXTURE_1D && target != GL_TEXTURE_2D)) {
+    sgl_error(GL_INVALID_OPERATION);
     return 0;
   }
   /* The border texels are dropped: the texture is the inside. */
@@ -419,6 +506,25 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
       memset(lv->indices, 0, n);
     }
     expand_palette(t, lv);
+  } else if (base == GL_DEPTH_COMPONENT) {
+    lv->base = base;
+    if (pixels) {
+      uint32_t *dz = (uint32_t *)malloc((size_t)W * H * 4);
+      if (!dz) {
+        sgl_error(GL_OUT_OF_MEMORY);
+        return 0;
+      }
+      if (!sgl_unpack_depth(c, ps, W, H, type, pixels, dz, SGL_TEX_DEPTH_MAX)) {
+        free(dz);
+        sgl_error(GL_INVALID_ENUM);
+        return 0;
+      }
+      for (y = 0; y < h; y++)
+        memcpy(lv->texels + (size_t)y * w, dz + ((size_t)(y + border) * W + border), (size_t)w * 4);
+      free(dz);
+    } else {
+      memset(lv->texels, 0, n * 4);
+    }
   } else {
     lv->base = base;
     if (pixels) {
@@ -444,6 +550,7 @@ static int set_image(sgl_context *c, GLenum target, GLint level, GLint internal,
     }
   }
   check_complete(t);
+  changed_level(t, face_of(target), level);
   return 1;
 }
 
@@ -499,7 +606,24 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
     return;
   }
   if (w <= 0 || h <= 0 || d <= 0) return;
-  if (lv->indices && format == GL_COLOR_INDEX) {
+  if ((lv->base == GL_DEPTH_COMPONENT) != (format == GL_DEPTH_COMPONENT)) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if (lv->base == GL_DEPTH_COMPONENT) {
+    uint32_t *dz = (uint32_t *)malloc((size_t)w * h * 4);
+    if (!dz) {
+      sgl_error(GL_OUT_OF_MEMORY);
+      return;
+    }
+    if (!sgl_unpack_depth(c, ps, w, h, type, pixels, dz, SGL_TEX_DEPTH_MAX)) {
+      free(dz);
+      sgl_error(GL_INVALID_ENUM);
+      return;
+    }
+    for (j = 0; j < h; j++) memcpy(lv->texels + (size_t)(y + j) * lv->width + x, dz + (size_t)j * w, (size_t)w * 4);
+    free(dz);
+  } else if (lv->indices && format == GL_COLOR_INDEX) {
     uint8_t *idx = (uint8_t *)malloc((size_t)w * h * d);
     if (!idx) {
       sgl_error(GL_OUT_OF_MEMORY);
@@ -530,6 +654,7 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
               texel(lv->base, rgba + (((size_t)k * h + j) * w + i) * 4);
     free(rgba);
   }
+  changed_level(t, face_of(target), level);
 }
 
 /* glTexSubImage2D: changes a rectangle of a level of the 2D texture. */
@@ -573,14 +698,67 @@ static uint8_t *read_color(sgl_context *c, int x, int y, int w, int h) {
   return p;
 }
 
+/* Reads w x h values of the depth buffer at x, y as floats 0 to 1, rows
+ * bottom first. */
+static GLfloat *read_depth_floats(sgl_context *c, int x, int y, int w, int h) {
+  size_t i, n = (size_t)w * h;
+  int32_t *z = (int32_t *)malloc(n * 4 + 4);
+  if (!z) return NULL;
+  sgl_read_depth(c, x, y, w, h, z);
+  for (i = 0; i < n; i++) {
+    GLfloat f = (GLfloat)((double)(uint32_t)z[i] / (double)SGL_Z_MAX);
+    memcpy(&z[i], &f, 4);
+  }
+  return (GLfloat *)z;
+}
+
+/* Tells if level level of the image of target is a depth texture. */
+static int level_is_depth(sgl_context *c, GLenum target, GLint level) {
+  sgl_texture *t = bound(c, target);
+  const sgl_level *lv;
+  if (!t || face_of(target) < 0 || level < 0 || level >= SGL_MAX_TEXTURE_LEVELS) return 0;
+  lv = sgl_face_levels(t, face_of(target));
+  return lv && lv[level].texels && lv[level].base == GL_DEPTH_COMPONENT;
+}
+
+/* Sets a level of a 1D or 2D texture of a depth format from the depth
+ * buffer (OpenGL 1.4). */
+static void copy_depth_image(sgl_context *c, GLenum target, GLint level, GLenum internal, GLint x,
+                             GLint y, GLsizei w, GLsizei h, GLint border) {
+  GLfloat *p = read_depth_floats(c, x, y, w, h);
+  if (!p) {
+    sgl_error(GL_OUT_OF_MEMORY);
+    return;
+  }
+  set_image(c, target, level, (GLint)internal, w, h, 1, border, GL_DEPTH_COMPONENT, GL_FLOAT, p,
+            &sgl_tight_store);
+  free(p);
+}
+
+/* Changes a rectangle of a depth texture from the depth buffer. */
+static void copy_depth_sub(sgl_context *c, GLenum target, GLint level, GLint xoff, GLint yoff, GLint x,
+                           GLint y, GLsizei w, GLsizei h) {
+  GLfloat *p = read_depth_floats(c, x, y, w, h);
+  if (!p) {
+    sgl_error(GL_OUT_OF_MEMORY);
+    return;
+  }
+  sub_image(c, target, level, xoff, yoff, 0, w, h, 1, GL_DEPTH_COMPONENT, GL_FLOAT, p, &sgl_tight_store);
+  free(p);
+}
+
 /* glCopyTexImage2D: sets a level of the 2D texture from the color
- * buffer. */
+ * buffer, or from the depth buffer for a depth format. */
 void APIENTRY sgl_CopyTexImage2D(GLenum target, GLint level, GLenum internal, GLint x, GLint y,
                                  GLsizei w, GLsizei h, GLint border) {
   sgl_context *c = sgl_ctx;
   uint8_t *p;
   if (is_3d(target)) {
     sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  if (base_format((GLint)internal) == GL_DEPTH_COMPONENT) {
+    copy_depth_image(c, target, level, internal, x, y, w, h, border);
     return;
   }
   p = read_color(c, x, y, w, h);
@@ -603,6 +781,10 @@ void APIENTRY sgl_CopyTexImage1D(GLenum target, GLint level, GLenum internal, GL
     sgl_error(GL_INVALID_ENUM);
     return;
   }
+  if (base_format((GLint)internal) == GL_DEPTH_COMPONENT) {
+    copy_depth_image(c, target, level, internal, x, y, w, 1, border);
+    return;
+  }
   p = read_color(c, x, y, w, 1);
   if (!p) {
     sgl_error(GL_OUT_OF_MEMORY);
@@ -618,7 +800,12 @@ void APIENTRY sgl_CopyTexImage1D(GLenum target, GLint level, GLenum internal, GL
 void APIENTRY sgl_CopyTexSubImage2D(GLenum target, GLint level, GLint xoff, GLint yoff, GLint x,
                                     GLint y, GLsizei w, GLsizei h) {
   sgl_context *c = sgl_ctx;
-  uint8_t *p = read_color(c, x, y, w, h);
+  uint8_t *p;
+  if (level_is_depth(c, target, level)) {
+    copy_depth_sub(c, target, level, xoff, yoff, x, y, w, h);
+    return;
+  }
+  p = read_color(c, x, y, w, h);
   if (!p) {
     sgl_error(GL_OUT_OF_MEMORY);
     return;
@@ -632,7 +819,12 @@ void APIENTRY sgl_CopyTexSubImage2D(GLenum target, GLint level, GLint xoff, GLin
 void APIENTRY sgl_CopyTexSubImage1D(GLenum target, GLint level, GLint xoff, GLint x, GLint y,
                                     GLsizei w) {
   sgl_context *c = sgl_ctx;
-  uint8_t *p = read_color(c, x, y, w, 1);
+  uint8_t *p;
+  if (level_is_depth(c, target, level)) {
+    copy_depth_sub(c, target, level, xoff, 0, x, y, w, 1);
+    return;
+  }
+  p = read_color(c, x, y, w, 1);
   if (!p) {
     sgl_error(GL_OUT_OF_MEMORY);
     return;
@@ -693,6 +885,31 @@ void APIENTRY sgl_GetTexImage(GLenum target, GLint level, GLenum format, GLenum 
   if (!sgl_face_levels(t, face_of(target))) return;
   lv = &sgl_face_levels(t, face_of(target))[level];
   if (!lv->texels) return;
+  if ((lv->base == GL_DEPTH_COMPONENT) != (format == GL_DEPTH_COMPONENT)) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if (format == GL_DEPTH_COMPONENT) {
+    /* Depth as floats or unsigned integers, without the pack store, as
+     * glReadPixels gives them. */
+    size_t i, n = (size_t)lv->width * lv->height;
+    for (i = 0; i < n; i++) {
+      double v = (double)lv->texels[i] / (double)SGL_TEX_DEPTH_MAX;
+      if (type == GL_FLOAT)
+        ((GLfloat *)pixels)[i] = (GLfloat)v;
+      else if (type == GL_UNSIGNED_INT)
+        ((GLuint *)pixels)[i] = (GLuint)(v * 4294967295.0);
+      else if (type == GL_UNSIGNED_SHORT)
+        ((GLushort *)pixels)[i] = (GLushort)(v * 65535.0);
+      else if (type == GL_UNSIGNED_BYTE)
+        ((GLubyte *)pixels)[i] = (GLubyte)(v * 255.0);
+      else {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+    }
+    return;
+  }
   /* The images of a 3D texture follow each other as rows. */
   sgl_pack_texels(c, lv->width, lv->height * lv->depth, lv->texels, format, type, pixels);
 }
@@ -700,7 +917,7 @@ void APIENTRY sgl_GetTexImage(GLenum target, GLint level, GLenum format, GLenum 
 /* glTexParameterfv: sets a parameter of the bound texture of target. */
 void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *params) {
   sgl_texture *t = is_face(target) ? NULL : bound(sgl_ctx, target);
-  GLenum v = (GLenum)params[0];
+  GLenum v = sgl_enum(params[0]);
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
     return;
@@ -754,6 +971,33 @@ void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *par
     case GL_TEXTURE_MAX_LOD: t->max_lod = params[0]; break;
     case GL_TEXTURE_BORDER_COLOR: memcpy(t->border_color, params, sizeof t->border_color); break;
     case GL_TEXTURE_PRIORITY: t->priority = sgl_clamp01(params[0]); break;
+    case GL_TEXTURE_LOD_BIAS: t->lod_bias = params[0]; break;
+    case GL_GENERATE_MIPMAP:
+      t->generate_mipmap = params[0] != 0.0f ? GL_TRUE : GL_FALSE;
+      break;
+    case GL_TEXTURE_COMPARE_MODE:
+      if (v != GL_NONE && v != GL_COMPARE_R_TO_TEXTURE) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      t->compare_mode = v;
+      break;
+    case GL_TEXTURE_COMPARE_FUNC:
+      /* OpenGL 1.5 permits all eight functions; OpenGL 1.4 only
+       * GL_LEQUAL and GL_GEQUAL. */
+      if (v < GL_NEVER || v > GL_ALWAYS) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      t->compare_func = v;
+      break;
+    case GL_DEPTH_TEXTURE_MODE:
+      if (v != GL_LUMINANCE && v != GL_INTENSITY && v != GL_ALPHA) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      t->depth_mode = v;
+      break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -778,6 +1022,11 @@ void APIENTRY sgl_GetTexParameterfv(GLenum target, GLenum pname, GLfloat *params
     case GL_TEXTURE_BORDER_COLOR: memcpy(params, t->border_color, sizeof t->border_color); break;
     case GL_TEXTURE_PRIORITY: params[0] = t->priority; break;
     case GL_TEXTURE_RESIDENT: params[0] = 1.0f; break;
+    case GL_TEXTURE_LOD_BIAS: params[0] = t->lod_bias; break;
+    case GL_GENERATE_MIPMAP: params[0] = t->generate_mipmap ? 1.0f : 0.0f; break;
+    case GL_TEXTURE_COMPARE_MODE: params[0] = (GLfloat)t->compare_mode; break;
+    case GL_TEXTURE_COMPARE_FUNC: params[0] = (GLfloat)t->compare_func; break;
+    case GL_DEPTH_TEXTURE_MODE: params[0] = (GLfloat)t->depth_mode; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -848,7 +1097,12 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
     case GL_TEXTURE_INTERNAL_FORMAT: params[0] = lv->texels ? (GLint)lv->internal : 1; break;
     case GL_TEXTURE_RED_SIZE: case GL_TEXTURE_GREEN_SIZE: case GL_TEXTURE_BLUE_SIZE:
     case GL_TEXTURE_ALPHA_SIZE: case GL_TEXTURE_LUMINANCE_SIZE: case GL_TEXTURE_INTENSITY_SIZE:
-      params[0] = lv->texels ? 8 : 0;
+      params[0] = lv->texels && lv->base != GL_DEPTH_COMPONENT ? 8 : 0;
+      break;
+    case GL_TEXTURE_DEPTH_SIZE:
+      /* The texels keep 30 bits; the report is 24, the size that the
+       * applications ask for. */
+      params[0] = lv->texels && lv->base == GL_DEPTH_COMPONENT ? 24 : 0;
       break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
@@ -886,8 +1140,13 @@ static GLenum *combine_param(sgl_unit_attrib *u, GLenum pname, int *alpha) {
 void APIENTRY sgl_TexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {
   sgl_context *c = sgl_ctx;
   sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
-  GLenum v = (GLenum)params[0], *p;
+  GLenum v = sgl_enum(params[0]), *p;
   int alpha, ok;
+  if (target == GL_TEXTURE_FILTER_CONTROL && pname == GL_TEXTURE_LOD_BIAS) {
+    /* OpenGL 1.4: the bias of the level of detail of the unit. */
+    u->lod_bias = params[0];
+    return;
+  }
   if (target != GL_TEXTURE_ENV) {
     sgl_error(GL_INVALID_ENUM);
     return;
@@ -937,7 +1196,14 @@ void APIENTRY sgl_GetTexEnvfv(GLenum target, GLenum pname, GLfloat *params) {
   sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   GLenum *p;
   int alpha;
-  (void)target;
+  if (target == GL_TEXTURE_FILTER_CONTROL && pname == GL_TEXTURE_LOD_BIAS) {
+    params[0] = u->lod_bias;
+    return;
+  }
+  if (target != GL_TEXTURE_ENV) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
   if (pname == GL_TEXTURE_ENV_MODE)
     params[0] = (GLfloat)u->env_mode;
   else if (pname == GL_TEXTURE_ENV_COLOR)
@@ -975,7 +1241,7 @@ void APIENTRY sgl_TexGenfv(GLenum coord, GLenum pname, const GLfloat *params) {
   }
   switch (pname) {
     case GL_TEXTURE_GEN_MODE: {
-      GLenum m = (GLenum)params[0];
+      GLenum m = sgl_enum(params[0]);
       if (m != GL_OBJECT_LINEAR && m != GL_EYE_LINEAR && (m != GL_SPHERE_MAP || i > 1) &&
           ((m != GL_NORMAL_MAP && m != GL_REFLECTION_MAP) || i > 2)) {
         sgl_error(GL_INVALID_ENUM);

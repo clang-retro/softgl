@@ -57,6 +57,25 @@ void APIENTRY sgl_ColorPointer(GLint size, GLenum type, GLsizei stride, const vo
   set_array(&sgl_ctx->c.color, size, type, stride, p);
 }
 
+/* glSecondaryColorPointer (OpenGL 1.4): sets the secondary color
+ * array. */
+void APIENTRY sgl_SecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *p) {
+  if (size != 3) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  set_array(&sgl_ctx->c.color2, size, type, stride, p);
+}
+
+/* glFogCoordPointer (OpenGL 1.4): sets the fog coordinate array. */
+void APIENTRY sgl_FogCoordPointer(GLenum type, GLsizei stride, const void *p) {
+  if (type != GL_FLOAT && type != GL_DOUBLE) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  set_array(&sgl_ctx->c.fog, 1, type, stride, p);
+}
+
 /* glIndexPointer: sets the color index array (not used in RGBA mode). */
 void APIENTRY sgl_IndexPointer(GLenum type, GLsizei stride, const void *p) {
   set_array(&sgl_ctx->c.index, 1, type, stride, p);
@@ -195,6 +214,14 @@ void APIENTRY sgl_ArrayElement(GLint i) {
     fetch(&c->c.color, i, c->c.color.size, 1, v);
     d->Color4f(v[0], v[1], v[2], v[3]);
   }
+  if (c->c.color2.enabled) {
+    fetch(&c->c.color2, i, 3, 1, v);
+    d->SecondaryColor3f(v[0], v[1], v[2]);
+  }
+  if (c->c.fog.enabled) {
+    fetch(&c->c.fog, i, 1, 0, v);
+    d->FogCoordf(v[0]);
+  }
   if (c->c.normal.enabled) {
     fetch(&c->c.normal, i, 3, 1, v);
     d->Normal3f(v[0], v[1], v[2]);
@@ -261,6 +288,31 @@ void APIENTRY sgl_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsiz
     return;
   }
   sgl_DrawElements(mode, count, type, indices);
+}
+
+/* glMultiDrawArrays (OpenGL 1.4): draws n ranges of the arrays, as n
+ * calls of glDrawArrays. */
+void APIENTRY sgl_MultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei n) {
+  GLsizei i;
+  if (n < 0) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  for (i = 0; i < n; i++)
+    if (count[i] > 0) sgl_DrawArrays(mode, first[i], count[i]);
+}
+
+/* glMultiDrawElements (OpenGL 1.4): draws n lists of elements, as n
+ * calls of glDrawElements. */
+void APIENTRY sgl_MultiDrawElements(GLenum mode, const GLsizei *count, GLenum type,
+                                    const void *const *indices, GLsizei n) {
+  GLsizei i;
+  if (n < 0) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  for (i = 0; i < n; i++)
+    if (count[i] > 0) sgl_DrawElements(mode, count[i], type, indices[i]);
 }
 
 /* glInterleavedArrays: sets and turns on the arrays for one of the
