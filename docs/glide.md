@@ -619,11 +619,58 @@ test and the scissor box. The driver sets no limits, but:
 - One texture unit.
 - The texture formats are RGB 565 and ARGB 4444.
 
+## The TNT driver for DOS
+
+`backends/glide/glide_tnt.c` has the same Glide 2 functions for the
+3D engine of the NVIDIA RIVA TNT (NV4, PCI ID 10DEh:0020h) and the
+TNT2 family (NV5: the TNT2, the TNT2 Ultra, the TNT2 M64, the Vanta
+and the Aladdin TNT2). The register facts come from the open source
+NVIDIA drivers: the XFree86 4.3 `riva` driver, the Mesa `nouveau`
+classic driver and the Linux `nouveau` driver. 86Box does not emulate
+the cards. **The driver is not tested.** The RIVA 128 (NV3) has another
+3D engine, and the driver does not find it.
+
+The driver does these steps:
+
+1. `grGlideInit` finds the card, enables its memory space and maps the
+   registers (region 0, 16 MB).
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory holds two color buffers, a 16-bit
+   Z buffer and then the textures. The driver loads the fixed state of
+   the XFree86 driver: the PFIFO, the PGRAPH, and the objects and the
+   hash table in the instance memory. It adds a 3D surface object and
+   a DMA object of video memory to the DX5 triangle object.
+3. For each triangle, the driver writes the changed state methods and
+   the three vertices to the FIFO of channel 0, then a DrawPrimitive
+   method. A vertex has X, Y, Z, 1/W, the color, the fog factor (in the
+   alpha of the specular color), and U and V. The card does the set-up.
+   Lines and points are two triangles.
+4. `grBufferClear` draws a quad over the clip window with the Z compare
+   "always". When the color writes are off, the CPU fills the Z buffer.
+5. `grBufferSwap` shows the back buffer with the VBE display start
+   (page flip). Then the other buffer becomes the back buffer.
+
+The textures are swizzled: `grTexDownloadMipMap` writes the texels in
+the order of the card. An untextured triangle uses a white texel of the
+driver.
+
+The card does Gouraud shading, the texture (`GL_MODULATE`, `GL_DECAL`
+and `GL_REPLACE`), the bilinear filter, the clamp of the texture, the
+Z buffer, the fog, the dither, the blend, the alpha test and the
+scissor box. The driver sets these limits, and softgl does these steps
+in software:
+
+- The color writes cannot be stopped (`SGL_GLIDE_LIMIT_COLOR_MASK`).
+- One alpha source (`SGL_GLIDE_LIMIT_ONE_ALPHA`).
+- **No mipmaps.** The card uses the largest level of a texture.
+- One texture unit.
+- The texture formats are RGB 565 and ARGB 4444.
+
 ## How to select a driver for DOS
 
 A DOS program calls `sgl_glide_dos(&api, name)`. The name is
 `"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"`,
-`"sis"`, `"permedia2"`, `"savage"` or `NULL`. With `NULL`, the function
+`"sis"`, `"permedia2"`, `"savage"`, `"tnt"` or `NULL`. With `NULL`, the function
 selects the first card that it finds. `glidecube.exe` and
 `glidetest.exe` take the name as an argument:
 
@@ -647,7 +694,7 @@ glidecube 0 matrox
   texture, a blend and the alpha test through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
   `PASS softgl glide on the voodoo card` (or `powervr`, `virge`,
-  `matrox`, `ati`, `rage128`, `sis`, `permedia2` or `savage`).
+  `matrox`, `ati`, `rage128`, `sis`, `permedia2`, `savage` or `tnt`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
