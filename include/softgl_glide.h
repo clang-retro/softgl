@@ -180,8 +180,8 @@ int sgl_glide_load(sgl_glide_api *api);
 /* Frees the DLL of sgl_glide_load. */
 void sgl_glide_unload(sgl_glide_api *api);
 
-/* Fills api with the built-in driver for the 3dfx Voodoo Graphics (SST-1)
- * on 32-bit DOS (clang-retro i386-pc-msdos). The driver writes the
+/* Fills api with the built-in driver for the 3dfx Voodoo Graphics (SST-1),
+ * Voodoo2, Banshee and Voodoo3 on 32-bit DOS (clang-retro i386-pc-msdos). The driver writes the
  * registers of the card directly, and does not need a Glide library.
  * Gives 1 on success. The code is in backends/glide/glide_sst1.c. */
 int sgl_glide_sst1(sgl_glide_api *api);

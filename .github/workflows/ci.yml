@@ -129,7 +129,8 @@ jobs:
   # drivers for 32-bit DOS in 86Box: a Pentium computer with FreeDOS and
   # an S3 ViRGE/DX, an S3 ViRGE, a Matrox Mystique, Millennium II or
   # Productiva G100 (on an AGP board), an ATI 3D Rage Pro or Rage II+,
-  # a PowerVR PCX2 with a Mystique, or a Voodoo Graphics card. The job builds 86Box from a fixed commit
+  # a PowerVR PCX2 with a Mystique, a Voodoo Graphics, a Voodoo Banshee
+  # or a Voodoo3 2000 card. The job builds 86Box from a fixed commit
   # (tools/setup-86box.sh) and keeps the build in the cache. A nightly
   # without dos32.cfg cannot build the test; then the job only writes a
   # notice.
@@ -196,6 +197,12 @@ jobs:
       - name: Run the test on the Voodoo Graphics
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --voodoo ~/86box build-dos32/tests/dos/glidetest.exe voodoo
+      - name: Run the test on the Voodoo Banshee
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card voodoo_banshee_pci ~/86box build-dos32/tests/dos/glidetest.exe voodoo
+      - name: Run the test on the Voodoo3 2000
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card voodoo3_2k_pci ~/86box build-dos32/tests/dos/glidetest.exe voodoo
 
   # The Atari back end in the Hatari emulator with EmuTOS: an ST, an STE
   # and a Falcon (tests/atari/present.c). The library is built with -O0:

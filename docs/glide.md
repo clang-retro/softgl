@@ -2,8 +2,10 @@
 
 The Glide back end gives the triangles, lines and points of a softgl
 context to a 3dfx Voodoo card through Glide 2. The cards are the
-Voodoo Graphics, the Voodoo Rush and the Voodoo2. On 32-bit DOS,
-built-in drivers also give the Glide functions on a PowerVR PCX2 card,
+Voodoo Graphics, the Voodoo Rush, the Voodoo2, the Banshee and the
+Voodoo3. On 32-bit DOS, a built-in driver gives the Glide functions on
+the Voodoo Graphics, the Voodoo2, the Banshee and the Voodoo3, and
+other built-in drivers give them on a PowerVR PCX2 card,
 on an S3 ViRGE card, on a Matrox card and on an ATI Rage card. The code is in
 `backends/glide/`.
 
@@ -123,14 +125,32 @@ hardware (`include/softgl_dos.h`):
 The driver does these steps:
 
 1. `grGlideInit` finds the first PCI function with the IDs 121Ah:0001h
-   (Voodoo Graphics) or 121Ah:0002h (Voodoo2), sets the memory space
-   bit of its PCI command register, and maps BAR 0.
+   (Voodoo Graphics), 121Ah:0002h (Voodoo2), 121Ah:0003h (Banshee) or
+   121Ah:0005h (Voodoo3), sets the memory space bit of its PCI command
+   register, and maps BAR 0.
 2. `grSstWinOpen` resets the chips, sets the frame buffer and the video
    timing, and gives the monitor to the Voodoo. The resolutions are
    512 x 384, 640 x 400, 640 x 480 and 800 x 600.
 3. The draw functions calculate the start values and the gradients of
    each triangle, and write them to the floating point registers.
 4. `grSstWinClose` gives the monitor back to the VGA card.
+
+**The Banshee and the Voodoo3** have a VGA and one memory for the
+screen, the 3D buffers and the textures. The 3D registers are the
+registers of the Voodoo Graphics, at offset 200000h of BAR 0. For
+these cards, the driver does other steps:
+
+- `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+  linear frame buffer: 640 x 480, 800 x 600 or 1024 x 768. Video
+  memory holds three color buffers (two when the memory is small),
+  the depth buffer, and then the textures. The driver writes the
+  addresses of the buffers to `colBufferAddr` and `auxBufferAddr`, and
+  the last row of the screen to the Y origin of `miscInit0`.
+- The driver writes the textures through the texture window at offset
+  600000h of BAR 0. `texBaseAddr` is in bytes.
+- `grBufferSwap` shows the new buffer through VBE function 4F07h, and
+  sets `colBufferAddr` to the next back buffer.
+- `grLfbLock` gives a copy of the buffer in system memory.
 
 The driver has these limits:
 
@@ -143,6 +163,8 @@ The driver has these limits:
   before you use it.
 - The Voodoo2 uses the same registers for most functions, but the
   driver is not tested on a Voodoo2.
+- The Banshee and the Voodoo3 are tested in 86Box only. The driver
+  uses one TMU of the Voodoo3.
 
 To build the library, the example and the test:
 
@@ -152,6 +174,8 @@ make OUT=build-dos32 CC="clang --config=dos32.cfg" \
 ```
 
 ![glidecube on the Voodoo card of DOSBox-X](images/glidecube-voodoo-dos.png)
+
+![glidecube on the Voodoo3 2000 card of 86Box](images/glidecube-voodoo3-dos.png)
 
 ## The ViRGE driver for DOS
 
@@ -410,7 +434,8 @@ glidecube 0 matrox
   on the ViRGE/DX, the ViRGE, the Mystique, the Millennium II, the
   G100, the 3D Rage Pro (`mach64_ragepro_pci`), the 3D Rage II+
   (`mach64_rage2p`), the PowerVR PCX2 with a Mystique (`--powervr
-  --card mystique`) and the Voodoo Graphics. The G100 is an AGP card:
+  --card mystique`), the Voodoo Graphics, the Voodoo Banshee
+  (`voodoo_banshee_pci`) and the Voodoo3 2000 (`voodoo3_2k_pci`). The G100 is an AGP card:
   use the ASUS P5A board (`--machine p5a`):
 
   ```sh

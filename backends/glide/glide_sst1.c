@@ -1,6 +1,6 @@
 /* glide_sst1.c - the Glide 2 functions of the Glide back end, on the
- * registers of a 3dfx Voodoo Graphics (SST-1) or Voodoo2 card, for
- * 32-bit DOS. With these functions a DOS program needs no Glide
+ * registers of a 3dfx Voodoo Graphics (SST-1), Voodoo2, Voodoo Banshee
+ * or Voodoo3 card, for 32-bit DOS. With these functions a DOS program needs no Glide
  * library: sgl_glide_sst1 fills an sgl_glide_api, and the Glide back end
  * (glide.c) uses it as it uses glide2x.dll on Windows.
  *
@@ -17,12 +17,23 @@
  *   base + 0x400000   the linear frame buffer (2048 bytes for each row)
  *   base + 0x800000   texture memory (writes only)
  *
+ * The Banshee and the Voodoo3 have a VGA and one memory for the screen,
+ * the 3D buffers and the textures. The driver sets a VBE mode, and the
+ * 3D engine draws into the buffers that colBufferAddr and auxBufferAddr
+ * give. The layout of BAR 0 of these cards:
+ *
+ *   base + 0x000000   the I/O registers (miscInit0 at 0x10)
+ *   base + 0x200000   the 3D registers, as on the SST-1
+ *   base + 0x600000   texture download (an offset from texBaseAddr)
+ *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #if defined(__MSDOS__) && defined(__i386__)
 
+#include <dos.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "glide_api.h"
@@ -68,8 +79,22 @@ enum {
   R_TDETAIL = 0x308,
   R_TEXBASEADDR = 0x30C,
   R_TREXINIT0 = 0x31C,
-  R_TREXINIT1 = 0x320
+  R_TREXINIT1 = 0x320,
+  /* The Banshee and the Voodoo3 only. */
+  R_COLBUFFERADDR = 0x1EC,
+  R_COLBUFFERSTRIDE = 0x1F0,
+  R_AUXBUFFERADDR = 0x1F4,
+  R_AUXBUFFERSTRIDE = 0x1F8
 };
+
+/* The Banshee and the Voodoo3: the 3D registers and the texture download
+ * in BAR 0, and the I/O register miscInit0 (bits 18 to 29: the Y origin
+ * of the 3D engine, the height minus 1). */
+#define H3_3D 0x200000ul
+#define H3_TEXTURE 0x600000ul
+#define H3_MISCINIT0 0x10u
+#define H3_YORIGIN_SHIFT 18
+#define H3_YORIGIN_MASK (0xFFFu << H3_YORIGIN_SHIFT)
 
 /* The parameters of the float triangle registers, in the order of the
  * start, dX and dY register blocks: R, G, B, Z, A, S, T, W. */
@@ -104,9 +129,17 @@ enum { P_R, P_G, P_B, P_Z, P_A, P_S, P_T, P_W, P_COUNT };
 /* The state of the card. */
 static struct {
   sgl_pci_device pci;
-  volatile uint8_t *base;  /* the 16 MB of the card */
+  volatile uint8_t *base;  /* the 16 MB of the card (BAR 0) */
+  volatile uint8_t *regs;  /* the 3D registers */
   uint32_t phys;
   int type;                /* GR_SSTTYPE_VOODOO or GR_SSTTYPE_VOODOO2 */
+  int h3;                  /* a Banshee or a Voodoo3 */
+  /* The Banshee and the Voodoo3: the frame buffer, the buffers (byte
+   * offsets in video memory) and the first byte of the textures. */
+  volatile uint8_t *lfb;
+  uint32_t memory, pitch, buffer[3], aux, tex_min, misc0;
+  int buffers, front, back, lock_origin;
+  uint16_t *shadow;
   int open;
   int width, height;
   int origin;              /* GR_ORIGIN_LOWER_LEFT or GR_ORIGIN_UPPER_LEFT */
@@ -116,7 +149,7 @@ static struct {
 } sst;
 
 /* Writes the register at byte offset reg (with its chip field). */
-static void wr(uint32_t reg, uint32_t value) { *(volatile uint32_t *)(sst.base + reg) = value; }
+static void wr(uint32_t reg, uint32_t value) { *(volatile uint32_t *)(sst.regs + reg) = value; }
 
 /* Writes a float to the register at byte offset reg. */
 static void wrf(uint32_t reg, float value) {
@@ -129,7 +162,7 @@ static void wrf(uint32_t reg, float value) {
 }
 
 /* Reads the register at byte offset reg. */
-static uint32_t rd(uint32_t reg) { return *(volatile uint32_t *)(sst.base + reg); }
+static uint32_t rd(uint32_t reg) { return *(volatile uint32_t *)(sst.regs + reg); }
 
 /* Waits until the card is not busy: a NOP goes through the FIFO, and the
  * busy bit (bit 9 of status) must be off in three reads, as the SST-1
@@ -147,18 +180,23 @@ static void idle(void) {
   }
 }
 
+/* The PCI IDs of the cards: the Voodoo Graphics, the Voodoo2, the
+ * Banshee and the Voodoo3. */
+static const sgl_pci_id sst_ids[] = {{0x121A, 0x0001}, {0x121A, 0x0002}, {0x121A, 0x0003}, {0x121A, 0x0005}, {0, 0}};
+
 /* grGlideInit: finds the first Voodoo card and maps its memory. */
 static void SGL_GLIDE_CALL gr_glide_init(void) {
-  static const sgl_pci_id ids[] = {{0x121A, 0x0001}, {0x121A, 0x0002}, {0, 0}};
   if (sst.base) return;
   memset(&sst, 0, sizeof sst);
-  if (!sgl_pci_find(ids, 0, &sst.pci)) return;
-  sst.type = sst.pci.device == 0x0002 ? GR_SSTTYPE_VOODOO2 : GR_SSTTYPE_VOODOO;
+  if (!sgl_pci_find(sst_ids, 0, &sst.pci)) return;
+  sst.h3 = sst.pci.device == 0x0003 || sst.pci.device == 0x0005;
+  sst.type = sst.pci.device == 0x0001 ? GR_SSTTYPE_VOODOO : GR_SSTTYPE_VOODOO2;
   sst.phys = sgl_pci_bar(&sst.pci, 0);
   if (!sst.phys) return;
   /* The memory space of the card must be on (bit 1 of the command). */
   sgl_pci_write16(&sst.pci, 0x04, (uint16_t)(sgl_pci_read16(&sst.pci, 0x04) | 0x0002));
-  sst.base = (volatile uint8_t *)sgl_map_physical(sst.phys, 0x1000000ul);
+  sst.base = (volatile uint8_t *)sgl_map_physical(sst.phys, sst.h3 ? 0x800000ul : 0x1000000ul);
+  sst.regs = sst.base && sst.h3 ? sst.base + H3_3D : sst.base;
 }
 
 /* grGlideShutdown: closes the screen and frees the mapping. */
@@ -167,6 +205,7 @@ static void SGL_GLIDE_CALL gr_glide_shutdown(void) {
     sst1_close();
   }
   if (sst.base) sgl_unmap_physical(sst.base);
+  free(sst.shadow);
   memset(&sst, 0, sizeof sst);
 }
 
@@ -210,6 +249,83 @@ static void set_timing(const sst_timing *t) {
   wr(R_VIDEODIMENSIONS, ((uint32_t)(t->h - 1) << 16) | (uint32_t)(t->w - 1));
 }
 
+/* Sets the rendering state of grSstWinOpen: the fbzMode for origin, the
+ * color path, no alpha, no fog, a perspective texture, and the clip
+ * window of the whole screen. */
+static void initial_state(int origin) {
+  wr(CHIP_TMU0 | R_TDETAIL, 0);
+  sst.fbzmode = FBZ_CLIP | FBZ_RGB_WRITE | FBZ_DRAW_BACK | (origin == GR_ORIGIN_LOWER_LEFT ? FBZ_Y_ORIGIN : 0);
+  sst.colorpath = CP_PARMADJUST;
+  sst.alphamode = 0;
+  sst.fogmode = 0;
+  sst.texmode = 1; /* perspective */
+  sst.tlod = 0;
+  wr(R_FBZMODE, sst.fbzmode);
+  wr(R_FBZCOLORPATH, sst.colorpath);
+  wr(R_ALPHAMODE, sst.alphamode);
+  wr(R_FOGMODE, sst.fogmode);
+  wr(CHIP_TMU0 | R_TEXTUREMODE, sst.texmode);
+  wr(R_CLIPLEFTRIGHT, (uint32_t)sst.width);
+  wr(R_CLIPLOWYHIGHY, (uint32_t)sst.height);
+  wr(R_LFBMODE, 0);
+}
+
+/* Gives the VBE mode of 16-bit color (5:6:5) for a Glide resolution,
+ * and its size in *w and *h. Gives -1 for other resolutions. */
+static int vbe_mode(int resolution, int *w, int *h) {
+  switch (resolution) {
+    case GR_RESOLUTION_640x480: *w = 640, *h = 480; return 0x111;
+    case GR_RESOLUTION_800x600: *w = 800, *h = 600; return 0x114;
+    case GR_RESOLUTION_1024x768: *w = 1024, *h = 768; return 0x117;
+    default: return -1;
+  }
+}
+
+/* Tells the 3D engine of a Banshee or a Voodoo3 to draw into the back
+ * buffer. */
+static void h3_target(void) { wr(R_COLBUFFERADDR, sst.buffer[sst.back]); }
+
+/* grSstWinOpen for the Banshee and the Voodoo3: sets a VBE mode with
+ * the linear frame buffer, and divides video memory into the color
+ * buffers (three when the textures keep 2 MB, else two), the depth
+ * buffer and the textures. */
+static int h3_open(int resolution, int origin) {
+  sgl_vbe_mode info;
+  uint32_t frame;
+  int mode, w, h, i;
+  mode = vbe_mode(resolution, &w, &h);
+  if (mode < 0 || !sgl_vbe_mode_info(mode, &info) || !(info.attributes & 0x81) || info.bits != 16 || !info.lfb)
+    return 0;
+  sst.memory = sgl_vbe_memory();
+  if (!sst.memory) sst.memory = 0x400000ul;
+  frame = ((uint32_t)info.stride * (uint32_t)h + 4095u) & ~4095u;
+  if (3 * frame + 0x80000ul > sst.memory || !sgl_vbe_set_mode(mode, 1)) return 0;
+  sst.lfb = (volatile uint8_t *)sgl_map_physical(info.lfb, sst.memory);
+  if (!sst.lfb) {
+    sgl_vbe_text_mode();
+    return 0;
+  }
+  sst.width = w, sst.height = h, sst.origin = origin, sst.pitch = info.stride;
+  sst.buffers = 4 * frame + 0x200000ul <= sst.memory ? 3 : 2;
+  for (i = 0; i < sst.buffers; i++) sst.buffer[i] = (uint32_t)i * frame;
+  sst.aux = (uint32_t)sst.buffers * frame;
+  sst.tex_min = sst.aux + frame;
+  sst.front = 0, sst.back = 1;
+  /* The Y origin of the 3D engine: the last row of the screen. */
+  sst.misc0 = *(volatile uint32_t *)(sst.base + H3_MISCINIT0);
+  *(volatile uint32_t *)(sst.base + H3_MISCINIT0) =
+      (sst.misc0 & ~H3_YORIGIN_MASK) | ((uint32_t)(h - 1) << H3_YORIGIN_SHIFT);
+  idle();
+  wr(R_COLBUFFERSTRIDE, sst.pitch);
+  wr(R_AUXBUFFERSTRIDE, sst.pitch);
+  wr(R_AUXBUFFERADDR, sst.aux);
+  h3_target();
+  initial_state(origin);
+  sgl_vbe_display_start(0, 0);
+  sst.open = 1;
+  return 1;
+}
+
 /* grSstWinOpen: resets the card, sets the video mode, and turns on the
  * output of the card (the card then shows its screen instead of the VGA
  * screen). The color format must be ARGB; there must be 2 color buffers
@@ -222,6 +338,7 @@ static int SGL_GLIDE_CALL gr_sst_win_open(unsigned long hwnd, int resolution, in
   (void)hwnd, (void)refresh;
   if (!sst.base || sst.open || color_format != GR_COLORFORMAT_ARGB || color_buffers != 2 || aux_buffers != 1)
     return 0;
+  if (sst.h3) return h3_open(resolution, origin);
   for (i = 0; i < sizeof timings / sizeof timings[0]; i++)
     if (timings[i].res == resolution) t = &timings[i];
   if (!t) return 0;
@@ -251,23 +368,7 @@ static int SGL_GLIDE_CALL gr_sst_win_open(unsigned long hwnd, int resolution, in
   wr(R_FBIINIT0, (rd(R_FBIINIT0) & ~((1u << 1) | (1u << 2))) | (1u << 0));
   sgl_pci_write32(&sst.pci, PCI_VCLK_ENABLE, 0);
   idle();
-  /* The TMU: no detail texture, the default delays. */
-  wr(CHIP_TMU0 | R_TDETAIL, 0);
-  /* The rendering state. */
-  sst.fbzmode = FBZ_CLIP | FBZ_RGB_WRITE | FBZ_DRAW_BACK | (origin == GR_ORIGIN_LOWER_LEFT ? FBZ_Y_ORIGIN : 0);
-  sst.colorpath = CP_PARMADJUST;
-  sst.alphamode = 0;
-  sst.fogmode = 0;
-  sst.texmode = 1; /* perspective */
-  sst.tlod = 0;
-  wr(R_FBZMODE, sst.fbzmode);
-  wr(R_FBZCOLORPATH, sst.colorpath);
-  wr(R_ALPHAMODE, sst.alphamode);
-  wr(R_FOGMODE, sst.fogmode);
-  wr(CHIP_TMU0 | R_TEXTUREMODE, sst.texmode);
-  wr(R_CLIPLEFTRIGHT, (uint32_t)t->w);
-  wr(R_CLIPLOWYHIGHY, (uint32_t)t->h);
-  wr(R_LFBMODE, 0);
+  initial_state(origin);
   sst.open = 1;
   return 1;
 }
@@ -276,6 +377,14 @@ static int SGL_GLIDE_CALL gr_sst_win_open(unsigned long hwnd, int resolution, in
 static void sst1_close(void) {
   if (!sst.open) return;
   idle();
+  if (sst.h3) {
+    *(volatile uint32_t *)(sst.base + H3_MISCINIT0) = sst.misc0;
+    sgl_vbe_text_mode();
+    sgl_unmap_physical(sst.lfb);
+    sst.lfb = NULL;
+    sst.open = 0;
+    return;
+  }
   wr(R_FBIINIT0, rd(R_FBIINIT0) & ~1u);
   sgl_pci_write32(&sst.pci, PCI_VCLK_DISABLE, 0);
   sgl_pci_write32(&sst.pci, PCI_INIT_ENABLE, 0);
@@ -299,9 +408,39 @@ static void SGL_GLIDE_CALL gr_buffer_clear(unsigned long color, unsigned alpha, 
   wr(R_FASTFILLCMD, 0);
 }
 
+/* Waits for the start of the next vertical retrace (bit 3 of port
+ * 3DAh). If the retrace is active, it waits for its end first. */
+static void next_retrace(void) {
+  uint32_t start = sgl_dos_ms();
+  while ((inportb(0x3DA) & 8) && sgl_dos_ms() - start < 100) {
+  }
+  while (!(inportb(0x3DA) & 8) && sgl_dos_ms() - start < 100) {
+  }
+}
+
+/* grBufferSwap for the Banshee and the Voodoo3: shows the back buffer
+ * through VBE function 4F07h. With interval 1 or more, the change
+ * occurs in the vertical retrace. The next back buffer is one that
+ * the monitor does not show: with three buffers the one that is not
+ * the old front, with two the old front. */
+static void h3_swap(int interval) {
+  int old = sst.front;
+  if (!sst.open) return;
+  idle();
+  if (interval > 0) next_retrace();
+  sgl_vbe_display_start((int)(sst.buffer[sst.back] / sst.pitch), 0);
+  sst.front = sst.back;
+  sst.back = sst.buffers == 3 ? 3 - sst.front - old : old;
+  h3_target();
+}
+
 /* grBufferSwap: shows the back buffer after interval vertical retraces
  * (0: at once). */
 static void SGL_GLIDE_CALL gr_buffer_swap(int interval) {
+  if (sst.h3) {
+    h3_swap(interval);
+    return;
+  }
   if (interval < 0) interval = 0;
   if (interval > 255) interval = 255;
   wr(R_SWAPBUFFERCMD, interval ? (((uint32_t)(interval - 1) << 1) | 1u) : 0u);
@@ -559,16 +698,17 @@ static void SGL_GLIDE_CALL gr_dither_mode(int mode) {
   set_fbzmode(FBZ_DITHER | (1u << 11), set);
 }
 
-/* grTexMinAddress: texture memory starts at 0. */
+/* grTexMinAddress: texture memory starts at 0 (on a Banshee or a
+ * Voodoo3, after the depth buffer). */
 static unsigned long SGL_GLIDE_CALL gr_tex_min_address(int tmu) {
   (void)tmu;
-  return 0;
+  return sst.h3 ? sst.tex_min : 0;
 }
 
 /* grTexMaxAddress: the last address for a texture. */
 static unsigned long SGL_GLIDE_CALL gr_tex_max_address(int tmu) {
   (void)tmu;
-  return TMU_MEMORY - 8;
+  return (sst.h3 ? sst.memory : TMU_MEMORY) - 8;
 }
 
 /* Gives the width and the height of level lod (GR_LOD_256 is 0) of a
@@ -585,7 +725,8 @@ static void level_size(int lod, int aspect, int *w, int *h) {
 }
 
 /* Gives the bytes of the levels from lod_from to lod_to - 1 (16-bit
- * texels). The card keeps each level of fewer than 4 texels as 4. */
+ * texels). The SST-1 and the Voodoo2 keep each level of fewer than 4
+ * texels as 4. */
 static unsigned long levels_bytes(int lod_from, int lod_to, int aspect) {
   unsigned long n = 0;
   int lod, w, h;
@@ -593,7 +734,7 @@ static unsigned long levels_bytes(int lod_from, int lod_to, int aspect) {
     unsigned long texels;
     level_size(lod, aspect, &w, &h);
     texels = (unsigned long)w * (unsigned long)h;
-    if (lod >= 4 && texels < 4) texels = 4;
+    if (!sst.h3 && lod >= 4 && texels < 4) texels = 4;
     n += texels * 2;
   }
   return n;
@@ -606,16 +747,24 @@ static unsigned long SGL_GLIDE_CALL gr_tex_texture_mem_required(unsigned long ev
   return (levels_bytes(info->large_lod, info->small_lod + 1, info->aspect) + 7) & ~7ul;
 }
 
-/* Writes texBaseAddr and tLOD for a texture at start: the card finds
- * level n after the levels 0 to n - 1, so the base goes back by the
- * bytes of the levels before large_lod. */
+/* Gives the byte address in texture memory of the level 0 of a texture
+ * at start: the card finds level n after the levels 0 to n - 1, so the
+ * base goes back by the bytes of the levels before large_lod. */
+static unsigned long texture_base(unsigned long start, const sgl_gr_texinfo *info) {
+  unsigned long base = start - levels_bytes(0, info->large_lod, info->aspect);
+  return sst.h3 ? base & 0xFFFFF0ul : base & (TMU_MEMORY * 2 - 1);
+}
+
+/* Writes texBaseAddr and tLOD for a texture at start. texBaseAddr is in
+ * units of 8 bytes on the SST-1 and the Voodoo2, in bytes on the
+ * Banshee and the Voodoo3. */
 static void set_texture_base(unsigned long start, const sgl_gr_texinfo *info, int small_lod) {
-  unsigned long base = (start - levels_bytes(0, info->large_lod, info->aspect)) & (TMU_MEMORY * 2 - 1);
+  unsigned long base = texture_base(start, info);
   uint32_t aspect = info->aspect <= GR_ASPECT_1x1 ? (uint32_t)(GR_ASPECT_1x1 - info->aspect)
                                                   : (uint32_t)(info->aspect - GR_ASPECT_1x1);
   sst.tlod = ((uint32_t)info->large_lod * 4) | ((uint32_t)small_lod * 4 << 6) | (aspect << 21) |
              (info->aspect <= GR_ASPECT_1x1 ? (1u << 20) : 0u);
-  wr(CHIP_TMU0 | R_TEXBASEADDR, (uint32_t)(base >> 3));
+  wr(CHIP_TMU0 | R_TEXBASEADDR, (uint32_t)(sst.h3 ? base : base >> 3));
   wr(CHIP_TMU0 | R_TLOD, sst.tlod);
 }
 
@@ -627,8 +776,9 @@ static void set_texture_format(int format) {
 
 /* grTexDownloadMipMap: writes the levels of info (from large_lod to
  * small_lod, each w x h 16-bit texels) at start. The card takes two
- * texels in each write, at the address of the level, the row and the
- * column. */
+ * texels in each write. On the SST-1 and the Voodoo2, the address
+ * holds the level, the row and the column. On the Banshee and the
+ * Voodoo3, it is the byte offset from texBaseAddr. */
 static void SGL_GLIDE_CALL gr_tex_download_mipmap(int tmu, unsigned long start, unsigned long even_odd,
                                                   sgl_gr_texinfo *info) {
   const uint16_t *src = (const uint16_t *)info->data;
@@ -638,7 +788,18 @@ static void SGL_GLIDE_CALL gr_tex_download_mipmap(int tmu, unsigned long start, 
   if (tmu != GR_TMU0) return;
   set_texture_format(info->format);
   set_texture_base(start, info, info->small_lod);
-  for (lod = info->large_lod; lod <= info->small_lod; lod++) {
+  if (sst.h3) {
+    uint32_t off = (uint32_t)(start - texture_base(start, info));
+    volatile uint32_t *port = (volatile uint32_t *)(sst.base + H3_TEXTURE);
+    for (lod = info->large_lod; lod <= info->small_lod; lod++) {
+      level_size(lod, info->aspect, &w, &h);
+      /* Only the last level (1 x 1) has an odd number of texels. */
+      for (x = 0; x < w * h; x += 2, off += 4)
+        port[off >> 2] = src[x] | (x + 1 < w * h ? (uint32_t)src[x + 1] << 16 : 0u);
+      src += w * h;
+    }
+  }
+  for (lod = sst.h3 ? info->small_lod + 1 : info->large_lod; lod <= info->small_lod; lod++) {
     level_size(lod, info->aspect, &w, &h);
     for (y = 0; y < h; y++) {
       volatile uint32_t *row =
@@ -698,6 +859,45 @@ static void SGL_GLIDE_CALL gr_tex_mipmap_mode(int tmu, int mode, int lod_blend) 
     set_texture_base(source_start, &source_info, mipmaps ? source_info.small_lod : source_info.large_lod);
 }
 
+/* Gives the byte offset in video memory of a buffer of a Banshee or a
+ * Voodoo3. */
+static uint32_t h3_buffer(int buffer) {
+  if (buffer == GR_BUFFER_AUXBUFFER) return sst.aux;
+  return sst.buffer[buffer == GR_BUFFER_BACKBUFFER ? sst.back : sst.front];
+}
+
+/* Copies the rows of a buffer of a Banshee or a Voodoo3 to the shadow
+ * copy (to_card 0) or back (to_card 1), in the row order of origin. */
+static void h3_copy(int buffer, int origin, int to_card) {
+  uint32_t base = h3_buffer(buffer);
+  int x, y;
+  for (y = 0; y < sst.height; y++) {
+    int row = origin == GR_ORIGIN_LOWER_LEFT ? sst.height - 1 - y : y;
+    volatile uint16_t *p = (volatile uint16_t *)(sst.lfb + base + (uint32_t)row * sst.pitch);
+    uint16_t *q = sst.shadow + (long)y * sst.width;
+    if (to_card)
+      for (x = 0; x < sst.width; x++) p[x] = q[x];
+    else
+      for (x = 0; x < sst.width; x++) q[x] = p[x];
+  }
+}
+
+/* grLfbLock for the Banshee and the Voodoo3: gives a copy of the buffer
+ * in system memory (RGB 565 or the depth values). A write lock copies
+ * the pixels to the card in grLfbUnlock. */
+static int h3_lfb_lock(int type, int buffer, int write_mode, int origin, sgl_gr_lfbinfo *info) {
+  if (!sst.shadow) sst.shadow = (uint16_t *)malloc((size_t)sst.width * (size_t)sst.height * 2u);
+  if (!sst.shadow) return 0;
+  idle();
+  sst.lock_origin = origin;
+  if (type == GR_LFB_READ_ONLY) h3_copy(buffer, origin, 0);
+  info->ptr = sst.shadow;
+  info->stride = (unsigned long)sst.width * 2ul;
+  info->write_mode = write_mode;
+  info->origin = origin;
+  return 1;
+}
+
 /* grLfbLock: gives a pointer to a buffer of the card. Reads give 16-bit
  * RGB 565 (the color buffers) or 16-bit depth (the aux buffer). Writes
  * take RGB 565 for a color buffer, or depth (ZA16) for the aux buffer.
@@ -708,6 +908,7 @@ static int SGL_GLIDE_CALL gr_lfb_lock(int type, int buffer, int write_mode, int 
   int sel = buffer == GR_BUFFER_AUXBUFFER ? 2 : buffer == GR_BUFFER_BACKBUFFER ? 1 : 0;
   (void)pixel_pipeline;
   if (!sst.open) return 0;
+  if (sst.h3) return h3_lfb_lock(type, buffer, write_mode, origin, info);
   idle();
   mode = origin == GR_ORIGIN_LOWER_LEFT ? (1u << 13) : 0u;
   if (type == GR_LFB_WRITE_ONLY) {
@@ -726,9 +927,13 @@ static int SGL_GLIDE_CALL gr_lfb_lock(int type, int buffer, int write_mode, int 
   return 1;
 }
 
-/* grLfbUnlock: waits until the writes are in the buffer. */
+/* grLfbUnlock: waits until the writes are in the buffer. On a Banshee
+ * or a Voodoo3, it copies the pixels of a write lock to the card. */
 static int SGL_GLIDE_CALL gr_lfb_unlock(int type, int buffer) {
-  (void)type, (void)buffer;
+  if (sst.h3) {
+    if (sst.open && sst.shadow && type == GR_LFB_WRITE_ONLY) h3_copy(buffer, sst.lock_origin, 1);
+    return 1;
+  }
   idle();
   return 1;
 }
@@ -737,8 +942,7 @@ static int SGL_GLIDE_CALL gr_lfb_unlock(int type, int buffer) {
  * card is on the PCI bus. */
 int sgl_glide_sst1(sgl_glide_api *api) {
   sgl_pci_device d;
-  static const sgl_pci_id ids[] = {{0x121A, 0x0001}, {0x121A, 0x0002}, {0, 0}};
-  if (!api || !sgl_pci_find(ids, 0, &d)) return 0;
+  if (!api || !sgl_pci_find(sst_ids, 0, &d)) return 0;
   memset(api, 0, sizeof *api);
   api->GlideInit = gr_glide_init;
   api->GlideShutdown = gr_glide_shutdown;
