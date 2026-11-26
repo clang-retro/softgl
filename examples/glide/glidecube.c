@@ -7,7 +7,7 @@
  *
  * On Windows 95 and 98 it needs a Voodoo card and its glide2x.dll. On
  * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics, an
- * S3 ViRGE, a Matrox or an ATI Rage Pro card, and uses the built-in
+ * S3 ViRGE, a Matrox or an ATI Rage card, and uses the built-in
  * drivers of softgl (sgl_glide_dos). There, a second argument can name
  * the driver:
  *

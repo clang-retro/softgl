@@ -4,7 +4,7 @@ The Glide back end gives the triangles, lines and points of a softgl
 context to a 3dfx Voodoo card through Glide 2. The cards are the
 Voodoo Graphics, the Voodoo Rush and the Voodoo2. On 32-bit DOS,
 built-in drivers also give the Glide functions on an S3 ViRGE card, on
-a Matrox card and on an ATI Rage Pro card. The code is in
+a Matrox card and on an ATI Rage card. The code is in
 `backends/glide/`.
 
 softgl still does the GL state, the transform, lighting, clipping and
@@ -249,49 +249,66 @@ the registers for each trapezoid.
 ## The ATI driver for DOS
 
 `backends/glide/glide_ati.c` has the same Glide 2 functions for the 3D
-engine of an ATI mach64 card with the triangle setup engine. The cards
-are the 3D Rage Pro, the Rage LT Pro, the Rage XL and XC, and the Rage
-Mobility. The driver does not support the 3D Rage, the 3D Rage II and
-the Rage IIc (they have no setup engine), and the Rage 128 and later
-cards.
+engine of an ATI mach64 card. The cards are the 3D Rage, the 3D Rage
+II, II+ and IIc, the 3D Rage Pro, the Rage LT Pro, the Rage XL and XC,
+and the Rage Mobility. The driver does not support the Rage 128 and
+later cards.
 
 The driver does these steps:
 
 1. `grGlideInit` finds the first PCI function with the vendor ID 1002h
-   and the device ID of a supported card. It maps the register window
-   at BAR 2: block 1 (the setup engine), then block 0. When BAR 2 has
-   no address, the driver uses the last 2 KB of the first 8 MB of the
-   linear aperture (BAR 0), and sets bit 27 of `BUS_CNTL` to open
-   block 1 there.
+   and the device ID of a supported card. A Rage Pro is found before
+   the older cards. The driver maps the register window at BAR 2:
+   block 1, then block 0. When BAR 2 has no address (the 3D Rage), the
+   driver uses the last 2 KB of the first 8 MB of the linear aperture
+   (BAR 0), and sets bit 27 of `BUS_CNTL` to open block 1 there.
 2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
    linear frame buffer. Video memory holds three color buffers (two
    when the memory is small), the 16-bit Z buffer, and then the
    textures with their mipmaps.
-3. For each triangle, the driver writes the three vertices to the setup
-   engine: X and Y in quarter pixels, Z (16.16), the color, the fog
-   factor, and S, T and W as IEEE floats. Then it writes one over the
-   area of the triangle. This write starts the triangle. The engine
-   calculates the edges and the gradients itself. Lines and points are
-   two triangles.
+3. The driver draws the triangles. The two engines are different (see
+   below). Lines and points are two triangles.
 4. `grBufferClear` fills the clip window with the rectangle fill of the
    2D engine: the back buffer, then the Z buffer.
 5. `grBufferSwap` shows the new buffer through VBE function 4F07h, as
    the other drivers do.
 
-The card does Gouraud shading, the texture (replace, modulate and
-decal), mipmaps (the nearest level), the bilinear filter, the Z buffer,
-the alpha test, the blend, fog, the color mask and the scissor box. The
-driver has these limits. The back end gives a draw that needs one of
-them to softgl:
+**The Rage Pro and later cards** have a setup engine. For each
+triangle, the driver writes the three vertices: X and Y in quarter
+pixels, Z (16.16), the color, the fog factor, and S, T and W as IEEE
+floats. Then it writes one over the area of the triangle. This write
+starts the triangle. The engine calculates the edges and the gradients
+itself.
+
+**The 3D Rage and the Rage II** draw trapezoids. The driver divides each
+triangle into two trapezoids, as the Matrox driver does. It calculates
+the Bresenham terms of the edges, and the start values and the
+gradients of the color, the alpha and Z. These engines have no
+perspective division: S and T are quadratics of the screen position.
+The driver uses the quadratic that agrees with the perspective texture
+at the three vertices and at the middles of the three edges. A large
+triangle with a strong perspective (one W more than 1.5 times another)
+is divided into four triangles, at most two times.
+
+The cards do Gouraud shading, the texture (replace, modulate and decal),
+mipmaps (the nearest level), the bilinear filter, the Z buffer, the
+blend, fog, the color mask and the scissor box. The Rage Pro also does
+the alpha test. The driver has these limits. The back end gives a draw
+that needs one of them to softgl:
 
 - The blend and the fog use the same unit of the card: no fog with a
   blend.
 - One texture unit.
+- The 3D Rage and the Rage II have no alpha test and no clamp of the
+  texture. The alpha is the texture alpha or the vertex alpha. It is
+  not the product of the two.
 - The texture formats are RGB 565 and ARGB 4444.
 - The driver is tested in 86Box only. Test it on a real card before you
   use it.
 
 ![glidecube on the 3D Rage Pro card of 86Box](images/glidecube-ati-dos.png)
+
+![glidecube on the 3D Rage II+ card of 86Box](images/glidecube-rage2-dos.png)
 
 ## How to select a driver for DOS
 
@@ -328,8 +345,9 @@ glidecube 0 matrox
   `tools/test-glide-86box.py` runs a DOS program in 86Box on a Pentium
   computer with FreeDOS, and examines the output. CI runs `glidetest`
   on the ViRGE/DX, the ViRGE, the Mystique, the Millennium II, the
-  G100, the 3D Rage Pro (`mach64_ragepro_pci`) and the Voodoo Graphics. The G100 is an AGP card: use the ASUS
-  P5A board (`--machine p5a`):
+  G100, the 3D Rage Pro (`mach64_ragepro_pci`), the 3D Rage II+
+  (`mach64_rage2p`) and the Voodoo Graphics. The G100 is an AGP card:
+  use the ASUS P5A board (`--machine p5a`):
 
   ```sh
   sh tools/setup-86box.sh ~/86box

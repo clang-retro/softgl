@@ -6,7 +6,7 @@
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
  * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a ViRGE, a
- * Matrox or an ATI Rage Pro card (tools/test-glide-86box.py), or on a
+ * Matrox or an ATI Rage card (tools/test-glide-86box.py), or on a
  * computer with one of the cards.
  *
  *     glidetest [voodoo | virge | matrox | ati]

@@ -216,6 +216,8 @@ static sgl_texture *usable_texture(gr_state *s, sgl_context *c, int u) {
   if (lv->wlog - lv->hlog > 3 || lv->hlog - lv->wlog > 3) return (sgl_texture *)1;
   if (env != GL_MODULATE && env != GL_REPLACE && env != GL_DECAL) return (sgl_texture *)1;
   if ((s->gr->limits & SGL_GLIDE_LIMIT_SQUARE) && lv->wlog != lv->hlog) return (sgl_texture *)1;
+  if ((s->gr->limits & SGL_GLIDE_LIMIT_NO_CLAMP) && (t->wrap_s != GL_REPEAT || t->wrap_t != GL_REPEAT))
+    return (sgl_texture *)1;
   /* GL_DECAL of an RGBA texture mixes the texture and the vertex color
    * by the texture alpha. */
   if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_ALPHA) && env == GL_DECAL && lv->base == GL_RGBA) return (sgl_texture *)1;
