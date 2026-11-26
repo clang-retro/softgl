@@ -22,7 +22,8 @@ typedef struct {
 static const driver drivers[] = {{"voodoo", sgl_glide_sst1}, {"powervr", sgl_glide_pvr},
                                  {"virge", sgl_glide_virge},  {"matrox", sgl_glide_mga},
                                  {"ati", sgl_glide_ati},      {"rage128", sgl_glide_r128},
-                                 {"sis", sgl_glide_sis},        {"permedia2", sgl_glide_pm2}};
+                                 {"sis", sgl_glide_sis},        {"permedia2", sgl_glide_pm2},
+                                 {"savage", sgl_glide_savage}};
 
 /* Gives 1 when the driver in api finds its card. */
 static int has_card(const sgl_glide_api *api) {

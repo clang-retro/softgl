@@ -86,7 +86,7 @@ $(OUT)/libsoftgl-glide.a: $(GLIDE_OBJS)
 
 # The Glide back end for 32-bit DOS, with the Voodoo driver of softgl in
 # place of a Glide library. Build it with the i386-pc-msdos compiler.
-GLIDE_DOS_SRCS := backends/glide/glide.c backends/glide/glide_sst1.c backends/glide/glide_virge.c backends/glide/glide_mga.c backends/glide/glide_ati.c backends/glide/glide_pvr.c backends/glide/glide_r128.c backends/glide/glide_sis.c backends/glide/glide_pm2.c backends/glide/glide_dos.c \
+GLIDE_DOS_SRCS := backends/glide/glide.c backends/glide/glide_sst1.c backends/glide/glide_virge.c backends/glide/glide_mga.c backends/glide/glide_ati.c backends/glide/glide_pvr.c backends/glide/glide_r128.c backends/glide/glide_sis.c backends/glide/glide_pm2.c backends/glide/glide_savage.c backends/glide/glide_dos.c \
   backends/dos/dos_hw.c
 GLIDE_DOS_OBJS := $(patsubst %.c,$(OUT)/%.o,$(GLIDE_DOS_SRCS))
 

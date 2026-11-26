@@ -8,7 +8,8 @@ the Voodoo Graphics, the Voodoo2, the Banshee and the Voodoo3, and
 other built-in drivers give them on a PowerVR PCX2 card,
 on an S3 ViRGE card, on a Matrox card, on an ATI Rage card, on an ATI
 Rage 128 card, on the graphics of a SiS 530 or SiS 620 chipset and on
-a 3Dlabs Permedia 2 card (not tested). The
+a 3Dlabs Permedia 2 card (not tested) and on an S3 Savage4 card (not
+tested). The
 code is in
 `backends/glide/`.
 
@@ -565,11 +566,64 @@ them to softgl:
 - One texture unit.
 - The texture formats are RGB 565 and ARGB 4444.
 
+## The Savage4 driver for DOS
+
+`backends/glide/glide_savage.c` has the same Glide 2 functions for the
+3D engine of the S3 Savage4 family: the Savage4 (PCI ID 5333h:8A22h),
+the ProSavage (8A25h, 8A26h), the Twister (8D01h, 8D02h) and the
+ProSavage DDR (8D03h, 8D04h). The register facts come from the open
+source Savage drivers: the Mesa `savage` DRI driver, the Linux `savage`
+DRM driver and the X.Org `savage` driver. 86Box does not emulate the
+cards. **The driver is not tested.** The Savage3D, the Savage MX, the
+SuperSavage and the Savage 2000 have other registers, and the driver
+does not find them.
+
+The 3D engine of the Savage draws only into tiled buffers. A tile is
+2 KB: 64 x 16 pixels of 16 bits. The driver does these steps:
+
+1. `grGlideInit` finds the card, enables its memory space and maps the
+   registers (region 0, 512 KB).
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory holds the screen (linear), a tiled
+   back buffer, a tiled 16-bit Z buffer and then the textures. The
+   driver sets the 2D engine and the Burst Command Interface (BCI) as
+   the X.Org driver does, without the command overflow buffer.
+3. For each triangle, the driver writes the changed 3D registers with
+   SetRegister commands to the BCI, then a DrawPrimitive command with
+   the three vertices: X, Y, Z, 1/W, the color, the fog factor (in the
+   alpha of the specular color), and S and T. The card does the
+   set-up. Lines and points are two triangles.
+4. `grBufferClear` fills the clip window with a 2D rectangle: the back
+   buffer, then the Z buffer.
+5. `grBufferSwap` copies the tiled back buffer to the linear screen
+   with a 2D blit. The 2D engine reads the tiles and writes the linear
+   rows.
+
+The card keeps 1 - Z in the Z buffer, and the driver uses the reverse Z
+compare, as the Mesa driver does. S and T go from 0 to 1 across the
+texture. The textures are also tiled: `grTexDownloadMipMap` writes the
+texels in the tile order of the Mesa driver. A side of less than 8
+texels is made 8 texels long: the driver repeats each texel.
+
+A lock of the back buffer or of the Z buffer reads and writes through
+the tiled aperture of the card (16 MB for each surface, after the first
+32 MB of region 1). The aperture shows a tiled surface as linear rows
+of 4096 bytes.
+
+The card does Gouraud shading, the texture (`GL_MODULATE`, `GL_DECAL`
+and `GL_REPLACE`), the bilinear filter, the clamp of the texture, the
+Z buffer, the fog, the dither, the color mask, the blend, the alpha
+test and the scissor box. The driver sets no limits, but:
+
+- **No mipmaps.** The card uses the largest level of a texture.
+- One texture unit.
+- The texture formats are RGB 565 and ARGB 4444.
+
 ## How to select a driver for DOS
 
 A DOS program calls `sgl_glide_dos(&api, name)`. The name is
 `"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"`,
-`"sis"`, `"permedia2"` or `NULL`. With `NULL`, the function
+`"sis"`, `"permedia2"`, `"savage"` or `NULL`. With `NULL`, the function
 selects the first card that it finds. `glidecube.exe` and
 `glidetest.exe` take the name as an argument:
 
@@ -593,7 +647,7 @@ glidecube 0 matrox
   texture, a blend and the alpha test through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
   `PASS softgl glide on the voodoo card` (or `powervr`, `virge`,
-  `matrox`, `ati`, `rage128`, `sis` or `permedia2`).
+  `matrox`, `ati`, `rage128`, `sis`, `permedia2` or `savage`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
