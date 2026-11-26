@@ -228,6 +228,12 @@ int sgl_glide_sis(sgl_glide_api *api);
  * Gives 1 on success. The code is in backends/glide/glide_pm2.c. */
 int sgl_glide_pm2(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for an S3 Savage4, ProSavage,
+ * Twister or ProSavage DDR card, for 32-bit DOS (not tested). The
+ * driver uses the BCI command FIFO, tiled buffers and the VBE BIOS.
+ * Gives 1 on success. The code is in backends/glide/glide_savage.c. */
+int sgl_glide_savage(sgl_glide_api *api);
+
 /* Fills api with the built-in driver for a PowerVR PCX2 card (Matrox
  * m3D, VideoLogic Apocalypse 3Dx or 5D), for 32-bit DOS. The card draws
  * into the frame buffer of the VGA card, in a VBE mode. The driver sets
@@ -237,7 +243,7 @@ int sgl_glide_pvr(sgl_glide_api *api);
 
 /* Fills api with the built-in driver of the first 3D card that is in
  * the computer (32-bit DOS). With name ("voodoo", "powervr", "virge",
- * "matrox", "ati", "rage128", "sis" or "permedia2"), only that driver is tried. Gives the name of the driver, or NULL when there is
+ * "matrox", "ati", "rage128", "sis", "permedia2" or "savage"), only that driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
 const char *sgl_glide_dos(sgl_glide_api *api, const char *name);
 
