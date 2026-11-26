@@ -32,6 +32,9 @@ static void set_array(sgl_array *a, GLint size, GLenum type, GLsizei stride, con
   a->type = type;
   a->stride = stride;
   a->pointer = p;
+  /* OpenGL 1.5: with a buffer bound to GL_ARRAY_BUFFER, p is an offset
+   * in it. */
+  sgl_buffer_set(&a->buf, sgl_ctx->c.array_buffer);
 }
 
 /* glVertexPointer: sets the vertex array. */
@@ -137,7 +140,13 @@ void APIENTRY sgl_EdgeFlagPointerEXT(GLsizei stride, GLsizei count, const GLbool
 static void fetch(const sgl_array *a, GLint i, int n, int normalize, GLfloat *out) {
   int size = elem_size(a->type), k;
   long stride = a->stride ? a->stride : (long)size * a->size;
-  const unsigned char *p = (const unsigned char *)a->pointer + stride * i;
+  const unsigned char *p = sgl_array_base(a);
+  if (!p) {
+    /* An empty buffer. */
+    for (k = 0; k < n; k++) out[k] = 0.0f;
+    return;
+  }
+  p += stride * i;
   for (k = 0; k < n; k++, p += size) {
     switch (a->type) {
       case GL_BYTE: {
@@ -197,7 +206,8 @@ void APIENTRY sgl_ArrayElement(GLint i) {
   const struct sgl_dispatch *d = SGL_DISPATCH;
   GLfloat v[4];
   int u;
-  if (c->c.edge.enabled) d->EdgeFlag(((const GLboolean *)c->c.edge.pointer)[(c->c.edge.stride ? c->c.edge.stride : 1) * i]);
+  if (c->c.edge.enabled && sgl_array_base(&c->c.edge))
+    d->EdgeFlag(sgl_array_base(&c->c.edge)[(c->c.edge.stride ? c->c.edge.stride : 1) * i]);
   for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
     const sgl_array *t = &c->c.tex[u];
     if (!t->enabled) continue;
@@ -264,6 +274,12 @@ void APIENTRY sgl_DrawElements(GLenum mode, GLsizei count, GLenum type, const vo
   if (type != GL_UNSIGNED_BYTE && type != GL_UNSIGNED_SHORT && type != GL_UNSIGNED_INT) {
     sgl_error(GL_INVALID_ENUM);
     return;
+  }
+  if (sgl_ctx->c.element_buffer) {
+    /* OpenGL 1.5: indices is an offset in the buffer of the elements. */
+    const uint8_t *base = sgl_ctx->c.element_buffer->data;
+    if (!base) return;
+    indices = base + (size_t)(uintptr_t)indices;
   }
   d->Begin(mode);
   for (i = 0; i < count; i++) {

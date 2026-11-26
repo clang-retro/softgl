@@ -405,7 +405,8 @@ static void test_depth_texture(void) {
 /* Tests the names and the version. */
 static void test_names(void) {
   const char *ext = (const char *)glGetString(GL_EXTENSIONS);
-  check("version 1.4", strncmp((const char *)glGetString(GL_VERSION), "1.4", 3) == 0);
+  const char *version = (const char *)glGetString(GL_VERSION);
+  check("version 1.4 or later", version[0] == '1' && version[1] == '.' && version[2] >= '4');
   check("extension GL_ARB_shadow", strstr(ext, "GL_ARB_shadow") != NULL);
   check("extension GL_EXT_blend_func_separate", strstr(ext, "GL_EXT_blend_func_separate") != NULL);
   check("proc glWindowPos2iARB", sgl_get_proc("glWindowPos2iARB") != NULL);

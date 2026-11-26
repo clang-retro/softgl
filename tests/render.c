@@ -201,8 +201,8 @@ int main(int argc, char **argv) {
     printf("FAIL: no context\n");
     return 1;
   }
-  if (!strstr((const char *)glGetString(GL_VERSION), "1.4")) {
-    printf("FAIL: the version is not 1.4\n");
+  if (!strstr((const char *)glGetString(GL_VERSION), "1.5")) {
+    printf("FAIL: the version is not 1.5\n");
     failures++;
   }
   if (!sgl_get_proc("glAddSwapHintRectWIN") || !sgl_get_proc("glColorTableEXT")) {

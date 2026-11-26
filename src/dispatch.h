@@ -458,6 +458,25 @@ struct sgl_dispatch {
   void (APIENTRY *WindowPos3fv)(const GLfloat *v);
   void (APIENTRY *WindowPos3d)(GLdouble x, GLdouble y, GLdouble z);
   void (APIENTRY *WindowPos3dv)(const GLdouble *v);
+  void (APIENTRY *BindBuffer)(GLenum target, GLuint buffer);
+  void (APIENTRY *DeleteBuffers)(GLsizei n, const GLuint *buffers);
+  void (APIENTRY *GenBuffers)(GLsizei n, GLuint *buffers);
+  GLboolean (APIENTRY *IsBuffer)(GLuint buffer);
+  void (APIENTRY *BufferData)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+  void (APIENTRY *BufferSubData)(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+  void (APIENTRY *GetBufferSubData)(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+  void *(APIENTRY *MapBuffer)(GLenum target, GLenum access);
+  GLboolean (APIENTRY *UnmapBuffer)(GLenum target);
+  void (APIENTRY *GetBufferParameteriv)(GLenum target, GLenum pname, GLint *params);
+  void (APIENTRY *GetBufferPointerv)(GLenum target, GLenum pname, void **params);
+  void (APIENTRY *GenQueries)(GLsizei n, GLuint *ids);
+  void (APIENTRY *DeleteQueries)(GLsizei n, const GLuint *ids);
+  GLboolean (APIENTRY *IsQuery)(GLuint id);
+  void (APIENTRY *BeginQuery)(GLenum target, GLuint id);
+  void (APIENTRY *EndQuery)(GLenum target);
+  void (APIENTRY *GetQueryiv)(GLenum target, GLenum pname, GLint *params);
+  void (APIENTRY *GetQueryObjectiv)(GLuint id, GLenum pname, GLint *params);
+  void (APIENTRY *GetQueryObjectuiv)(GLuint id, GLenum pname, GLuint *params);
 };
 
 /* The operation codes of the commands in a display list. */
@@ -566,6 +585,8 @@ enum sgl_op {
   SGL_OP_PointParameterfv,
   SGL_OP_SecondaryColor3f,
   SGL_OP_WindowPos3f,
+  SGL_OP_BeginQuery,
+  SGL_OP_EndQuery,
   SGL_OP_COUNT
 };
 
@@ -784,6 +805,25 @@ void APIENTRY sgl_PointParameterfv(GLenum pname, const GLfloat *params);
 void APIENTRY sgl_SecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue);
 void APIENTRY sgl_SecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
 void APIENTRY sgl_WindowPos3f(GLfloat x, GLfloat y, GLfloat z);
+void APIENTRY sgl_BindBuffer(GLenum target, GLuint buffer);
+void APIENTRY sgl_DeleteBuffers(GLsizei n, const GLuint *buffers);
+void APIENTRY sgl_GenBuffers(GLsizei n, GLuint *buffers);
+GLboolean APIENTRY sgl_IsBuffer(GLuint buffer);
+void APIENTRY sgl_BufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+void APIENTRY sgl_BufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+void APIENTRY sgl_GetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+void * APIENTRY sgl_MapBuffer(GLenum target, GLenum access);
+GLboolean APIENTRY sgl_UnmapBuffer(GLenum target);
+void APIENTRY sgl_GetBufferParameteriv(GLenum target, GLenum pname, GLint *params);
+void APIENTRY sgl_GetBufferPointerv(GLenum target, GLenum pname, void **params);
+void APIENTRY sgl_GenQueries(GLsizei n, GLuint *ids);
+void APIENTRY sgl_DeleteQueries(GLsizei n, const GLuint *ids);
+GLboolean APIENTRY sgl_IsQuery(GLuint id);
+void APIENTRY sgl_BeginQuery(GLenum target, GLuint id);
+void APIENTRY sgl_EndQuery(GLenum target);
+void APIENTRY sgl_GetQueryiv(GLenum target, GLenum pname, GLint *params);
+void APIENTRY sgl_GetQueryObjectiv(GLuint id, GLenum pname, GLint *params);
+void APIENTRY sgl_GetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params);
 
 /* The hand-written save functions (list.c). */
 void APIENTRY save_TexImage1D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const void *pixels);

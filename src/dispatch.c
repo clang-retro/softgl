@@ -3558,6 +3558,112 @@ static void APIENTRY nop_WindowPos3d(GLdouble x, GLdouble y, GLdouble z) {
 static void APIENTRY nop_WindowPos3dv(const GLdouble *v) {
   (void)v;
 }
+/* Does nothing: no context is current (glBindBuffer). */
+static void APIENTRY nop_BindBuffer(GLenum target, GLuint buffer) {
+  (void)target;
+  (void)buffer;
+}
+/* Does nothing: no context is current (glDeleteBuffers). */
+static void APIENTRY nop_DeleteBuffers(GLsizei n, const GLuint *buffers) {
+  (void)n;
+  (void)buffers;
+}
+/* Does nothing: no context is current (glGenBuffers). */
+static void APIENTRY nop_GenBuffers(GLsizei n, GLuint *buffers) {
+  (void)n;
+  (void)buffers;
+}
+/* Does nothing: no context is current (glIsBuffer). */
+static GLboolean APIENTRY nop_IsBuffer(GLuint buffer) {
+  (void)buffer;
+  return (GLboolean)0;
+}
+/* Does nothing: no context is current (glBufferData). */
+static void APIENTRY nop_BufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage) {
+  (void)target;
+  (void)size;
+  (void)data;
+  (void)usage;
+}
+/* Does nothing: no context is current (glBufferSubData). */
+static void APIENTRY nop_BufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data) {
+  (void)target;
+  (void)offset;
+  (void)size;
+  (void)data;
+}
+/* Does nothing: no context is current (glGetBufferSubData). */
+static void APIENTRY nop_GetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data) {
+  (void)target;
+  (void)offset;
+  (void)size;
+  (void)data;
+}
+/* Does nothing: no context is current (glMapBuffer). */
+static void * APIENTRY nop_MapBuffer(GLenum target, GLenum access) {
+  (void)target;
+  (void)access;
+  return (void *)0;
+}
+/* Does nothing: no context is current (glUnmapBuffer). */
+static GLboolean APIENTRY nop_UnmapBuffer(GLenum target) {
+  (void)target;
+  return (GLboolean)0;
+}
+/* Does nothing: no context is current (glGetBufferParameteriv). */
+static void APIENTRY nop_GetBufferParameteriv(GLenum target, GLenum pname, GLint *params) {
+  (void)target;
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glGetBufferPointerv). */
+static void APIENTRY nop_GetBufferPointerv(GLenum target, GLenum pname, void **params) {
+  (void)target;
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glGenQueries). */
+static void APIENTRY nop_GenQueries(GLsizei n, GLuint *ids) {
+  (void)n;
+  (void)ids;
+}
+/* Does nothing: no context is current (glDeleteQueries). */
+static void APIENTRY nop_DeleteQueries(GLsizei n, const GLuint *ids) {
+  (void)n;
+  (void)ids;
+}
+/* Does nothing: no context is current (glIsQuery). */
+static GLboolean APIENTRY nop_IsQuery(GLuint id) {
+  (void)id;
+  return (GLboolean)0;
+}
+/* Does nothing: no context is current (glBeginQuery). */
+static void APIENTRY nop_BeginQuery(GLenum target, GLuint id) {
+  (void)target;
+  (void)id;
+}
+/* Does nothing: no context is current (glEndQuery). */
+static void APIENTRY nop_EndQuery(GLenum target) {
+  (void)target;
+}
+/* Does nothing: no context is current (glGetQueryiv). */
+static void APIENTRY nop_GetQueryiv(GLenum target, GLenum pname, GLint *params) {
+  (void)target;
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glGetQueryObjectiv). */
+static void APIENTRY nop_GetQueryObjectiv(GLuint id, GLenum pname, GLint *params) {
+  (void)id;
+  (void)pname;
+  (void)params;
+}
+/* Does nothing: no context is current (glGetQueryObjectuiv). */
+static void APIENTRY nop_GetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params) {
+  (void)id;
+  (void)pname;
+  (void)params;
+}
 
 /* Records glCullFace in the display list that is compiled. */
 static void APIENTRY save_CullFace(GLenum mode) {
@@ -4312,6 +4418,19 @@ static void APIENTRY save_WindowPos3f(GLfloat x, GLfloat y, GLfloat z) {
   if (a) a[2].f = z;
   if (sgl_list_executes()) sgl_WindowPos3f(x, y, z);
 }
+/* Records glBeginQuery in the display list that is compiled. */
+static void APIENTRY save_BeginQuery(GLenum target, GLuint id) {
+  sgl_cell *a = sgl_list_add(SGL_OP_BeginQuery, 2);
+  if (a) a[0].u = target;
+  if (a) a[1].u = id;
+  if (sgl_list_executes()) sgl_BeginQuery(target, id);
+}
+/* Records glEndQuery in the display list that is compiled. */
+static void APIENTRY save_EndQuery(GLenum target) {
+  sgl_cell *a = sgl_list_add(SGL_OP_EndQuery, 1);
+  if (a) a[0].u = target;
+  if (sgl_list_executes()) sgl_EndQuery(target);
+}
 
 /* The table when no context is current. */
 const struct sgl_dispatch sgl_nop_table = {
@@ -4763,6 +4882,25 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_WindowPos3fv,
   nop_WindowPos3d,
   nop_WindowPos3dv,
+  nop_BindBuffer,
+  nop_DeleteBuffers,
+  nop_GenBuffers,
+  nop_IsBuffer,
+  nop_BufferData,
+  nop_BufferSubData,
+  nop_GetBufferSubData,
+  nop_MapBuffer,
+  nop_UnmapBuffer,
+  nop_GetBufferParameteriv,
+  nop_GetBufferPointerv,
+  nop_GenQueries,
+  nop_DeleteQueries,
+  nop_IsQuery,
+  nop_BeginQuery,
+  nop_EndQuery,
+  nop_GetQueryiv,
+  nop_GetQueryObjectiv,
+  nop_GetQueryObjectuiv,
 };
 
 /* The table for execution. */
@@ -5215,6 +5353,25 @@ const struct sgl_dispatch sgl_exec_table = {
   cv_WindowPos3fv,
   cv_WindowPos3d,
   cv_WindowPos3dv,
+  sgl_BindBuffer,
+  sgl_DeleteBuffers,
+  sgl_GenBuffers,
+  sgl_IsBuffer,
+  sgl_BufferData,
+  sgl_BufferSubData,
+  sgl_GetBufferSubData,
+  sgl_MapBuffer,
+  sgl_UnmapBuffer,
+  sgl_GetBufferParameteriv,
+  sgl_GetBufferPointerv,
+  sgl_GenQueries,
+  sgl_DeleteQueries,
+  sgl_IsQuery,
+  sgl_BeginQuery,
+  sgl_EndQuery,
+  sgl_GetQueryiv,
+  sgl_GetQueryObjectiv,
+  sgl_GetQueryObjectuiv,
 };
 
 /* The table for the compilation of a display list. */
@@ -5667,6 +5824,25 @@ const struct sgl_dispatch sgl_save_table = {
   cv_WindowPos3fv,
   cv_WindowPos3d,
   cv_WindowPos3dv,
+  sgl_BindBuffer,
+  sgl_DeleteBuffers,
+  sgl_GenBuffers,
+  sgl_IsBuffer,
+  sgl_BufferData,
+  sgl_BufferSubData,
+  sgl_GetBufferSubData,
+  sgl_MapBuffer,
+  sgl_UnmapBuffer,
+  sgl_GetBufferParameteriv,
+  sgl_GetBufferPointerv,
+  sgl_GenQueries,
+  sgl_DeleteQueries,
+  sgl_IsQuery,
+  save_BeginQuery,
+  save_EndQuery,
+  sgl_GetQueryiv,
+  sgl_GetQueryObjectiv,
+  sgl_GetQueryObjectuiv,
 };
 
 /* Plays the generated command with code op and arguments a back. */
@@ -5977,6 +6153,12 @@ void sgl_play_generated(int op, const sgl_cell *a) {
       break;
     case SGL_OP_WindowPos3f:
       sgl_WindowPos3f((GLfloat)a[0].f, (GLfloat)a[1].f, (GLfloat)a[2].f);
+      break;
+    case SGL_OP_BeginQuery:
+      sgl_BeginQuery((GLenum)a[0].u, (GLuint)a[1].u);
+      break;
+    case SGL_OP_EndQuery:
+      sgl_EndQuery((GLenum)a[0].u);
       break;
     default:
       (void)a;
@@ -7893,10 +8075,115 @@ void APIENTRY glWindowPos3dv(const GLdouble *v);
 void APIENTRY glWindowPos3dv(const GLdouble *v) {
   SGL_DISPATCH->WindowPos3dv(v);
 }
+void APIENTRY glBindBuffer(GLenum target, GLuint buffer);
+/* glBindBuffer: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBindBuffer(GLenum target, GLuint buffer) {
+  SGL_DISPATCH->BindBuffer(target, buffer);
+}
+void APIENTRY glDeleteBuffers(GLsizei n, const GLuint *buffers);
+/* glDeleteBuffers: an extension, which wglGetProcAddress gives. */
+void APIENTRY glDeleteBuffers(GLsizei n, const GLuint *buffers) {
+  SGL_DISPATCH->DeleteBuffers(n, buffers);
+}
+void APIENTRY glGenBuffers(GLsizei n, GLuint *buffers);
+/* glGenBuffers: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGenBuffers(GLsizei n, GLuint *buffers) {
+  SGL_DISPATCH->GenBuffers(n, buffers);
+}
+GLboolean APIENTRY glIsBuffer(GLuint buffer);
+/* glIsBuffer: an extension, which wglGetProcAddress gives. */
+GLboolean APIENTRY glIsBuffer(GLuint buffer) {
+  return SGL_DISPATCH->IsBuffer(buffer);
+}
+void APIENTRY glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+/* glBufferData: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage) {
+  SGL_DISPATCH->BufferData(target, size, data, usage);
+}
+void APIENTRY glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+/* glBufferSubData: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data) {
+  SGL_DISPATCH->BufferSubData(target, offset, size, data);
+}
+void APIENTRY glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+/* glGetBufferSubData: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data) {
+  SGL_DISPATCH->GetBufferSubData(target, offset, size, data);
+}
+void * APIENTRY glMapBuffer(GLenum target, GLenum access);
+/* glMapBuffer: an extension, which wglGetProcAddress gives. */
+void * APIENTRY glMapBuffer(GLenum target, GLenum access) {
+  return SGL_DISPATCH->MapBuffer(target, access);
+}
+GLboolean APIENTRY glUnmapBuffer(GLenum target);
+/* glUnmapBuffer: an extension, which wglGetProcAddress gives. */
+GLboolean APIENTRY glUnmapBuffer(GLenum target) {
+  return SGL_DISPATCH->UnmapBuffer(target);
+}
+void APIENTRY glGetBufferParameteriv(GLenum target, GLenum pname, GLint *params);
+/* glGetBufferParameteriv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetBufferParameteriv(GLenum target, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetBufferParameteriv(target, pname, params);
+}
+void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params);
+/* glGetBufferPointerv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params) {
+  SGL_DISPATCH->GetBufferPointerv(target, pname, params);
+}
+void APIENTRY glGenQueries(GLsizei n, GLuint *ids);
+/* glGenQueries: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGenQueries(GLsizei n, GLuint *ids) {
+  SGL_DISPATCH->GenQueries(n, ids);
+}
+void APIENTRY glDeleteQueries(GLsizei n, const GLuint *ids);
+/* glDeleteQueries: an extension, which wglGetProcAddress gives. */
+void APIENTRY glDeleteQueries(GLsizei n, const GLuint *ids) {
+  SGL_DISPATCH->DeleteQueries(n, ids);
+}
+GLboolean APIENTRY glIsQuery(GLuint id);
+/* glIsQuery: an extension, which wglGetProcAddress gives. */
+GLboolean APIENTRY glIsQuery(GLuint id) {
+  return SGL_DISPATCH->IsQuery(id);
+}
+void APIENTRY glBeginQuery(GLenum target, GLuint id);
+/* glBeginQuery: an extension, which wglGetProcAddress gives. */
+void APIENTRY glBeginQuery(GLenum target, GLuint id) {
+  SGL_DISPATCH->BeginQuery(target, id);
+}
+void APIENTRY glEndQuery(GLenum target);
+/* glEndQuery: an extension, which wglGetProcAddress gives. */
+void APIENTRY glEndQuery(GLenum target) {
+  SGL_DISPATCH->EndQuery(target);
+}
+void APIENTRY glGetQueryiv(GLenum target, GLenum pname, GLint *params);
+/* glGetQueryiv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetQueryiv(GLenum target, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetQueryiv(target, pname, params);
+}
+void APIENTRY glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params);
+/* glGetQueryObjectiv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetQueryObjectiv(id, pname, params);
+}
+void APIENTRY glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params);
+/* glGetQueryObjectuiv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params) {
+  SGL_DISPATCH->GetQueryObjectuiv(id, pname, params);
+}
 void APIENTRY glActiveTextureARB(GLenum texture);
 /* glActiveTextureARB: the name of glActiveTexture in an extension. */
 void APIENTRY glActiveTextureARB(GLenum texture) {
   SGL_DISPATCH->ActiveTexture(texture);
+}
+void APIENTRY glBeginQueryARB(GLenum target, GLuint id);
+/* glBeginQueryARB: the name of glBeginQuery in an extension. */
+void APIENTRY glBeginQueryARB(GLenum target, GLuint id) {
+  SGL_DISPATCH->BeginQuery(target, id);
+}
+void APIENTRY glBindBufferARB(GLenum target, GLuint buffer);
+/* glBindBufferARB: the name of glBindBuffer in an extension. */
+void APIENTRY glBindBufferARB(GLenum target, GLuint buffer) {
+  SGL_DISPATCH->BindBuffer(target, buffer);
 }
 void APIENTRY glBlendColorEXT(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
 /* glBlendColorEXT: the name of glBlendColor in an extension. */
@@ -7912,6 +8199,16 @@ void APIENTRY glBlendFuncSeparateEXT(GLenum sfactorRGB, GLenum dfactorRGB, GLenu
 /* glBlendFuncSeparateEXT: the name of glBlendFuncSeparate in an extension. */
 void APIENTRY glBlendFuncSeparateEXT(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) {
   SGL_DISPATCH->BlendFuncSeparate(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
+}
+void APIENTRY glBufferDataARB(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+/* glBufferDataARB: the name of glBufferData in an extension. */
+void APIENTRY glBufferDataARB(GLenum target, GLsizeiptr size, const void *data, GLenum usage) {
+  SGL_DISPATCH->BufferData(target, size, data, usage);
+}
+void APIENTRY glBufferSubDataARB(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+/* glBufferSubDataARB: the name of glBufferSubData in an extension. */
+void APIENTRY glBufferSubDataARB(GLenum target, GLintptr offset, GLsizeiptr size, const void *data) {
+  SGL_DISPATCH->BufferSubData(target, offset, size, data);
 }
 void APIENTRY glClientActiveTextureARB(GLenum texture);
 /* glClientActiveTextureARB: the name of glClientActiveTexture in an extension. */
@@ -7953,10 +8250,25 @@ void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, 
 void APIENTRY glCopyTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
   SGL_DISPATCH->CopyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
 }
+void APIENTRY glDeleteBuffersARB(GLsizei n, const GLuint *buffers);
+/* glDeleteBuffersARB: the name of glDeleteBuffers in an extension. */
+void APIENTRY glDeleteBuffersARB(GLsizei n, const GLuint *buffers) {
+  SGL_DISPATCH->DeleteBuffers(n, buffers);
+}
+void APIENTRY glDeleteQueriesARB(GLsizei n, const GLuint *ids);
+/* glDeleteQueriesARB: the name of glDeleteQueries in an extension. */
+void APIENTRY glDeleteQueriesARB(GLsizei n, const GLuint *ids) {
+  SGL_DISPATCH->DeleteQueries(n, ids);
+}
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
 /* glDrawRangeElementsEXT: the name of glDrawRangeElements in an extension. */
 void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
   SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
+}
+void APIENTRY glEndQueryARB(GLenum target);
+/* glEndQueryARB: the name of glEndQuery in an extension. */
+void APIENTRY glEndQueryARB(GLenum target) {
+  SGL_DISPATCH->EndQuery(target);
 }
 void APIENTRY glFogCoordPointerEXT(GLenum type, GLsizei stride, const void *pointer);
 /* glFogCoordPointerEXT: the name of glFogCoordPointer in an extension. */
@@ -7983,10 +8295,60 @@ void APIENTRY glFogCoordfvEXT(const GLfloat *coord);
 void APIENTRY glFogCoordfvEXT(const GLfloat *coord) {
   SGL_DISPATCH->FogCoordfv(coord);
 }
+void APIENTRY glGenBuffersARB(GLsizei n, GLuint *buffers);
+/* glGenBuffersARB: the name of glGenBuffers in an extension. */
+void APIENTRY glGenBuffersARB(GLsizei n, GLuint *buffers) {
+  SGL_DISPATCH->GenBuffers(n, buffers);
+}
+void APIENTRY glGenQueriesARB(GLsizei n, GLuint *ids);
+/* glGenQueriesARB: the name of glGenQueries in an extension. */
+void APIENTRY glGenQueriesARB(GLsizei n, GLuint *ids) {
+  SGL_DISPATCH->GenQueries(n, ids);
+}
+void APIENTRY glGetBufferParameterivARB(GLenum target, GLenum pname, GLint *params);
+/* glGetBufferParameterivARB: the name of glGetBufferParameteriv in an extension. */
+void APIENTRY glGetBufferParameterivARB(GLenum target, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetBufferParameteriv(target, pname, params);
+}
+void APIENTRY glGetBufferPointervARB(GLenum target, GLenum pname, void **params);
+/* glGetBufferPointervARB: the name of glGetBufferPointerv in an extension. */
+void APIENTRY glGetBufferPointervARB(GLenum target, GLenum pname, void **params) {
+  SGL_DISPATCH->GetBufferPointerv(target, pname, params);
+}
+void APIENTRY glGetBufferSubDataARB(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+/* glGetBufferSubDataARB: the name of glGetBufferSubData in an extension. */
+void APIENTRY glGetBufferSubDataARB(GLenum target, GLintptr offset, GLsizeiptr size, void *data) {
+  SGL_DISPATCH->GetBufferSubData(target, offset, size, data);
+}
 void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img);
 /* glGetCompressedTexImageARB: the name of glGetCompressedTexImage in an extension. */
 void APIENTRY glGetCompressedTexImageARB(GLenum target, GLint level, void *img) {
   SGL_DISPATCH->GetCompressedTexImage(target, level, img);
+}
+void APIENTRY glGetQueryObjectivARB(GLuint id, GLenum pname, GLint *params);
+/* glGetQueryObjectivARB: the name of glGetQueryObjectiv in an extension. */
+void APIENTRY glGetQueryObjectivARB(GLuint id, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetQueryObjectiv(id, pname, params);
+}
+void APIENTRY glGetQueryObjectuivARB(GLuint id, GLenum pname, GLuint *params);
+/* glGetQueryObjectuivARB: the name of glGetQueryObjectuiv in an extension. */
+void APIENTRY glGetQueryObjectuivARB(GLuint id, GLenum pname, GLuint *params) {
+  SGL_DISPATCH->GetQueryObjectuiv(id, pname, params);
+}
+void APIENTRY glGetQueryivARB(GLenum target, GLenum pname, GLint *params);
+/* glGetQueryivARB: the name of glGetQueryiv in an extension. */
+void APIENTRY glGetQueryivARB(GLenum target, GLenum pname, GLint *params) {
+  SGL_DISPATCH->GetQueryiv(target, pname, params);
+}
+GLboolean APIENTRY glIsBufferARB(GLuint buffer);
+/* glIsBufferARB: the name of glIsBuffer in an extension. */
+GLboolean APIENTRY glIsBufferARB(GLuint buffer) {
+  return SGL_DISPATCH->IsBuffer(buffer);
+}
+GLboolean APIENTRY glIsQueryARB(GLuint id);
+/* glIsQueryARB: the name of glIsQuery in an extension. */
+GLboolean APIENTRY glIsQueryARB(GLuint id) {
+  return SGL_DISPATCH->IsQuery(id);
 }
 void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m);
 /* glLoadTransposeMatrixdARB: the name of glLoadTransposeMatrixd in an extension. */
@@ -7997,6 +8359,11 @@ void APIENTRY glLoadTransposeMatrixfARB(const GLfloat *m);
 /* glLoadTransposeMatrixfARB: the name of glLoadTransposeMatrixf in an extension. */
 void APIENTRY glLoadTransposeMatrixfARB(const GLfloat *m) {
   SGL_DISPATCH->LoadTransposeMatrixf(m);
+}
+void * APIENTRY glMapBufferARB(GLenum target, GLenum access);
+/* glMapBufferARB: the name of glMapBuffer in an extension. */
+void * APIENTRY glMapBufferARB(GLenum target, GLenum access) {
+  return SGL_DISPATCH->MapBuffer(target, access);
 }
 void APIENTRY glMultTransposeMatrixdARB(const GLdouble *m);
 /* glMultTransposeMatrixdARB: the name of glMultTransposeMatrixd in an extension. */
@@ -8298,6 +8665,11 @@ void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLin
 void APIENTRY glTexSubImage3DEXT(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels) {
   SGL_DISPATCH->TexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
 }
+GLboolean APIENTRY glUnmapBufferARB(GLenum target);
+/* glUnmapBufferARB: the name of glUnmapBuffer in an extension. */
+GLboolean APIENTRY glUnmapBufferARB(GLenum target) {
+  return SGL_DISPATCH->UnmapBuffer(target);
+}
 void APIENTRY glWindowPos2dARB(GLdouble x, GLdouble y);
 /* glWindowPos2dARB: the name of glWindowPos2d in an extension. */
 void APIENTRY glWindowPos2dARB(GLdouble x, GLdouble y) {
@@ -8493,10 +8865,33 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glWindowPos3fv", (void (*)(void))glWindowPos3fv},
   {"glWindowPos3d", (void (*)(void))glWindowPos3d},
   {"glWindowPos3dv", (void (*)(void))glWindowPos3dv},
+  {"glBindBuffer", (void (*)(void))glBindBuffer},
+  {"glDeleteBuffers", (void (*)(void))glDeleteBuffers},
+  {"glGenBuffers", (void (*)(void))glGenBuffers},
+  {"glIsBuffer", (void (*)(void))glIsBuffer},
+  {"glBufferData", (void (*)(void))glBufferData},
+  {"glBufferSubData", (void (*)(void))glBufferSubData},
+  {"glGetBufferSubData", (void (*)(void))glGetBufferSubData},
+  {"glMapBuffer", (void (*)(void))glMapBuffer},
+  {"glUnmapBuffer", (void (*)(void))glUnmapBuffer},
+  {"glGetBufferParameteriv", (void (*)(void))glGetBufferParameteriv},
+  {"glGetBufferPointerv", (void (*)(void))glGetBufferPointerv},
+  {"glGenQueries", (void (*)(void))glGenQueries},
+  {"glDeleteQueries", (void (*)(void))glDeleteQueries},
+  {"glIsQuery", (void (*)(void))glIsQuery},
+  {"glBeginQuery", (void (*)(void))glBeginQuery},
+  {"glEndQuery", (void (*)(void))glEndQuery},
+  {"glGetQueryiv", (void (*)(void))glGetQueryiv},
+  {"glGetQueryObjectiv", (void (*)(void))glGetQueryObjectiv},
+  {"glGetQueryObjectuiv", (void (*)(void))glGetQueryObjectuiv},
   {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
+  {"glBeginQueryARB", (void (*)(void))glBeginQueryARB},
+  {"glBindBufferARB", (void (*)(void))glBindBufferARB},
   {"glBlendColorEXT", (void (*)(void))glBlendColorEXT},
   {"glBlendEquationEXT", (void (*)(void))glBlendEquationEXT},
   {"glBlendFuncSeparateEXT", (void (*)(void))glBlendFuncSeparateEXT},
+  {"glBufferDataARB", (void (*)(void))glBufferDataARB},
+  {"glBufferSubDataARB", (void (*)(void))glBufferSubDataARB},
   {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
   {"glCompressedTexImage1DARB", (void (*)(void))glCompressedTexImage1DARB},
   {"glCompressedTexImage2DARB", (void (*)(void))glCompressedTexImage2DARB},
@@ -8505,15 +8900,29 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glCompressedTexSubImage2DARB", (void (*)(void))glCompressedTexSubImage2DARB},
   {"glCompressedTexSubImage3DARB", (void (*)(void))glCompressedTexSubImage3DARB},
   {"glCopyTexSubImage3DEXT", (void (*)(void))glCopyTexSubImage3DEXT},
+  {"glDeleteBuffersARB", (void (*)(void))glDeleteBuffersARB},
+  {"glDeleteQueriesARB", (void (*)(void))glDeleteQueriesARB},
   {"glDrawRangeElementsEXT", (void (*)(void))glDrawRangeElementsEXT},
+  {"glEndQueryARB", (void (*)(void))glEndQueryARB},
   {"glFogCoordPointerEXT", (void (*)(void))glFogCoordPointerEXT},
   {"glFogCoorddEXT", (void (*)(void))glFogCoorddEXT},
   {"glFogCoorddvEXT", (void (*)(void))glFogCoorddvEXT},
   {"glFogCoordfEXT", (void (*)(void))glFogCoordfEXT},
   {"glFogCoordfvEXT", (void (*)(void))glFogCoordfvEXT},
+  {"glGenBuffersARB", (void (*)(void))glGenBuffersARB},
+  {"glGenQueriesARB", (void (*)(void))glGenQueriesARB},
+  {"glGetBufferParameterivARB", (void (*)(void))glGetBufferParameterivARB},
+  {"glGetBufferPointervARB", (void (*)(void))glGetBufferPointervARB},
+  {"glGetBufferSubDataARB", (void (*)(void))glGetBufferSubDataARB},
   {"glGetCompressedTexImageARB", (void (*)(void))glGetCompressedTexImageARB},
+  {"glGetQueryObjectivARB", (void (*)(void))glGetQueryObjectivARB},
+  {"glGetQueryObjectuivARB", (void (*)(void))glGetQueryObjectuivARB},
+  {"glGetQueryivARB", (void (*)(void))glGetQueryivARB},
+  {"glIsBufferARB", (void (*)(void))glIsBufferARB},
+  {"glIsQueryARB", (void (*)(void))glIsQueryARB},
   {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
   {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
+  {"glMapBufferARB", (void (*)(void))glMapBufferARB},
   {"glMultTransposeMatrixdARB", (void (*)(void))glMultTransposeMatrixdARB},
   {"glMultTransposeMatrixfARB", (void (*)(void))glMultTransposeMatrixfARB},
   {"glMultiDrawArraysEXT", (void (*)(void))glMultiDrawArraysEXT},
@@ -8574,6 +8983,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glSecondaryColorPointerEXT", (void (*)(void))glSecondaryColorPointerEXT},
   {"glTexImage3DEXT", (void (*)(void))glTexImage3DEXT},
   {"glTexSubImage3DEXT", (void (*)(void))glTexSubImage3DEXT},
+  {"glUnmapBufferARB", (void (*)(void))glUnmapBufferARB},
   {"glWindowPos2dARB", (void (*)(void))glWindowPos2dARB},
   {"glWindowPos2dvARB", (void (*)(void))glWindowPos2dvARB},
   {"glWindowPos2fARB", (void (*)(void))glWindowPos2fARB},
