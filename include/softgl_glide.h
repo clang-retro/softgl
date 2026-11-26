@@ -222,6 +222,12 @@ int sgl_glide_r128(sgl_glide_api *api);
  * success. The code is in backends/glide/glide_sis.c. */
 int sgl_glide_sis(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for a 3Dlabs Permedia 2 or
+ * Permedia 2v card, for 32-bit DOS (not tested). The driver uses the
+ * Delta set-up unit and the VBE BIOS, and sets the limits of api.
+ * Gives 1 on success. The code is in backends/glide/glide_pm2.c. */
+int sgl_glide_pm2(sgl_glide_api *api);
+
 /* Fills api with the built-in driver for a PowerVR PCX2 card (Matrox
  * m3D, VideoLogic Apocalypse 3Dx or 5D), for 32-bit DOS. The card draws
  * into the frame buffer of the VGA card, in a VBE mode. The driver sets
@@ -231,7 +237,7 @@ int sgl_glide_pvr(sgl_glide_api *api);
 
 /* Fills api with the built-in driver of the first 3D card that is in
  * the computer (32-bit DOS). With name ("voodoo", "powervr", "virge",
- * "matrox", "ati", "rage128" or "sis"), only that driver is tried. Gives the name of the driver, or NULL when there is
+ * "matrox", "ati", "rage128", "sis" or "permedia2"), only that driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
 const char *sgl_glide_dos(sgl_glide_api *api, const char *name);
 

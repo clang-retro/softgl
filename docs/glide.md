@@ -7,7 +7,8 @@ Voodoo3. On 32-bit DOS, a built-in driver gives the Glide functions on
 the Voodoo Graphics, the Voodoo2, the Banshee and the Voodoo3, and
 other built-in drivers give them on a PowerVR PCX2 card,
 on an S3 ViRGE card, on a Matrox card, on an ATI Rage card, on an ATI
-Rage 128 card and on the graphics of a SiS 530 or SiS 620 chipset. The
+Rage 128 card, on the graphics of a SiS 530 or SiS 620 chipset and on
+a 3Dlabs Permedia 2 card (not tested). The
 code is in
 `backends/glide/`.
 
@@ -517,11 +518,58 @@ of them to softgl:
 
 ![glidecube on the SiS 530 graphics of 86Box](images/glidecube-sis-dos.png)
 
+## The Permedia 2 driver for DOS
+
+`backends/glide/glide_pm2.c` has the same Glide 2 functions for the 3D
+engine of a 3Dlabs Permedia 2 or Permedia 2v card (PCI IDs 104Ch:3D07h,
+3D3Dh:0007h and 3D3Dh:0009h). The register facts come from the TVP4020
+PERMEDIA 2 Programmer's Reference Manual of Texas Instruments. 86Box
+does not emulate the card. **The driver is not tested.**
+
+The driver does these steps:
+
+1. `grGlideInit` finds the card and maps the registers (region 0,
+   128 KB). It sets the PCI disconnect: a write to a full input FIFO
+   then waits, and is not lost.
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory holds three color buffers (two
+   when the memory is small), the 16-bit Z buffer (the "localbuffer")
+   and then the textures. The card gives the address of a pixel from
+   the "partial products" of the row width. Thus the width of the rows
+   must be a width of Appendix C of the manual (640, 800 and 1024 are).
+3. For each triangle, the driver writes the changed state registers,
+   then the three vertices to the vertex store of the Delta unit (the
+   set-up unit in the chip): X, Y, Z, the color, the fog factor, and
+   S, T and Q as IEEE floats. The DrawTriangle command starts the
+   triangle. The Delta unit calculates the edges and the gradients.
+   Lines and points are two triangles.
+4. `grBufferClear` fills the clip window with a rectangle of one raw
+   16-bit value (the `UseConstantFBWriteData` mode): the back buffer,
+   then the Z buffer. This mode does not need SGRAM.
+5. `grBufferSwap` waits for the Sync tag at the output FIFO, then shows
+   the new buffer through VBE function 4F07h.
+
+S and T are in texels, times Q = 1/W. The Delta unit normalizes S, T
+and Q before the set-up.
+
+The card does Gouraud shading, the texture (`GL_MODULATE`, `GL_DECAL`
+and `GL_REPLACE`), the bilinear filter, the clamp of the texture, the
+Z buffer, the fog, the dither, the color mask and the scissor box. The
+driver has these limits. The back end gives a draw that needs one of
+them to softgl:
+
+- No alpha test (`SGL_GLIDE_LIMIT_ALPHA_TEST`).
+- The only blend is (source alpha, 1 - source alpha)
+  (`SGL_GLIDE_LIMIT_BLEND`).
+- **No mipmaps.** The card uses the largest level of a texture.
+- One texture unit.
+- The texture formats are RGB 565 and ARGB 4444.
+
 ## How to select a driver for DOS
 
 A DOS program calls `sgl_glide_dos(&api, name)`. The name is
 `"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"`,
-`"sis"` or `NULL`. With `NULL`, the function
+`"sis"`, `"permedia2"` or `NULL`. With `NULL`, the function
 selects the first card that it finds. `glidecube.exe` and
 `glidetest.exe` take the name as an argument:
 
@@ -545,7 +593,7 @@ glidecube 0 matrox
   texture, a blend and the alpha test through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
   `PASS softgl glide on the voodoo card` (or `powervr`, `virge`,
-  `matrox`, `ati`, `rage128` or `sis`).
+  `matrox`, `ati`, `rage128`, `sis` or `permedia2`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.

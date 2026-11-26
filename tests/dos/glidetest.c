@@ -6,10 +6,11 @@
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
  * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a PowerVR, a
- * ViRGE, a Matrox, an ATI Rage or a Rage 128 card, or a SiS 530 board (tools/test-glide-86box.py), or on a
- * computer with one of the cards.
+ * ViRGE, a Matrox, an ATI Rage or a Rage 128 card, or a SiS 530 board
+ * (tools/test-glide-86box.py), or on a computer with one of the cards
+ * (also a Permedia 2).
  *
- *     glidetest [voodoo | powervr | virge | matrox | ati | rage128 | sis]
+ *     glidetest [voodoo | powervr | virge | matrox | ati | rage128 | sis | permedia2]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -101,7 +102,7 @@ static void texture(void) {
 
 /* Opens the card, draws each test scene, reads it back and closes all.
  * The argument can name the driver (voodoo, powervr, virge, matrox, ati,
- * rage128 or sis). */
+ * rage128, sis or permedia2). */
 int main(int argc, char **argv) {
   static uint32_t color[WIDTH * HEIGHT];
   sgl_glide g = {0};
