@@ -9,7 +9,7 @@ uses it under the `wgl` functions on the systems that have no OpenGL
 of their own. A driver can give it a back end that uses graphics
 hardware (see [docs/backends.md](docs/backends.md)). This repository
 has back ends for the Amiga, 3dfx Glide (also Voodoo to Voodoo3, PowerVR, S3 ViRGE,
-Matrox, ATI Rage and Rage 128 drivers for 32-bit DOS) and the Atari ST and Falcon.
+Matrox, ATI Rage, Rage 128 and SiS 530 drivers for 32-bit DOS) and the Atari ST and Falcon.
 
 To build and test: `make check`. For the design, the build, the tests
 and the limits, see [docs/software-opengl.md](docs/software-opengl.md).
