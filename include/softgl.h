@@ -29,6 +29,15 @@ typedef struct sgl_context sgl_context;
  * sufficient memory. */
 sgl_context *sgl_create_context(sgl_context *share);
 
+/* Makes a rendering context in color index mode, as for a pixel format
+ * of type PFD_TYPE_COLORINDEX. index_bits (1 to 16) is the number of
+ * bits of an index. Each pixel of the color buffer then holds an index
+ * in its low index_bits bits, and the other bits are 0. The window layer
+ * changes the indices to colors through its palette when it copies the
+ * buffer to the window. Gives NULL when index_bits is not correct or
+ * when there is not sufficient memory. */
+sgl_context *sgl_create_index_context(sgl_context *share, int index_bits);
+
 /* Destroys a rendering context. If it is current, no context is current
  * after the call. */
 void sgl_destroy_context(sgl_context *ctx);

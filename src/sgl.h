@@ -74,6 +74,10 @@ typedef uint32_t sgl_depth_t;
  * the runtime library. */
 #define SGL_MUL16(a, b) ((int32_t)(int16_t)(a) * (int32_t)(int16_t)(b))
 
+/* The value of sgl_context.prim outside glBegin and glEnd. GL_NONE is
+ * not correct: it is the same value as GL_POINTS. */
+#define SGL_NO_PRIM 0xFFFFu
+
 /* The z of the rasterizer: [0, 1] is [0, SGL_Z_MAX]. */
 #define SGL_Z_MAX 0x7FFFFFFF
 
@@ -152,6 +156,7 @@ typedef struct sgl_light {
 typedef struct sgl_material {
   GLfloat ambient[4], diffuse[4], specular[4], emission[4];
   GLfloat shininess;
+  GLfloat indexes[3];      /* ambient, diffuse and specular color indices */
   /* Tables of x^shininess for x in [0, 1], for the last shininess
    * values: a program that changes between a few materials does not
    * compute a table again. */
@@ -237,6 +242,7 @@ enum sgl_cap {
   SGL_MAP2_VERTEX_4, SGL_MAP2_NORMAL, SGL_MAP2_COLOR_4,
   SGL_MAP2_TEXTURE_COORD_1, SGL_MAP2_TEXTURE_COORD_2,
   SGL_MAP2_TEXTURE_COORD_3, SGL_MAP2_TEXTURE_COORD_4, SGL_MAP2_INDEX,
+  SGL_INDEX_LOGIC_OP,
   SGL_LIGHT0, /* to SGL_LIGHT0 + 7 */
   SGL_CLIP_PLANE0 = SGL_LIGHT0 + SGL_MAX_LIGHTS, /* to + 5 */
   SGL_CAP_COUNT = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES
@@ -252,7 +258,7 @@ typedef struct sgl_attrib {
   /* GL_CURRENT_BIT */
   GLfloat color[4], normal[3], tex[4], index;
   GLfloat raster_pos[4], raster_color[4], raster_tex[4];
-  GLfloat raster_distance;
+  GLfloat raster_distance, raster_index;
   GLboolean raster_valid, edge;
   /* GL_POINT_BIT, GL_LINE_BIT */
   GLfloat point_size, line_width;
@@ -268,6 +274,8 @@ typedef struct sgl_attrib {
   GLfloat red_scale, red_bias, green_scale, green_bias;
   GLfloat blue_scale, blue_bias, alpha_scale, alpha_bias;
   GLfloat depth_scale, depth_bias;
+  GLint index_shift, index_offset;
+  GLboolean map_color, map_stencil;
   GLenum read_buffer;
   /* GL_LIGHTING_BIT */
   sgl_light light[SGL_MAX_LIGHTS];
@@ -277,7 +285,7 @@ typedef struct sgl_attrib {
   GLenum shade_model, color_material_face, color_material_mode;
   /* GL_FOG_BIT */
   GLenum fog_mode;
-  GLfloat fog_color[4], fog_density, fog_start, fog_end;
+  GLfloat fog_color[4], fog_density, fog_start, fog_end, fog_index;
   /* GL_DEPTH_BUFFER_BIT */
   GLenum depth_func;
   GLboolean depth_mask;
@@ -285,8 +293,9 @@ typedef struct sgl_attrib {
   /* GL_COLOR_BUFFER_BIT */
   GLenum alpha_func, blend_src, blend_dst, logic_op, draw_buffer;
   GLclampf alpha_ref;
-  GLfloat clear_color[4];
+  GLfloat clear_color[4], clear_index;
   GLboolean color_mask[4];
+  GLuint index_mask;
   /* GL_STENCIL_BUFFER_BIT */
   GLenum stencil_func, stencil_fail, stencil_zfail, stencil_zpass;
   GLint stencil_ref, stencil_clear;
@@ -343,6 +352,9 @@ typedef struct sgl_client {
 struct sgl_context {
   /* The buffer that it draws into (sgl_set_buffer). */
   uint32_t *color;
+  int index_mode;          /* color index mode: the pixels are indices */
+  int index_bits;          /* the bits of an index in color index mode */
+  uint32_t index_max;      /* (1 << index_bits) - 1 */
   long rowpixels;          /* pixels from one row to the next */
   int width, height;
   sgl_depth_t *depth;
@@ -370,7 +382,7 @@ struct sgl_context {
   int texture_identity;    /* the texture matrix is the identity */
 
   /* glBegin and glEnd. */
-  GLenum prim;             /* the primitive, or GL_NONE outside glBegin */
+  GLenum prim;             /* the primitive, or SGL_NO_PRIM outside glBegin */
   sgl_vertex *verts;       /* the vertices of the primitive */
   int nverts, maxverts;
   int lit;                 /* lighting is on for this primitive */
@@ -388,6 +400,7 @@ struct sgl_context {
   GLfloat light_diff[2][SGL_MAX_LIGHTS][3];
   GLfloat light_spec[2][SGL_MAX_LIGHTS][3];
   GLfloat base_color[2][4];                 /* emission + model ambient */
+  GLfloat light_ci[SGL_MAX_LIGHTS][2];      /* color index mode: diffuse and specular weights */
 
   /* Display lists. */
   sgl_list *compiling;     /* the list that glNewList started, or NULL */
@@ -401,12 +414,21 @@ struct sgl_context {
   /* Evaluators. */
   sgl_map map1[SGL_MAP_TYPES], map2[SGL_MAP_TYPES];
 
-  /* Selection and feedback: only GL_RENDER is drawn. */
+  /* Selection and feedback (select.c). */
   GLenum render_mode;
   GLuint *select_buffer;
   GLsizei select_size;
+  GLsizei select_count;    /* the values that the hits need */
+  GLint hits;              /* the hit records */
+  int hit;                 /* a primitive hit since the last record */
+  GLfloat hit_min, hit_max;/* the window z range of the hit */
   GLuint names[SGL_NAME_DEPTH];
   int name_depth;
+  GLfloat *feedback_buffer;
+  GLsizei feedback_size;
+  GLsizei feedback_count;  /* the values that the feedback needs */
+  GLenum feedback_type;
+  int line_reset;          /* the next line starts a new stipple */
 
   /* Pixel maps (only stored). */
   GLfloat *pixel_map[10];
@@ -481,6 +503,15 @@ void *sgl_list_copy(const void *p, size_t bytes);
 int sgl_list_executes(void);
 void sgl_list_free_all(sgl_shared *s);
 sgl_node *sgl_list_add_hand(void (*play)(const sgl_cell *), int count, void *data);
+
+/* select.c */
+void sgl_select_hit(sgl_context *c, GLfloat z);
+void sgl_feedback_token(sgl_context *c, GLfloat token);
+void sgl_feedback_vertex(sgl_context *c, const sgl_vertex *v, const GLfloat *color);
+void sgl_feedback_polygon(sgl_context *c, sgl_vertex **v, int n, int side, const GLfloat *flat,
+                          GLenum mode);
+void sgl_feedback_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, const GLfloat *flat);
+void sgl_feedback_raster(sgl_context *c, GLfloat token);
 
 /* eval.c */
 void sgl_eval_init(sgl_context *c);

@@ -1,7 +1,7 @@
 # Makefile - builds softgl and GLU as static libraries and runs the tests.
 #
 #   make            builds build/libsoftgl.a (the renderer and GLU)
-#   make check      builds and runs tests/render.c
+#   make check      builds and runs the tests in tests/
 #   make dispatch   writes src/dispatch.c and src/dispatch.h again
 #
 # Set CC, CFLAGS and AR for a cross compiler, for example:
@@ -11,6 +11,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 CC ?= cc
+CXX ?= c++
 AR ?= ar
 CFLAGS ?= -O2
 OUT ?= build
@@ -18,10 +19,17 @@ PYTHON ?= python3
 
 SRCS := $(wildcard src/*.c)
 GLU_SRCS := $(filter-out %/priorityq-heap.c,$(wildcard glu/libtess/*.c glu/libutil/*.c))
-OBJS := $(patsubst %.c,$(OUT)/%.o,$(SRCS) $(GLU_SRCS))
+# The NURBS of GLU are in C++. NURBS=0 leaves them out, for a system
+# without a C++ compiler.
+NURBS ?= 1
+NURBS_SRCS := $(if $(filter 1,$(NURBS)),$(wildcard glu/libnurbs/*/*.cc))
+OBJS := $(patsubst %.c,$(OUT)/%.o,$(SRCS) $(GLU_SRCS)) $(patsubst %.cc,$(OUT)/%.o,$(NURBS_SRCS))
 
 SGL_CFLAGS := -std=c99 -Wall -Iinclude -Isrc
 GLU_CFLAGS := -std=gnu99 -w -Iinclude -Iglu/include
+CXXFLAGS ?= $(CFLAGS)
+NURBS_CXXFLAGS := -w -fno-exceptions -fno-rtti -DNDEBUG -DLIBRARYBUILD -Iinclude -Iglu/include -Iglu/libnurbs/internals \
+  -Iglu/libnurbs/interface -Iglu/libnurbs/nurbtess
 
 all: $(OUT)/libsoftgl.a
 
@@ -37,11 +45,19 @@ $(OUT)/glu/%.o: glu/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(GLU_CFLAGS) -c $< -o $@
 
-$(OUT)/render: tests/render.c $(OUT)/libsoftgl.a
-	$(CC) $(CFLAGS) $(SGL_CFLAGS) $< $(OUT)/libsoftgl.a -lm -o $@
+$(OUT)/glu/%.o: glu/%.cc
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(NURBS_CXXFLAGS) -c $< -o $@
 
-check: $(OUT)/render
-	$(OUT)/render
+TESTS := $(patsubst tests/%.c,$(OUT)/tests/%,$(wildcard tests/*.c))
+
+$(OUT)/tests/%: tests/%.c tests/harness.h $(OUT)/libsoftgl.a
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(SGL_CFLAGS) -c $< -o $@.o
+	$(if $(NURBS_SRCS),$(CXX),$(CC)) $(CFLAGS) $@.o $(OUT)/libsoftgl.a -lm -o $@
+
+check: $(TESTS)
+	@set -e; for t in $(TESTS); do $$t; done
 
 dispatch:
 	$(PYTHON) tools/gen-dispatch.py

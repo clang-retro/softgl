@@ -35,6 +35,13 @@ typedef struct frag {
   int masked;                   /* the color mask is not all on */
   uint32_t keep;                /* the bits of the old pixel that the color mask keeps */
   int write_color;              /* some color is written */
+  int logic;                    /* the logical operation is on */
+  GLenum logic_op;
+  int index_mode;               /* color index mode: rgba[0] is the index */
+  uint32_t imask;               /* the index bits that can change */
+  uint32_t index_max;
+  int fog_index;
+  int stipple;                  /* the polygon stipple is on */
   /* The texture: */
   const sgl_texture *tex;
   const uint32_t *texels;
@@ -119,6 +126,46 @@ static void setup_frag(frag *f, sgl_context *c) {
   f->masked = f->keep != 0;
   f->write_color = f->keep != 0xFFFFFFFFu && a->draw_buffer != GL_NONE;
   f->tex = NULL;
+  f->stipple = a->enabled[SGL_POLYGON_STIPPLE];
+  f->index_mode = c->index_mode;
+  f->logic_op = a->logic_op;
+  if (c->index_mode) {
+    /* Color index mode: no blending, alpha test or texture. */
+    f->blend = 0;
+    f->alpha_test = 0;
+    f->index_max = c->index_max;
+    f->imask = a->index_mask & c->index_max;
+    f->write_color = f->imask != 0 && a->draw_buffer != GL_NONE;
+    f->logic = a->enabled[SGL_INDEX_LOGIC_OP] && a->logic_op != GL_COPY;
+    f->fog_index = (int)(a->fog_index + 0.5f);
+  } else {
+    f->logic = a->enabled[SGL_COLOR_LOGIC_OP] && a->logic_op != GL_COPY;
+    /* The logical operation replaces blending. */
+    if (f->logic) f->blend = 0;
+  }
+}
+
+/* Gives the logical operation op of the source value s and the
+ * destination value d. */
+static inline uint32_t logic(GLenum op, uint32_t s, uint32_t d) {
+  switch (op) {
+    case GL_CLEAR: return 0;
+    case GL_AND: return s & d;
+    case GL_AND_REVERSE: return s & ~d;
+    case GL_COPY: return s;
+    case GL_AND_INVERTED: return ~s & d;
+    case GL_NOOP: return d;
+    case GL_XOR: return s ^ d;
+    case GL_OR: return s | d;
+    case GL_NOR: return ~(s | d);
+    case GL_EQUIV: return ~(s ^ d);
+    case GL_INVERT: return ~d;
+    case GL_OR_REVERSE: return s | ~d;
+    case GL_COPY_INVERTED: return ~s;
+    case GL_OR_INVERTED: return ~s | d;
+    case GL_NAND: return ~(s & d);
+    default: return 0xFFFFFFFFu; /* GL_SET */
+  }
 }
 
 /* Gives (a * b) / 255 for a and b in [0, 255]. */
@@ -321,9 +368,28 @@ static inline void finish(const frag *f, uint32_t *px, int rgba[4], int fogf) {
     if (rgba[3] > 255) rgba[3] = 255;
   }
   out = ((uint32_t)rgba[3] << 24) | ((uint32_t)rgba[0] << 16) | ((uint32_t)rgba[1] << 8) | (uint32_t)rgba[2];
+  if (f->logic) out = logic(f->logic_op, out, *px);
   if (f->masked) out = (out & ~f->keep) | (*px & f->keep);
   *px = out;
 }
+
+/* Runs the operations after the depth test on a fragment of color index
+ * mode and writes it to the pixel px: fog, the logical operation and the
+ * index mask. idx is the index; fogf is the fog factor 0 to 255. */
+static void finish_index(const frag *f, uint32_t *px, int idx, int fogf) {
+  uint32_t out;
+  if (f->fog) idx += (int)(((int32_t)f->fog_index * (255 - fogf) + 127) / 255);
+  out = (uint32_t)(idx < 0 ? 0 : idx) & f->index_max;
+  if (f->logic) out = logic(f->logic_op, out, *px) & f->index_max;
+  *px = ((*px & ~f->imask) | (out & f->imask)) & f->index_max;
+}
+
+/* The fixed point of the color index planes: 12 bits of fraction, so
+ * that an index of 16 bits fits in 32 bits. */
+#define INDEX_FRAC 12
+
+/* Gives the index of a color index plane value, rounded. */
+static inline int index_of(int32_t v) { return (v + (1 << (INDEX_FRAC - 1))) >> INDEX_FRAC; }
 
 /* Clamps a 16.16 color to [0, 255]. */
 static inline int col(int32_t v) {
@@ -409,6 +475,38 @@ typedef struct tri {
   GLfloat sscale, tscale;       /* texels in the coordinates 0 to 1 */
 } tri;
 
+/* Draws the pixels [xs, xe) of row y of a triangle in color index
+ * mode: the index, z and fog only. */
+static void span_index(const frag *f, const tri *t, int y, int xs, int xe) {
+  sgl_context *c = f->c;
+  int row = c->height - 1 - y;
+  uint32_t *cp = c->color + SGL_MUL16(row, c->rowpixels) + xs;
+  size_t di = (size_t)SGL_MUL16(row, c->width) + (size_t)xs;
+  sgl_depth_t *zp = c->depth + di;
+  int32_t z = fplane_at(&t->fz, xs, y), dz = t->fz.dx;
+  int32_t r = 0, dr = 0, fg = 0xFF0000, dfg = 0;
+  int x, n = xe - xs;
+  if (t->smooth) {
+    r = fplane_at(&t->fr, xs, y);
+    dr = t->fr.dx;
+  }
+  if (f->fog) {
+    fg = fplane_at(&t->ffog, xs, y);
+    dfg = t->ffog.dx;
+  }
+  for (x = 0; x < n; x++, cp++, zp++, di++, z += dz, r += dr, fg += dfg) {
+    if (f->stipple && !((c->a.stipple[y & 31] >> ((xs + x) & 31)) & 1)) continue;
+    if (c->stencil && f->stencil) {
+      if (!stencil_depth(f, di, (uint32_t)z)) continue;
+    } else if (f->depth_test) {
+      uint32_t zz = (uint32_t)z >> SGL_DEPTH_SHIFT;
+      if (!compare(f->depth_func, zz, (uint32_t)*zp)) continue;
+      if (f->depth_write) *zp = (sgl_depth_t)zz;
+    }
+    if (f->write_color) finish_index(f, cp, t->smooth ? index_of(r) : t->flat[0], col(fg));
+  }
+}
+
 /* Draws the pixels [xs, xe) of row y of a triangle. */
 static void span(const frag *f, const tri *t, int y, int xs, int xe) {
   sgl_context *c = f->c;
@@ -470,6 +568,7 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       dt = fix((t1 - t0) / (GLfloat)k);
       left = k;
     }
+    if (f->stipple && !((c->a.stipple[y & 31] >> ((xs + x) & 31)) & 1)) goto next;
     if (c->stencil && f->stencil) {
       if (!stencil_depth(f, di, (uint32_t)z)) goto next;
     } else if (f->depth_test) {
@@ -520,7 +619,7 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
   sgl_texture *tex = NULL;
   setup_frag(&f, c);
   if (f.x0 >= f.x1 || f.y0 >= f.y1) return;
-  if (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D]) {
+  if (!c->index_mode && (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D])) {
     tex = sgl_current_texture(c);
     if (tex && !tex->level[0].texels) tex = NULL;
   }
@@ -544,7 +643,14 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
   t.ox = a->win[0];
   t.oy = a->win[1];
   t.smooth = flat == NULL;
-  if (t.smooth) {
+  if (t.smooth && c->index_mode) {
+    const GLfloat k = (GLfloat)(1 << INDEX_FRAC);
+    make_plane(&t.r, xy, a->color[side][0] * k, b->color[side][0] * k, d->color[side][0] * k, inv_det);
+    if (t.r.dx == 0 && t.r.dy == 0) {
+      t.smooth = 0;
+      flat = a->color[side];
+    }
+  } else if (t.smooth) {
     const GLfloat *ca = a->color[side], *cb = b->color[side], *cd = d->color[side];
     const GLfloat k = 255.0f * 65536.0f;
     make_plane(&t.r, xy, ca[0] * k, cb[0] * k, cd[0] * k, inv_det);
@@ -558,7 +664,9 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
       flat = ca;
     }
   }
-  if (!t.smooth) {
+  if (!t.smooth && c->index_mode) {
+    t.flat[0] = (int)(flat[0] + 0.5f);
+  } else if (!t.smooth) {
     int i;
     for (i = 0; i < 4; i++) t.flat[i] = (int)(sgl_clamp01(flat[i]) * 255.0f + 0.5f);
   }
@@ -618,9 +726,11 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
     make_fplane(&t.fz, &t.z, x0, y0, ex, ey, 1.0f);
     if (t.smooth) {
       make_fplane(&t.fr, &t.r, x0, y0, ex, ey, 1.0f);
-      make_fplane(&t.fg, &t.g, x0, y0, ex, ey, 1.0f);
-      make_fplane(&t.fb, &t.b, x0, y0, ex, ey, 1.0f);
-      make_fplane(&t.fal, &t.al, x0, y0, ex, ey, 1.0f);
+      if (!c->index_mode) {
+        make_fplane(&t.fg, &t.g, x0, y0, ex, ey, 1.0f);
+        make_fplane(&t.fb, &t.b, x0, y0, ex, ey, 1.0f);
+        make_fplane(&t.fal, &t.al, x0, y0, ex, ey, 1.0f);
+      }
     }
     if (f.fog) make_fplane(&t.ffog, &t.fog, x0, y0, ex, ey, 1.0f);
     if (t.textured && !t.persp) {
@@ -682,7 +792,7 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
         int xs = (xl - 0x8000 + 0xFFFF) >> 16, xe = (xr - 0x8000 + 0xFFFF) >> 16;
         if (xs < f.x0) xs = f.x0;
         if (xe > f.x1) xe = f.x1;
-        if (xs < xe) span(&f, &t, y, xs, xe);
+        if (xs < xe) (f.index_mode ? span_index : span)(&f, &t, y, xs, xe);
         xl += dxl;
         xr += dxr;
       }
@@ -709,6 +819,10 @@ static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const in
     if (!compare(f->depth_func, zz, (uint32_t)c->depth[di])) return;
     if (f->depth_write) c->depth[di] = (sgl_depth_t)zz;
   }
+  if (f->index_mode) {
+    if (f->write_color) finish_index(f, c->color + row * c->rowpixels + x, rgba_in[0], fogf);
+    return;
+  }
   rgba[0] = rgba_in[0];
   rgba[1] = rgba_in[1];
   rgba[2] = rgba_in[2];
@@ -727,6 +841,7 @@ static int setup_simple_texture(frag *f, tri *t) {
   sgl_context *c = f->c;
   sgl_texture *tex;
   t->textured = 0;
+  if (c->index_mode) return 0;
   if (!c->a.enabled[SGL_TEXTURE_2D] && !c->a.enabled[SGL_TEXTURE_1D]) return 0;
   tex = sgl_current_texture(c);
   if (!tex || !tex->level[0].texels) return 0;
@@ -767,7 +882,10 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
       int bit = (i / c->a.line_repeat) & 15;
       if (!((c->a.line_pattern >> bit) & 1)) continue;
     }
-    if (flat) {
+    if (c->index_mode) {
+      const GLfloat *ca = a->color[side], *cb = b->color[side];
+      rgba[0] = (int)((flat ? flat[0] : ca[0] + (cb[0] - ca[0]) * u) + 0.5f);
+    } else if (flat) {
       rgba[0] = byte(flat[0]);
       rgba[1] = byte(flat[1]);
       rgba[2] = byte(flat[2]);
@@ -809,6 +927,7 @@ void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat off
   rgba[1] = byte(a->color[side][1]);
   rgba[2] = byte(a->color[side][2]);
   rgba[3] = byte(a->color[side][3]);
+  if (c->index_mode) rgba[0] = (int)(a->color[side][0] + 0.5f);
   tc[0] = a->tex[0];
   tc[1] = a->tex[1];
   tc[2] = a->tex[3];
@@ -831,6 +950,7 @@ void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat 
   v[1] = byte(rgba[1]);
   v[2] = byte(rgba[2]);
   v[3] = byte(rgba[3]);
+  if (c->index_mode) v[0] = (int)(rgba[0] + 0.5f);
   plot(&f, &t, x, y, z, v, 255, tex);
 }
 

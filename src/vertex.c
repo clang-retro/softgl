@@ -131,7 +131,87 @@ static void update_lighting(sgl_context *c) {
       }
     }
   }
+  /* Color index mode: the brightness of the diffuse and specular color
+   * of each light. */
+  for (i = 0; i < c->nlights; i++) {
+    const sgl_light *l = &c->a.light[c->light_index[i]];
+    c->light_ci[i][0] = 0.30f * l->diffuse[0] + 0.59f * l->diffuse[1] + 0.11f * l->diffuse[2];
+    c->light_ci[i][1] = 0.30f * l->specular[0] + 0.59f * l->specular[1] + 0.11f * l->specular[2];
+  }
   c->light_dirty = 0;
+}
+
+/* Gives the direction to light l from eye position eye as a unit
+ * vector in l_out, and the attenuation and spot factor. Gives 0 when
+ * the vertex is outside the cone of a spot light. */
+static int light_dir(const sgl_light *l, const GLfloat eye[4], GLfloat l_out[3], GLfloat *att_out) {
+  GLfloat lx, ly, lz, att = 1.0f;
+  if (l->position[3] != 0.0f) {
+    GLfloat d2, d, inv;
+    lx = l->position[0] - eye[0];
+    ly = l->position[1] - eye[1];
+    lz = l->position[2] - eye[2];
+    d2 = lx * lx + ly * ly + lz * lz;
+    d = sqrtf(d2);
+    inv = d > 0.0f ? 1.0f / d : 0.0f;
+    lx *= inv;
+    ly *= inv;
+    lz *= inv;
+    if (l->attenuation[1] != 0.0f || l->attenuation[2] != 0.0f || l->attenuation[0] != 1.0f) {
+      GLfloat den = l->attenuation[0] + l->attenuation[1] * d + l->attenuation[2] * d2;
+      att = den > 0.0f ? 1.0f / den : 1.0f;
+    }
+    if (l->cos_cutoff > -1.0f) {
+      GLfloat sp = -(lx * l->spot_dir[0] + ly * l->spot_dir[1] + lz * l->spot_dir[2]);
+      if (sp < l->cos_cutoff) return 0;
+      if (l->spot_exponent != 0.0f) att *= powf(sp, l->spot_exponent);
+    }
+  } else {
+    lx = l->vp_unit[0];
+    ly = l->vp_unit[1];
+    lz = l->vp_unit[2];
+  }
+  l_out[0] = lx;
+  l_out[1] = ly;
+  l_out[2] = lz;
+  *att_out = att;
+  return 1;
+}
+
+/* Computes the color index of one side of a lit vertex in color index
+ * mode, at eye position eye with unit eye normal n (OpenGL 1.1, 2.13.5). */
+static GLfloat light_vertex_index(sgl_context *c, int side, const GLfloat eye[4], const GLfloat n[3]) {
+  const sgl_material *m = &c->a.material[side];
+  GLfloat sd = 0.0f, ss = 0.0f, vx = 0.0f, vy = 0.0f, vz = 1.0f;
+  GLfloat ma = m->indexes[0], md = m->indexes[1], ms = m->indexes[2];
+  int i;
+  if (c->a.local_viewer) {
+    GLfloat len = sqrtf(eye[0] * eye[0] + eye[1] * eye[1] + eye[2] * eye[2]);
+    if (len > 0.0f) {
+      vx = -eye[0] / len;
+      vy = -eye[1] / len;
+      vz = -eye[2] / len;
+    }
+  }
+  for (i = 0; i < c->nlights; i++) {
+    const sgl_light *l = &c->a.light[c->light_index[i]];
+    GLfloat ld[3], att, ndotl, hx, hy, hz, len, ndoth;
+    if (!light_dir(l, eye, ld, &att)) continue;
+    ndotl = n[0] * ld[0] + n[1] * ld[1] + n[2] * ld[2];
+    if (ndotl <= 0.0f) continue;
+    sd += att * ndotl * c->light_ci[i][0];
+    hx = ld[0] + vx;
+    hy = ld[1] + vy;
+    hz = ld[2] + vz;
+    len = sqrtf(hx * hx + hy * hy + hz * hz);
+    ndoth = len > 0.0f ? (n[0] * hx + n[1] * hy + n[2] * hz) / len : 0.0f;
+    if (ndoth > 0.0f) ss += att * shine(m, ndoth > 1.0f ? 1.0f : ndoth) * c->light_ci[i][1];
+  }
+  if (ss > 1.0f) ss = 1.0f;
+  {
+    GLfloat idx = ma + sd * (1.0f - ss) * (md - ma) + ss * (ms - ma);
+    return idx > ms ? ms : idx;
+  }
 }
 
 /* Computes the color of one side of a lit vertex at eye position eye
@@ -343,7 +423,19 @@ void sgl_transform_vertex(sgl_context *c, const GLfloat obj[4], sgl_vertex *v) {
   sgl_matrix_apply(&c->mvp, obj, v->clip);
   if (c->need_eye) sgl_matrix_apply(c->modelview.top, obj, v->eye);
   if (c->lit || c->need_normal) eye_normal(c, n);
-  if (c->lit) {
+  if (c->lit && c->index_mode) {
+    if (c->light_dirty) update_lighting(c);
+    v->color[0][0] = light_vertex_index(c, 0, v->eye, n);
+    if (c->a.two_side) {
+      GLfloat back[3];
+      back[0] = -n[0];
+      back[1] = -n[1];
+      back[2] = -n[2];
+      v->color[1][0] = light_vertex_index(c, 1, v->eye, back);
+    }
+  } else if (c->index_mode) {
+    v->color[0][0] = c->a.index;
+  } else if (c->lit) {
     if (c->light_dirty) update_lighting(c);
     light_vertex(c, 0, v->eye, n, v->color[0]);
     if (c->a.two_side) {
@@ -356,7 +448,8 @@ void sgl_transform_vertex(sgl_context *c, const GLfloat obj[4], sgl_vertex *v) {
   } else {
     memcpy(v->color[0], c->a.color, sizeof v->color[0]);
   }
-  if (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D])
+  if (!c->index_mode && (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D] ||
+                         c->render_mode == GL_FEEDBACK))
     tex_coords(c, obj, v->eye, n, v->tex);
   v->fog = c->a.enabled[SGL_FOG] ? fog_factor(c, v->eye) : 1.0f;
   v->edge = c->a.edge;
@@ -524,7 +617,9 @@ void sgl_draw_polygon(sgl_context *c, sgl_vertex **v, int n, int provoking) {
   side = (!front && c->lit && c->a.two_side) ? 1 : 0;
   if (c->a.shade_model == GL_FLAT) flat = prov->color[side];
   mode = c->a.polygon_mode[front ? 0 : 1];
-  if (mode == GL_FILL) {
+  if (c->render_mode != GL_RENDER) {
+    sgl_feedback_polygon(c, p, n, side, flat, (GLenum)mode);
+  } else if (mode == GL_FILL) {
     GLfloat off = c->a.enabled[SGL_POLYGON_OFFSET_FILL] ? 1.0f : 0.0f;
     for (i = 1; i + 1 < n; i++) sgl_raster_triangle(c, p[0], p[i], p[i + 1], side, flat, off);
   } else if (mode == GL_LINE) {
@@ -569,21 +664,31 @@ void sgl_draw_line(sgl_context *c, sgl_vertex *a, sgl_vertex *b, int provoking) 
   }
   sgl_compute_window(c, a);
   sgl_compute_window(c, b);
-  sgl_raster_line(c, a, b, 0, flat, 0.0f);
+  if (c->render_mode != GL_RENDER)
+    sgl_feedback_line(c, a, b, flat);
+  else
+    sgl_raster_line(c, a, b, 0, flat, 0.0f);
 }
 
 /* Draws a point. */
 void sgl_draw_point(sgl_context *c, sgl_vertex *a) {
   if (a->clipmask) return;
   sgl_compute_window(c, a);
-  sgl_raster_point(c, a, 0, 0.0f);
+  if (c->render_mode == GL_SELECT) {
+    sgl_select_hit(c, a->win[2]);
+  } else if (c->render_mode == GL_FEEDBACK) {
+    sgl_feedback_token(c, (GLfloat)GL_POINT_TOKEN);
+    sgl_feedback_vertex(c, a, a->color[0]);
+  } else {
+    sgl_raster_point(c, a, 0, 0.0f);
+  }
 }
 
 /* glBegin: starts a primitive. */
 void APIENTRY sgl_Begin(GLenum mode) {
   sgl_context *c = sgl_ctx;
   int i;
-  if (c->prim != GL_NONE) {
+  if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return;
   }
@@ -612,6 +717,7 @@ void APIENTRY sgl_Begin(GLenum mode) {
   }
   c->prim = mode;
   c->nverts = 0;
+  c->line_reset = 1;
 }
 
 /* Draws the vertices of the primitive that glEnd ends. */
@@ -624,7 +730,10 @@ static void assemble(sgl_context *c) {
       for (i = 0; i < n; i++) sgl_draw_point(c, &v[i]);
       break;
     case GL_LINES:
-      for (i = 0; i + 1 < n; i += 2) sgl_draw_line(c, &v[i], &v[i + 1], 1);
+      for (i = 0; i + 1 < n; i += 2) {
+        c->line_reset = 1;
+        sgl_draw_line(c, &v[i], &v[i + 1], 1);
+      }
       break;
     case GL_LINE_STRIP:
     case GL_LINE_LOOP:
@@ -697,12 +806,12 @@ static void assemble(sgl_context *c) {
 /* glEnd: draws the primitive that glBegin started. */
 void APIENTRY sgl_End(void) {
   sgl_context *c = sgl_ctx;
-  if (c->prim == GL_NONE) {
+  if (c->prim == SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return;
   }
-  if (c->render_mode == GL_RENDER && c->color) assemble(c);
-  c->prim = GL_NONE;
+  if (c->render_mode != GL_RENDER || c->color) assemble(c);
+  c->prim = SGL_NO_PRIM;
   c->nverts = 0;
 }
 
@@ -710,7 +819,7 @@ void APIENTRY sgl_End(void) {
 void APIENTRY sgl_Vertex4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
   sgl_context *c = sgl_ctx;
   GLfloat obj[4];
-  if (c->prim == GL_NONE) return;
+  if (c->prim == SGL_NO_PRIM) return;
   if (c->nverts >= c->maxverts) {
     int n = c->maxverts ? c->maxverts * 2 : 64;
     sgl_vertex *p = (sgl_vertex *)realloc(c->verts, (size_t)n * sizeof(sgl_vertex));
@@ -796,12 +905,12 @@ void APIENTRY sgl_RasterPos4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
   sgl_vertex v;
   GLfloat obj[4];
   int i;
-  if (c->prim != GL_NONE) {
+  if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return;
   }
   sgl_Begin(GL_POINTS);
-  c->prim = GL_NONE;
+  c->prim = SGL_NO_PRIM;
   obj[0] = x;
   obj[1] = y;
   obj[2] = z;
@@ -816,7 +925,10 @@ void APIENTRY sgl_RasterPos4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
   c->a.raster_valid = GL_TRUE;
   for (i = 0; i < 3; i++) c->a.raster_pos[i] = v.win[i];
   c->a.raster_pos[3] = v.clip[3];
-  memcpy(c->a.raster_color, v.color[0], sizeof c->a.raster_color);
+  if (c->index_mode)
+    c->a.raster_index = v.color[0][0];
+  else
+    memcpy(c->a.raster_color, v.color[0], sizeof c->a.raster_color);
   memcpy(c->a.raster_tex, c->a.tex, sizeof c->a.raster_tex);
   c->a.raster_distance = sqrtf(v.eye[0] * v.eye[0] + v.eye[1] * v.eye[1] + v.eye[2] * v.eye[2]);
 }
@@ -856,7 +968,7 @@ void APIENTRY sgl_Materialfv(GLenum face, GLenum pname, const GLfloat *params) {
         memcpy(m->ambient, params, sizeof m->ambient);
         memcpy(m->diffuse, params, sizeof m->diffuse);
         break;
-      case GL_COLOR_INDEXES: break;
+      case GL_COLOR_INDEXES: memcpy(m->indexes, params, sizeof m->indexes); break;
       default: sgl_error(GL_INVALID_ENUM); return;
     }
   }
@@ -872,7 +984,7 @@ void APIENTRY sgl_GetMaterialfv(GLenum face, GLenum pname, GLfloat *params) {
     case GL_SPECULAR: memcpy(params, m->specular, sizeof m->specular); break;
     case GL_EMISSION: memcpy(params, m->emission, sizeof m->emission); break;
     case GL_SHININESS: params[0] = m->shininess; break;
-    case GL_COLOR_INDEXES: params[0] = 0.0f; params[1] = params[2] = 1.0f; break;
+    case GL_COLOR_INDEXES: memcpy(params, m->indexes, sizeof m->indexes); break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -1001,7 +1113,7 @@ void APIENTRY sgl_Fogfv(GLenum pname, const GLfloat *params) {
       for (i = 0; i < 4; i++) c->a.fog_color[i] = sgl_clamp01(params[i]);
       break;
     }
-    case GL_FOG_INDEX: break;
+    case GL_FOG_INDEX: c->a.fog_index = params[0]; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
