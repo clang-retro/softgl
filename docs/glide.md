@@ -228,8 +228,13 @@ gives the draw to softgl, and softgl draws it in software:
 `backends/glide/glide_mga.c` has the same Glide 2 functions for the
 drawing engine of a Matrox card. The cards are the Mystique, the
 Mystique 220, the Millennium II and the Productiva G100. The driver
-does not support the Millennium (it has no texture engine) and the
-G200 and later cards (86Box does not emulate them).
+does not support the Millennium (it has no texture engine).
+
+The driver also accepts the G200 (device IDs 0520h and 0521h), the G400
+and G450 (0525h) and the G550 (2527h). The drawing engine of these cards
+has the registers of the G100, and the driver uses them as on a G100.
+The driver does not use the WARP setup engine of these cards. 86Box does
+not emulate these cards. **The driver is not tested on them.**
 
 The driver does these steps:
 
@@ -254,14 +259,14 @@ The driver has these limits. The back end gives a draw that needs one
 of them to softgl:
 
 - No blend and no alpha test.
-- No fog on the Mystique and the Millennium II. On the G100, the fog of
+- No fog on the Mystique and the Millennium II. On the G100 and later, the fog of
   a textured triangle is calculated for each pixel. The fog of a
   triangle without a texture is calculated at the vertices.
 - The alpha is the texture alpha or the vertex alpha. It is not the
   product of the two.
 - **No mipmaps.** The card uses the largest level of a texture.
 - The Mystique and the Millennium II use the nearest texel. The G100
-  also has the bilinear filter (86Box shows small errors with it).
+  and later also have the bilinear filter (86Box shows small errors with it).
 - The texture formats are RGB 565 and ARGB 4444.
 - The driver is tested in 86Box only. Test it on a real card before you
   use it.

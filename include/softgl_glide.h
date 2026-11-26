@@ -194,7 +194,8 @@ int sgl_glide_sst1(sgl_glide_api *api);
 int sgl_glide_virge(sgl_glide_api *api);
 
 /* Fills api with the built-in driver for a Matrox Mystique, Mystique
- * 220, Millennium II or Productiva G100 card, for 32-bit DOS. The driver
+ * 220, Millennium II or Productiva G100 card, for 32-bit DOS. It also
+ * accepts the G200, G400, G450 and G550 (not tested). The driver
  * uses the drawing engine of the card and the VBE BIOS, and sets the
  * limits of api. Gives 1 on success. The code is in
  * backends/glide/glide_mga.c. */
