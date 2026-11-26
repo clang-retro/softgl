@@ -243,6 +243,8 @@ static int limits_allow(gr_state *s, const sgl_context *c) {
     return 0;
   if ((l & SGL_GLIDE_LIMIT_COLOR_MASK) && !a->color_mask[0]) return 0;
   if ((l & SGL_GLIDE_LIMIT_FOG_ALPHA) && a->enabled[SGL_FOG] && blend) return 0;
+  if ((l & SGL_GLIDE_LIMIT_NO_BLEND) && blend) return 0;
+  if ((l & SGL_GLIDE_LIMIT_NO_FOG) && a->enabled[SGL_FOG]) return 0;
   return 1;
 }
 

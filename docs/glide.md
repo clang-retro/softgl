@@ -2,8 +2,9 @@
 
 The Glide back end gives the triangles, lines and points of a softgl
 context to a 3dfx Voodoo card through Glide 2. The cards are the
-Voodoo Graphics, the Voodoo Rush and the Voodoo2. The code is in
-`backends/glide/`.
+Voodoo Graphics, the Voodoo Rush and the Voodoo2. On 32-bit DOS,
+built-in drivers also give the Glide functions on an S3 ViRGE card and
+on a Matrox card. The code is in `backends/glide/`.
 
 softgl still does the GL state, the transform, lighting, clipping and
 culling. The card does the rasterization: Gouraud shading, the
@@ -25,7 +26,8 @@ these three ways:
   Graphics card directly. A Glide library is not necessary. Use the
   clang-retro `i386-pc-msdos` target (`--config=dos32.cfg`) and link
   `libsoftgl-glide-dos.a` (from `make glide-dos`). Refer to
-  [The Voodoo driver for DOS](#the-voodoo-driver-for-dos).
+  [The Voodoo driver for DOS](#the-voodoo-driver-for-dos) and
+  [How to select a driver for DOS](#how-to-select-a-driver-for-dos).
 - **A 32-bit DOS extender, with the Glide library of 3dfx.** Link the
   Glide 2 library of the 3dfx SDK, include its `glide.h`, and fill the
   table with `SGL_GLIDE_FILL(&api)`. Compile `backends/glide/glide.c`
@@ -192,16 +194,67 @@ gives the draw to softgl, and softgl draws it in software:
 - The driver is tested in 86Box only. Test it on a real card before you
   use it.
 
-To select a driver, a DOS program calls
-`sgl_glide_dos(&api, name)`. The name is `"voodoo"`, `"virge"` or
-`NULL`. With `NULL`, the function selects the first card that it finds.
-`glidecube.exe` and `glidetest.exe` take the name as an argument:
+![glidecube on the ViRGE/DX card of 86Box](images/glidecube-virge-dos.png)
+
+## The Matrox driver for DOS
+
+`backends/glide/glide_mga.c` has the same Glide 2 functions for the
+drawing engine of a Matrox card. The cards are the Mystique, the
+Mystique 220, the Millennium II and the Productiva G100. The driver
+does not support the Millennium (it has no texture engine) and the
+G200 and later cards (86Box does not emulate them).
+
+The driver does these steps:
+
+1. `grGlideInit` finds the first PCI function with the vendor ID 102Bh
+   and the device ID of a supported card. It maps the registers (the
+   control aperture). On the Mystique, the registers are at BAR 0; on
+   the other cards, they are at BAR 1.
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory holds three color buffers (two
+   when the memory is small), the 16-bit Z buffer, and then the
+   textures.
+3. The engine draws trapezoids. The driver divides each triangle into
+   two trapezoids (the rows above the middle vertex, and the rows from
+   it). It calculates the Bresenham terms of the edges, and the start
+   values and the gradients of Z, the color and the texture
+   coordinates (S, T and Q). Lines and points are two triangles.
+4. `grBufferClear` fills the clip window with a trapezoid of one color.
+5. `grBufferSwap` shows the new buffer through VBE function 4F07h, as
+   the ViRGE driver does.
+
+The driver has these limits. The back end gives a draw that needs one
+of them to softgl:
+
+- No blend and no alpha test.
+- No fog on the Mystique and the Millennium II. On the G100, the fog of
+  a textured triangle is calculated for each pixel. The fog of a
+  triangle without a texture is calculated at the vertices.
+- The alpha is the texture alpha or the vertex alpha. It is not the
+  product of the two.
+- **No mipmaps.** The card uses the largest level of a texture.
+- The Mystique and the Millennium II use the nearest texel. The G100
+  also has the bilinear filter (86Box shows small errors with it).
+- The texture formats are RGB 565 and ARGB 4444.
+- The driver is tested in 86Box only. Test it on a real card before you
+  use it.
+
+The Matrox engine of 86Box does not always continue a trapezoid from
+the registers of the trapezoid before it. Thus, the driver writes all
+the registers for each trapezoid.
+
+![glidecube on the Mystique card of 86Box, without fog](images/glidecube-matrox-dos.png)
+
+## How to select a driver for DOS
+
+A DOS program calls `sgl_glide_dos(&api, name)`. The name is
+`"voodoo"`, `"virge"`, `"matrox"` or `NULL`. With `NULL`, the function
+selects the first card that it finds. `glidecube.exe` and
+`glidetest.exe` take the name as an argument:
 
 ```sh
-glidecube 0 virge
+glidecube 0 matrox
 ```
-
-![glidecube on the ViRGE/DX card of 86Box](images/glidecube-virge-dos.png)
 
 ## Tests
 
@@ -217,7 +270,7 @@ glidecube 0 virge
   draws a clear, a flat quad, a smooth triangle, the Z buffer, a
   texture and a blend through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
-  `PASS softgl glide on the voodoo card` (or `virge`).
+  `PASS softgl glide on the voodoo card` (or `virge`, or `matrox`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
@@ -225,12 +278,16 @@ glidecube 0 virge
   commit, and gets its ROM files and a FreeDOS disk image.
   `tools/test-glide-86box.py` runs a DOS program in 86Box on a Pentium
   computer with FreeDOS, and examines the output. CI runs `glidetest`
-  on the ViRGE/DX, the ViRGE and the Voodoo Graphics:
+  on the ViRGE/DX, the ViRGE, the Mystique, the Millennium II, the
+  G100 and the Voodoo Graphics. The G100 is an AGP card: use the ASUS
+  P5A board (`--machine p5a`):
 
   ```sh
   sh tools/setup-86box.sh ~/86box
   python3 tools/test-glide-86box.py --card virge375_pci ~/86box \
     build-dos32/tests/dos/glidetest.exe virge
+  python3 tools/test-glide-86box.py --machine p5a --card productiva_g100 \
+    ~/86box build-dos32/tests/dos/glidetest.exe matrox
   python3 tools/test-glide-86box.py --voodoo ~/86box \
     build-dos32/tests/dos/glidetest.exe voodoo
   ```

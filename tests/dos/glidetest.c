@@ -1,14 +1,15 @@
 /* glidetest.c - a test of the Glide drivers of softgl for
- * 32-bit DOS (backends/glide/glide_sst1.c). The test draws with OpenGL
+ * 32-bit DOS (backends/glide/). The test draws with OpenGL
  * through the Glide back end, reads the pixels of the card back through
  * the linear frame buffer, and compares them with the expected colors.
  * It writes "PASS" when all checks are correct.
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
- * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo or a ViRGE
+ * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a ViRGE or a
+ * Matrox card
  * (tools/test-glide-86box.py), or on a computer with one of the cards.
  *
- *     glidetest [voodoo | virge]
+ *     glidetest [voodoo | virge | matrox]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -99,7 +100,7 @@ static void texture(void) {
 }
 
 /* Opens the card, draws each test scene, reads it back and closes all.
- * The argument can name the driver (voodoo or virge). */
+ * The argument can name the driver (voodoo, virge or matrox). */
 int main(int argc, char **argv) {
   static uint32_t color[WIDTH * HEIGHT];
   sgl_glide g = {0};

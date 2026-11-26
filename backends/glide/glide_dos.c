@@ -18,7 +18,8 @@ typedef struct {
 } driver;
 
 /* The built-in drivers, the Voodoo first. */
-static const driver drivers[] = {{"voodoo", sgl_glide_sst1}, {"virge", sgl_glide_virge}};
+static const driver drivers[] = {{"voodoo", sgl_glide_sst1}, {"virge", sgl_glide_virge},
+                                      {"matrox", sgl_glide_mga}};
 
 /* Gives 1 when the driver in api finds its card. */
 static int has_card(const sgl_glide_api *api) {

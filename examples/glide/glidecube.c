@@ -6,11 +6,11 @@
  *     glidecube [frames]
  *
  * On Windows 95 and 98 it needs a Voodoo card and its glide2x.dll. On
- * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics or
- * an S3 ViRGE card, and uses the built-in drivers of softgl
+ * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics, an
+ * S3 ViRGE or a Matrox card, and uses the built-in drivers of softgl
  * (sgl_glide_dos). There, a second argument can name the driver:
  *
- *     glidecube [frames [voodoo | virge]]
+ *     glidecube [frames [voodoo | virge | matrox]]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
