@@ -16,7 +16,7 @@ SGL_THREAD const struct sgl_dispatch *sgl_cur = &sgl_nop_table;
  * programs of the Windows SDK look for it. */
 static const char kVendor[] = "clang-retro";
 static const char kRenderer[] = "clang-retro Generic";
-static const char kVersion[] = "1.3.0";
+static const char kVersion[] = "1.4.0";
 static const char kExtensions[] =
     "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
     "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
@@ -24,7 +24,11 @@ static const char kExtensions[] =
     "GL_ARB_texture_mirrored_repeat GL_SGIS_texture_lod GL_EXT_packed_pixels "
     "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements GL_EXT_texture3D GL_ARB_texture_cube_map GL_EXT_texture_cube_map "
     "GL_ARB_texture_env_combine GL_EXT_texture_env_combine GL_ARB_texture_env_dot3 GL_EXT_texture_env_dot3 "
-    "GL_ARB_texture_env_crossbar GL_ARB_texture_compression GL_EXT_texture_compression_s3tc GL_ARB_multisample";
+    "GL_ARB_texture_env_crossbar GL_ARB_texture_compression GL_EXT_texture_compression_s3tc GL_ARB_multisample "
+    "GL_EXT_blend_color GL_EXT_blend_minmax GL_EXT_blend_subtract GL_EXT_blend_func_separate "
+    "GL_NV_blend_square GL_EXT_stencil_wrap GL_EXT_texture_lod_bias GL_SGIS_generate_mipmap "
+    "GL_ARB_depth_texture GL_ARB_shadow GL_ARB_window_pos GL_EXT_multi_draw_arrays "
+    "GL_ARB_point_parameters GL_EXT_point_parameters GL_EXT_secondary_color GL_EXT_fog_coord";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -51,6 +55,7 @@ int sgl_pname_count(GLenum pname) {
       return 4;
     case GL_SPOT_DIRECTION:
     case GL_COLOR_INDEXES:
+    case GL_POINT_DISTANCE_ATTENUATION:
       return 3;
     default:
       return 1;
@@ -102,6 +107,7 @@ int sgl_cap_index(GLenum cap) {
     case GL_SAMPLE_ALPHA_TO_COVERAGE: return SGL_SAMPLE_ALPHA_TO_COVERAGE;
     case GL_SAMPLE_ALPHA_TO_ONE: return SGL_SAMPLE_ALPHA_TO_ONE;
     case GL_SAMPLE_COVERAGE: return SGL_SAMPLE_COVERAGE;
+    case GL_COLOR_SUM: return SGL_COLOR_SUM;
     case GL_POINT_SMOOTH: return SGL_POINT_SMOOTH;
     case GL_POLYGON_SMOOTH: return SGL_POLYGON_SMOOTH;
     case GL_POLYGON_STIPPLE: return SGL_POLYGON_STIPPLE;
@@ -171,7 +177,11 @@ static void init_attrib(sgl_attrib *a) {
   }
   a->raster_valid = GL_TRUE;
   a->edge = GL_TRUE;
+  a->color2[3] = 1.0f;
   a->point_size = 1.0f;
+  a->point_max = SGL_MAX_POINT_SIZE;
+  a->point_fade = 1.0f;
+  a->point_atten[0] = 1.0f;
   a->line_width = 1.0f;
   a->line_repeat = 1;
   a->line_pattern = 0xFFFF;
@@ -221,12 +231,16 @@ static void init_attrib(sgl_attrib *a) {
   a->fog_mode = GL_EXP;
   a->fog_density = 1.0f;
   a->fog_end = 1.0f;
+  a->fog_source = GL_FRAGMENT_DEPTH;
   a->depth_func = GL_LESS;
   a->depth_mask = GL_TRUE;
   a->clear_depth = 1.0;
   a->alpha_func = GL_ALWAYS;
   a->blend_src = GL_ONE;
   a->blend_dst = GL_ZERO;
+  a->blend_src_alpha = GL_ONE;
+  a->blend_dst_alpha = GL_ZERO;
+  a->blend_eq = GL_FUNC_ADD;
   a->logic_op = GL_COPY;
   a->draw_buffer = GL_BACK;
   a->color_mask[0] = a->color_mask[1] = a->color_mask[2] = a->color_mask[3] = GL_TRUE;
@@ -238,6 +252,7 @@ static void init_attrib(sgl_attrib *a) {
   a->matrix_mode = GL_MODELVIEW;
   a->hint_perspective = a->hint_point = a->hint_line = a->hint_polygon = a->hint_fog = GL_DONT_CARE;
   a->hint_compression = GL_DONT_CARE;
+  a->hint_mipmap = GL_DONT_CARE;
   a->enabled[SGL_MULTISAMPLE] = 1;
   a->sample_coverage = 1.0f;
   a->grid1_n = a->grid2_un = a->grid2_vn = 1;
@@ -256,6 +271,9 @@ static void init_client(sgl_client *c) {
     c->tex[u].type = GL_FLOAT;
   }
   c->normal.size = 3;
+  c->color2.size = 3;
+  c->color2.type = c->fog.type = GL_FLOAT;
+  c->fog.size = 1;
   c->index.type = GL_FLOAT;
   c->index.size = 1;
   c->pack.alignment = c->unpack.alignment = 4;
@@ -478,6 +496,8 @@ static sgl_array *client_array(GLenum cap) {
     case GL_INDEX_ARRAY: return &c->c.index;
     case GL_TEXTURE_COORD_ARRAY: return &c->c.tex[c->c.client_active];
     case GL_EDGE_FLAG_ARRAY: return &c->c.edge;
+    case GL_SECONDARY_COLOR_ARRAY: return &c->c.color2;
+    case GL_FOG_COORDINATE_ARRAY: return &c->c.fog;
     default: return NULL;
   }
 }
@@ -560,6 +580,7 @@ void APIENTRY sgl_Hint(GLenum target, GLenum mode) {
     case GL_POLYGON_SMOOTH_HINT: c->a.hint_polygon = mode; break;
     case GL_FOG_HINT: c->a.hint_fog = mode; break;
     case GL_TEXTURE_COMPRESSION_HINT: c->a.hint_compression = mode; break;
+    case GL_GENERATE_MIPMAP_HINT: c->a.hint_mipmap = mode; break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -735,12 +756,96 @@ void APIENTRY sgl_IndexMask(GLuint mask) {
 /* glIndexf: sets the current color index. */
 void APIENTRY sgl_Indexf(GLfloat c) { sgl_ctx->a.index = c; }
 
-/* glBlendFunc: sets the blend factors. */
-void APIENTRY sgl_BlendFunc(GLenum sfactor, GLenum dfactor) {
+/* Tells if f is a blend factor. GL_SRC_ALPHA_SATURATE is a source
+ * factor only (src is 1). OpenGL 1.4 lets the source factor be
+ * GL_SRC_COLOR and the destination factor be GL_DST_COLOR. */
+static int valid_factor(GLenum f, int src) {
+  switch (f) {
+    case GL_ZERO: case GL_ONE: case GL_SRC_COLOR: case GL_ONE_MINUS_SRC_COLOR:
+    case GL_DST_COLOR: case GL_ONE_MINUS_DST_COLOR: case GL_SRC_ALPHA:
+    case GL_ONE_MINUS_SRC_ALPHA: case GL_DST_ALPHA: case GL_ONE_MINUS_DST_ALPHA:
+    case GL_CONSTANT_COLOR: case GL_ONE_MINUS_CONSTANT_COLOR: case GL_CONSTANT_ALPHA:
+    case GL_ONE_MINUS_CONSTANT_ALPHA:
+      return 1;
+    case GL_SRC_ALPHA_SATURATE: return src;
+    default: return 0;
+  }
+}
+
+/* glBlendFuncSeparate (OpenGL 1.4): sets the blend factors of RGB and
+ * of alpha. */
+void APIENTRY sgl_BlendFuncSeparate(GLenum srgb, GLenum drgb, GLenum salpha, GLenum dalpha) {
   sgl_context *c = outside();
   if (!c) return;
-  c->a.blend_src = sfactor;
-  c->a.blend_dst = dfactor;
+  if (!valid_factor(srgb, 1) || !valid_factor(drgb, 0) || !valid_factor(salpha, 1) ||
+      !valid_factor(dalpha, 0)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  c->a.blend_src = srgb;
+  c->a.blend_dst = drgb;
+  c->a.blend_src_alpha = salpha;
+  c->a.blend_dst_alpha = dalpha;
+}
+
+/* glBlendFunc: sets the blend factors of RGB and alpha. */
+void APIENTRY sgl_BlendFunc(GLenum sfactor, GLenum dfactor) {
+  sgl_BlendFuncSeparate(sfactor, dfactor, sfactor, dfactor);
+}
+
+/* glBlendColor (OpenGL 1.4): sets the constant color of the blend
+ * factors GL_CONSTANT_COLOR and GL_CONSTANT_ALPHA. */
+void APIENTRY sgl_BlendColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a) {
+  sgl_context *c = outside();
+  if (!c) return;
+  c->a.blend_color[0] = sgl_clamp01(r);
+  c->a.blend_color[1] = sgl_clamp01(g);
+  c->a.blend_color[2] = sgl_clamp01(b);
+  c->a.blend_color[3] = sgl_clamp01(a);
+}
+
+/* glBlendEquation (OpenGL 1.4): sets how blending combines the source
+ * and the destination. */
+void APIENTRY sgl_BlendEquation(GLenum mode) {
+  sgl_context *c = outside();
+  if (!c) return;
+  if (mode != GL_FUNC_ADD && mode != GL_FUNC_SUBTRACT && mode != GL_FUNC_REVERSE_SUBTRACT &&
+      mode != GL_MIN && mode != GL_MAX) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  c->a.blend_eq = mode;
+}
+
+/* glPointParameterfv (OpenGL 1.4): sets a parameter of the points: the
+ * limits of the size, the fade threshold or the distance attenuation. */
+void APIENTRY sgl_PointParameterfv(GLenum pname, const GLfloat *params) {
+  sgl_context *c = outside();
+  if (!c) return;
+  switch (pname) {
+    case GL_POINT_SIZE_MIN:
+    case GL_POINT_SIZE_MAX:
+    case GL_POINT_FADE_THRESHOLD_SIZE:
+      if (params[0] < 0.0f) {
+        sgl_error(GL_INVALID_VALUE);
+        return;
+      }
+      if (pname == GL_POINT_SIZE_MIN)
+        c->a.point_min = params[0];
+      else if (pname == GL_POINT_SIZE_MAX)
+        c->a.point_max = params[0];
+      else
+        c->a.point_fade = params[0];
+      break;
+    case GL_POINT_DISTANCE_ATTENUATION:
+      c->a.point_atten[0] = params[0];
+      c->a.point_atten[1] = params[1];
+      c->a.point_atten[2] = params[2];
+      break;
+    default:
+      sgl_error(GL_INVALID_ENUM);
+      break;
+  }
 }
 
 /* glLogicOp: sets the logical operation of the color buffer. */
@@ -763,10 +868,25 @@ void APIENTRY sgl_StencilFunc(GLenum func, GLint ref, GLuint mask) {
   c->a.stencil_mask = mask;
 }
 
+/* Tells if op is a stencil operation. */
+static int valid_stencil_op(GLenum op) {
+  switch (op) {
+    case GL_KEEP: case GL_ZERO: case GL_REPLACE: case GL_INCR: case GL_DECR: case GL_INVERT:
+    case GL_INCR_WRAP: case GL_DECR_WRAP:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 /* glStencilOp: sets the stencil operations. */
 void APIENTRY sgl_StencilOp(GLenum fail, GLenum zfail, GLenum zpass) {
   sgl_context *c = outside();
   if (!c) return;
+  if (!valid_stencil_op(fail) || !valid_stencil_op(zfail) || !valid_stencil_op(zpass)) {
+    sgl_error(GL_INVALID_ENUM);
+    return;
+  }
   c->a.stencil_fail = fail;
   c->a.stencil_zfail = zfail;
   c->a.stencil_zpass = zpass;
@@ -889,7 +1009,7 @@ static GLbitfield cap_group(int cap) {
     case SGL_POLYGON_OFFSET_FILL: case SGL_POLYGON_OFFSET_LINE: case SGL_POLYGON_OFFSET_POINT:
       return GL_POLYGON_BIT;
     case SGL_DEPTH_TEST: return GL_DEPTH_BUFFER_BIT;
-    case SGL_FOG: return GL_FOG_BIT;
+    case SGL_FOG: case SGL_COLOR_SUM: return GL_FOG_BIT;
     case SGL_LINE_SMOOTH: case SGL_LINE_STIPPLE: return GL_LINE_BIT;
     case SGL_NORMALIZE: case SGL_RESCALE_NORMAL: return GL_TRANSFORM_BIT;
     case SGL_POINT_SMOOTH: return GL_POINT_BIT;
@@ -951,6 +1071,8 @@ void APIENTRY sgl_PopAttrib(void) {
     if ((m & GL_ENABLE_BIT) || (m & cap_group(i))) a->enabled[i] = s->enabled[i];
   RESTORE_ARRAY(GL_CURRENT_BIT, color);
   RESTORE_ARRAY(GL_CURRENT_BIT, normal);
+  RESTORE_ARRAY(GL_CURRENT_BIT, color2);
+  RESTORE(GL_CURRENT_BIT, fog_coord);
   RESTORE_ARRAY(GL_CURRENT_BIT, tex);
   RESTORE(GL_CURRENT_BIT, index);
   RESTORE_ARRAY(GL_CURRENT_BIT, raster_pos);
@@ -961,6 +1083,10 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_CURRENT_BIT, raster_valid);
   RESTORE(GL_CURRENT_BIT, edge);
   RESTORE(GL_POINT_BIT, point_size);
+  RESTORE(GL_POINT_BIT, point_min);
+  RESTORE(GL_POINT_BIT, point_max);
+  RESTORE(GL_POINT_BIT, point_fade);
+  RESTORE_ARRAY(GL_POINT_BIT, point_atten);
   RESTORE(GL_LINE_BIT, line_width);
   RESTORE(GL_LINE_BIT, line_repeat);
   RESTORE(GL_LINE_BIT, line_pattern);
@@ -1002,6 +1128,7 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_FOG_BIT, fog_start);
   RESTORE(GL_FOG_BIT, fog_end);
   RESTORE(GL_FOG_BIT, fog_index);
+  RESTORE(GL_FOG_BIT, fog_source);
   RESTORE(GL_DEPTH_BUFFER_BIT, depth_func);
   RESTORE(GL_DEPTH_BUFFER_BIT, depth_mask);
   RESTORE(GL_DEPTH_BUFFER_BIT, clear_depth);
@@ -1009,6 +1136,10 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_COLOR_BUFFER_BIT, alpha_ref);
   RESTORE(GL_COLOR_BUFFER_BIT, blend_src);
   RESTORE(GL_COLOR_BUFFER_BIT, blend_dst);
+  RESTORE(GL_COLOR_BUFFER_BIT, blend_src_alpha);
+  RESTORE(GL_COLOR_BUFFER_BIT, blend_dst_alpha);
+  RESTORE(GL_COLOR_BUFFER_BIT, blend_eq);
+  RESTORE_ARRAY(GL_COLOR_BUFFER_BIT, blend_color);
   RESTORE(GL_COLOR_BUFFER_BIT, logic_op);
   RESTORE(GL_COLOR_BUFFER_BIT, draw_buffer);
   RESTORE_ARRAY(GL_COLOR_BUFFER_BIT, clear_color);
@@ -1036,6 +1167,7 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_HINT_BIT, hint_polygon);
   RESTORE(GL_HINT_BIT, hint_fog);
   RESTORE(GL_HINT_BIT, hint_compression);
+  RESTORE(GL_HINT_BIT, hint_mipmap);
   RESTORE(GL_MULTISAMPLE_BIT, sample_coverage);
   RESTORE(GL_MULTISAMPLE_BIT, sample_invert);
   RESTORE_ARRAY(GL_SCISSOR_BIT, scissor);
@@ -1099,6 +1231,8 @@ void APIENTRY sgl_PopClientAttrib(void) {
     memcpy(c->c.tex, s->tex, sizeof c->c.tex);
     c->c.client_active = s->client_active;
     c->c.edge = s->edge;
+    c->c.color2 = s->color2;
+    c->c.fog = s->fog;
   }
 }
 
@@ -1112,6 +1246,8 @@ void APIENTRY sgl_GetPointerv(GLenum pname, void **params) {
     case GL_INDEX_ARRAY_POINTER: *params = (void *)c->c.index.pointer; break;
     case GL_TEXTURE_COORD_ARRAY_POINTER: *params = (void *)c->c.tex[c->c.client_active].pointer; break;
     case GL_EDGE_FLAG_ARRAY_POINTER: *params = (void *)c->c.edge.pointer; break;
+    case GL_SECONDARY_COLOR_ARRAY_POINTER: *params = (void *)c->c.color2.pointer; break;
+    case GL_FOG_COORDINATE_ARRAY_POINTER: *params = (void *)c->c.fog.pointer; break;
     case GL_SELECTION_BUFFER_POINTER: *params = (void *)c->select_buffer; break;
     case GL_FEEDBACK_BUFFER_POINTER: *params = (void *)c->feedback_buffer; break;
     default: sgl_error(GL_INVALID_ENUM); break;
@@ -1235,7 +1371,7 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_DOUBLEBUFFER: v[0] = 1; *kind = Q_BOOL; return 1;
     case GL_STEREO: v[0] = 0; *kind = Q_BOOL; return 1;
     case GL_POINT_SIZE: v[0] = a->point_size; *kind = Q_FLOAT; return 1;
-    case GL_POINT_SIZE_RANGE: v[0] = 1; v[1] = 64; *kind = Q_FLOAT; return 2;
+    case GL_POINT_SIZE_RANGE: v[0] = 1; v[1] = SGL_MAX_POINT_SIZE; *kind = Q_FLOAT; return 2;
     case GL_POINT_SIZE_GRANULARITY: v[0] = 1; *kind = Q_FLOAT; return 1;
     case GL_LINE_WIDTH: v[0] = a->line_width; *kind = Q_FLOAT; return 1;
     case GL_LINE_WIDTH_RANGE: v[0] = 1; v[1] = 64; *kind = Q_FLOAT; return 2;
@@ -1255,6 +1391,35 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_ALPHA_TEST_REF: v[0] = a->alpha_ref; *kind = Q_COLOR; return 1;
     case GL_BLEND_SRC: v[0] = a->blend_src; *kind = Q_ENUM; return 1;
     case GL_BLEND_DST: v[0] = a->blend_dst; *kind = Q_ENUM; return 1;
+    case GL_BLEND_SRC_RGB: v[0] = a->blend_src; *kind = Q_ENUM; return 1;
+    case GL_BLEND_DST_RGB: v[0] = a->blend_dst; *kind = Q_ENUM; return 1;
+    case GL_BLEND_SRC_ALPHA: v[0] = a->blend_src_alpha; *kind = Q_ENUM; return 1;
+    case GL_BLEND_DST_ALPHA: v[0] = a->blend_dst_alpha; *kind = Q_ENUM; return 1;
+    case GL_BLEND_EQUATION: v[0] = a->blend_eq; *kind = Q_ENUM; return 1;
+    case GL_BLEND_COLOR:
+      for (i = 0; i < 4; i++) v[i] = a->blend_color[i];
+      *kind = Q_COLOR;
+      return 4;
+    case GL_CURRENT_SECONDARY_COLOR:
+      for (i = 0; i < 4; i++) v[i] = a->color2[i];
+      *kind = Q_COLOR;
+      return 4;
+    case GL_CURRENT_FOG_COORDINATE: v[0] = a->fog_coord; *kind = Q_FLOAT; return 1;
+    case GL_FOG_COORDINATE_SOURCE: v[0] = a->fog_source; *kind = Q_ENUM; return 1;
+    case GL_POINT_SIZE_MIN: v[0] = a->point_min; *kind = Q_FLOAT; return 1;
+    case GL_POINT_SIZE_MAX: v[0] = a->point_max; *kind = Q_FLOAT; return 1;
+    case GL_POINT_FADE_THRESHOLD_SIZE: v[0] = a->point_fade; *kind = Q_FLOAT; return 1;
+    case GL_POINT_DISTANCE_ATTENUATION:
+      for (i = 0; i < 3; i++) v[i] = a->point_atten[i];
+      *kind = Q_FLOAT;
+      return 3;
+    case GL_MAX_TEXTURE_LOD_BIAS: v[0] = SGL_MAX_LOD_BIAS; *kind = Q_FLOAT; return 1;
+    case GL_GENERATE_MIPMAP_HINT: v[0] = a->hint_mipmap; *kind = Q_ENUM; return 1;
+    case GL_SECONDARY_COLOR_ARRAY_SIZE: v[0] = c->c.color2.size; return 1;
+    case GL_SECONDARY_COLOR_ARRAY_TYPE: v[0] = c->c.color2.type; *kind = Q_ENUM; return 1;
+    case GL_SECONDARY_COLOR_ARRAY_STRIDE: v[0] = c->c.color2.stride; return 1;
+    case GL_FOG_COORDINATE_ARRAY_TYPE: v[0] = c->c.fog.type; *kind = Q_ENUM; return 1;
+    case GL_FOG_COORDINATE_ARRAY_STRIDE: v[0] = c->c.fog.stride; return 1;
     case GL_LOGIC_OP_MODE: v[0] = a->logic_op; *kind = Q_ENUM; return 1;
     case GL_DRAW_BUFFER: v[0] = a->draw_buffer; *kind = Q_ENUM; return 1;
     case GL_READ_BUFFER: v[0] = a->read_buffer; *kind = Q_ENUM; return 1;

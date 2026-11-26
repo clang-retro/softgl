@@ -411,6 +411,53 @@ struct sgl_dispatch {
   void (APIENTRY *LoadTransposeMatrixd)(const GLdouble *m);
   void (APIENTRY *MultTransposeMatrixf)(const GLfloat *m);
   void (APIENTRY *MultTransposeMatrixd)(const GLdouble *m);
+  void (APIENTRY *BlendFuncSeparate)(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
+  void (APIENTRY *BlendColor)(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+  void (APIENTRY *BlendEquation)(GLenum mode);
+  void (APIENTRY *FogCoordf)(GLfloat coord);
+  void (APIENTRY *FogCoordfv)(const GLfloat *coord);
+  void (APIENTRY *FogCoordd)(GLdouble coord);
+  void (APIENTRY *FogCoorddv)(const GLdouble *coord);
+  void (APIENTRY *FogCoordPointer)(GLenum type, GLsizei stride, const void *pointer);
+  void (APIENTRY *MultiDrawArrays)(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+  void (APIENTRY *MultiDrawElements)(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount);
+  void (APIENTRY *PointParameterf)(GLenum pname, GLfloat param);
+  void (APIENTRY *PointParameterfv)(GLenum pname, const GLfloat *params);
+  void (APIENTRY *PointParameteri)(GLenum pname, GLint param);
+  void (APIENTRY *PointParameteriv)(GLenum pname, const GLint *params);
+  void (APIENTRY *SecondaryColor3b)(GLbyte red, GLbyte green, GLbyte blue);
+  void (APIENTRY *SecondaryColor3bv)(const GLbyte *v);
+  void (APIENTRY *SecondaryColor3s)(GLshort red, GLshort green, GLshort blue);
+  void (APIENTRY *SecondaryColor3sv)(const GLshort *v);
+  void (APIENTRY *SecondaryColor3i)(GLint red, GLint green, GLint blue);
+  void (APIENTRY *SecondaryColor3iv)(const GLint *v);
+  void (APIENTRY *SecondaryColor3f)(GLfloat red, GLfloat green, GLfloat blue);
+  void (APIENTRY *SecondaryColor3fv)(const GLfloat *v);
+  void (APIENTRY *SecondaryColor3d)(GLdouble red, GLdouble green, GLdouble blue);
+  void (APIENTRY *SecondaryColor3dv)(const GLdouble *v);
+  void (APIENTRY *SecondaryColor3ub)(GLubyte red, GLubyte green, GLubyte blue);
+  void (APIENTRY *SecondaryColor3ubv)(const GLubyte *v);
+  void (APIENTRY *SecondaryColor3us)(GLushort red, GLushort green, GLushort blue);
+  void (APIENTRY *SecondaryColor3usv)(const GLushort *v);
+  void (APIENTRY *SecondaryColor3ui)(GLuint red, GLuint green, GLuint blue);
+  void (APIENTRY *SecondaryColor3uiv)(const GLuint *v);
+  void (APIENTRY *SecondaryColorPointer)(GLint size, GLenum type, GLsizei stride, const void *pointer);
+  void (APIENTRY *WindowPos2s)(GLshort x, GLshort y);
+  void (APIENTRY *WindowPos2sv)(const GLshort *v);
+  void (APIENTRY *WindowPos2i)(GLint x, GLint y);
+  void (APIENTRY *WindowPos2iv)(const GLint *v);
+  void (APIENTRY *WindowPos2f)(GLfloat x, GLfloat y);
+  void (APIENTRY *WindowPos2fv)(const GLfloat *v);
+  void (APIENTRY *WindowPos2d)(GLdouble x, GLdouble y);
+  void (APIENTRY *WindowPos2dv)(const GLdouble *v);
+  void (APIENTRY *WindowPos3s)(GLshort x, GLshort y, GLshort z);
+  void (APIENTRY *WindowPos3sv)(const GLshort *v);
+  void (APIENTRY *WindowPos3i)(GLint x, GLint y, GLint z);
+  void (APIENTRY *WindowPos3iv)(const GLint *v);
+  void (APIENTRY *WindowPos3f)(GLfloat x, GLfloat y, GLfloat z);
+  void (APIENTRY *WindowPos3fv)(const GLfloat *v);
+  void (APIENTRY *WindowPos3d)(GLdouble x, GLdouble y, GLdouble z);
+  void (APIENTRY *WindowPos3dv)(const GLdouble *v);
 };
 
 /* The operation codes of the commands in a display list. */
@@ -512,6 +559,13 @@ enum sgl_op {
   SGL_OP_MultiTexCoord4f,
   SGL_OP_LoadTransposeMatrixf,
   SGL_OP_MultTransposeMatrixf,
+  SGL_OP_BlendFuncSeparate,
+  SGL_OP_BlendColor,
+  SGL_OP_BlendEquation,
+  SGL_OP_FogCoordf,
+  SGL_OP_PointParameterfv,
+  SGL_OP_SecondaryColor3f,
+  SGL_OP_WindowPos3f,
   SGL_OP_COUNT
 };
 
@@ -719,6 +773,17 @@ void APIENTRY sgl_ClientActiveTexture(GLenum texture);
 void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
 void APIENTRY sgl_LoadTransposeMatrixf(const GLfloat *m);
 void APIENTRY sgl_MultTransposeMatrixf(const GLfloat *m);
+void APIENTRY sgl_BlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
+void APIENTRY sgl_BlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
+void APIENTRY sgl_BlendEquation(GLenum mode);
+void APIENTRY sgl_FogCoordf(GLfloat coord);
+void APIENTRY sgl_FogCoordPointer(GLenum type, GLsizei stride, const void *pointer);
+void APIENTRY sgl_MultiDrawArrays(GLenum mode, const GLint *first, const GLsizei *count, GLsizei drawcount);
+void APIENTRY sgl_MultiDrawElements(GLenum mode, const GLsizei *count, GLenum type, const void *const *indices, GLsizei drawcount);
+void APIENTRY sgl_PointParameterfv(GLenum pname, const GLfloat *params);
+void APIENTRY sgl_SecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue);
+void APIENTRY sgl_SecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
+void APIENTRY sgl_WindowPos3f(GLfloat x, GLfloat y, GLfloat z);
 
 /* The hand-written save functions (list.c). */
 void APIENTRY save_TexImage1D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const void *pixels);
