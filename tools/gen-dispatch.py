@@ -86,6 +86,7 @@ def multitexcoord():
 # The functions of OpenGL 1.2 to 1.5 that the renderer has. On Windows,
 # opengl32.dll does not export them: wglGetProcAddress gives them.
 EXTENSIONS += [
+    ("void", "DrawRangeElements", "GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices"),
     ("void", "ActiveTexture", "GLenum texture"),
     ("void", "ClientActiveTexture", "GLenum texture"),
 ] + multitexcoord() + [
@@ -99,7 +100,7 @@ EXTENSIONS += [
 # that became part of OpenGL. Each is exported and given by
 # wglGetProcAddress, and calls the entry of the core name.
 ALIASES = dict(
-    [("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
+    [("DrawRangeElementsEXT", "DrawRangeElements"),("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
     + [(name + "ARB", name) for _, name, _ in multitexcoord()]
     + [(n + "ARB", n) for n in ("LoadTransposeMatrixf", "LoadTransposeMatrixd",
                                 "MultTransposeMatrixf", "MultTransposeMatrixd")])
@@ -121,7 +122,7 @@ NormalPointerEXT TexCoordPointerEXT VertexPointerEXT
 # Functions that call the canonical functions through the current table.
 # They are hand-written and the same in both tables.
 THROUGH = set("""
-DrawArrays DrawElements ArrayElement ArrayElementEXT DrawArraysEXT
+DrawArrays DrawElements DrawRangeElements ArrayElement ArrayElementEXT DrawArraysEXT
 Map1d Map2d PixelMapuiv PixelMapusv
 """.split())
 

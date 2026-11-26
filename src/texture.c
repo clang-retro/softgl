@@ -21,7 +21,10 @@ static void init_texture(sgl_texture *t, GLuint name, GLenum target) {
   t->target = target;
   t->min_filter = GL_NEAREST_MIPMAP_LINEAR;
   t->mag_filter = GL_LINEAR;
-  t->wrap_s = t->wrap_t = GL_REPEAT;
+  t->wrap_s = t->wrap_t = t->wrap_r = GL_REPEAT;
+  t->max_level = 1000;
+  t->min_lod = -1000.0f;
+  t->max_lod = 1000.0f;
   t->priority = 1.0f;
   t->palette_format = GL_RGBA;
   t->refs = 1;
@@ -91,6 +94,14 @@ sgl_texture *sgl_unit_texture(sgl_context *c, int u) {
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)]) return c->tex_2d[u];
   if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)]) return c->tex_1d[u];
   return NULL;
+}
+
+/* Gives the first level of a texture that is used (GL_TEXTURE_BASE_LEVEL),
+ * or NULL when it has no image: then the unit acts as if its texture
+ * is off. */
+const sgl_level *sgl_base_level(const sgl_texture *t) {
+  if (!t || t->base_level >= SGL_MAX_TEXTURE_LEVELS || !t->level[t->base_level].texels) return NULL;
+  return &t->level[t->base_level];
 }
 
 /* Gives the texture units that have a texture on, as bits (bit u for
@@ -183,10 +194,12 @@ static void expand_palette(sgl_texture *t, sgl_level *lv) {
 
 /* Computes if the texture has all the levels of a mipmap. */
 static void check_complete(sgl_texture *t) {
-  int i, w = t->level[0].width, h = t->level[0].height;
+  int i, b = t->base_level, w, h;
   t->complete = 0;
-  if (!t->level[0].texels) return;
-  for (i = 1; i < SGL_MAX_TEXTURE_LEVELS && (w > 1 || h > 1); i++) {
+  if (b >= SGL_MAX_TEXTURE_LEVELS || !t->level[b].texels) return;
+  w = t->level[b].width;
+  h = t->level[b].height;
+  for (i = b + 1; i < SGL_MAX_TEXTURE_LEVELS && i <= t->max_level && (w > 1 || h > 1); i++) {
     w = w > 1 ? w / 2 : 1;
     h = h > 1 ? h / 2 : 1;
     if (!t->level[i].texels || t->level[i].width != w || t->level[i].height != h) return;
@@ -497,17 +510,35 @@ void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *par
       break;
     case GL_TEXTURE_WRAP_S:
     case GL_TEXTURE_WRAP_T:
-      /* GL_CLAMP_TO_EDGE (OpenGL 1.2) is also the way that GL_CLAMP
-       * works here: the border texels are not kept. */
-      if (v != GL_REPEAT && v != GL_CLAMP && v != GL_CLAMP_TO_EDGE) {
+    case GL_TEXTURE_WRAP_R:
+      /* GL_CLAMP is done as GL_CLAMP_TO_EDGE: the border texels are not
+       * kept. */
+      if (v != GL_REPEAT && v != GL_CLAMP && v != GL_CLAMP_TO_EDGE && v != GL_CLAMP_TO_BORDER &&
+          v != GL_MIRRORED_REPEAT) {
         sgl_error(GL_INVALID_ENUM);
         return;
       }
       if (pname == GL_TEXTURE_WRAP_S)
         t->wrap_s = v;
-      else
+      else if (pname == GL_TEXTURE_WRAP_T)
         t->wrap_t = v;
+      else
+        t->wrap_r = v;
       break;
+    case GL_TEXTURE_BASE_LEVEL:
+    case GL_TEXTURE_MAX_LEVEL:
+      if (params[0] < 0.0f) {
+        sgl_error(GL_INVALID_VALUE);
+        return;
+      }
+      if (pname == GL_TEXTURE_BASE_LEVEL)
+        t->base_level = (GLint)params[0];
+      else
+        t->max_level = (GLint)params[0];
+      check_complete(t);
+      break;
+    case GL_TEXTURE_MIN_LOD: t->min_lod = params[0]; break;
+    case GL_TEXTURE_MAX_LOD: t->max_lod = params[0]; break;
     case GL_TEXTURE_BORDER_COLOR: memcpy(t->border_color, params, sizeof t->border_color); break;
     case GL_TEXTURE_PRIORITY: t->priority = sgl_clamp01(params[0]); break;
     default: sgl_error(GL_INVALID_ENUM); break;
@@ -526,6 +557,11 @@ void APIENTRY sgl_GetTexParameterfv(GLenum target, GLenum pname, GLfloat *params
     case GL_TEXTURE_MAG_FILTER: params[0] = (GLfloat)t->mag_filter; break;
     case GL_TEXTURE_WRAP_S: params[0] = (GLfloat)t->wrap_s; break;
     case GL_TEXTURE_WRAP_T: params[0] = (GLfloat)t->wrap_t; break;
+    case GL_TEXTURE_WRAP_R: params[0] = (GLfloat)t->wrap_r; break;
+    case GL_TEXTURE_BASE_LEVEL: params[0] = (GLfloat)t->base_level; break;
+    case GL_TEXTURE_MAX_LEVEL: params[0] = (GLfloat)t->max_level; break;
+    case GL_TEXTURE_MIN_LOD: params[0] = t->min_lod; break;
+    case GL_TEXTURE_MAX_LOD: params[0] = t->max_lod; break;
     case GL_TEXTURE_BORDER_COLOR: memcpy(params, t->border_color, sizeof t->border_color); break;
     case GL_TEXTURE_PRIORITY: params[0] = t->priority; break;
     case GL_TEXTURE_RESIDENT: params[0] = 1.0f; break;

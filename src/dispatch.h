@@ -361,6 +361,7 @@ struct sgl_dispatch {
   void (APIENTRY *NormalPointerEXT)(GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *TexCoordPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *VertexPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
+  void (APIENTRY *DrawRangeElements)(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
   void (APIENTRY *ActiveTexture)(GLenum texture);
   void (APIENTRY *ClientActiveTexture)(GLenum texture);
   void (APIENTRY *MultiTexCoord1s)(GLenum target, GLshort s);
@@ -688,6 +689,7 @@ void APIENTRY sgl_IndexPointerEXT(GLenum type, GLsizei stride, GLsizei count, co
 void APIENTRY sgl_NormalPointerEXT(GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_TexCoordPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_VertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
+void APIENTRY sgl_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
 void APIENTRY sgl_ActiveTexture(GLenum texture);
 void APIENTRY sgl_ClientActiveTexture(GLenum texture);
 void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);

@@ -252,6 +252,17 @@ void APIENTRY sgl_DrawElements(GLenum mode, GLsizei count, GLenum type, const vo
   d->End();
 }
 
+/* glDrawRangeElements (OpenGL 1.2): as glDrawElements. The indices
+ * must be in [start, end]; the renderer does not need to know this. */
+void APIENTRY sgl_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type,
+                                    const void *indices) {
+  if (end < start) {
+    sgl_error(GL_INVALID_VALUE);
+    return;
+  }
+  sgl_DrawElements(mode, count, type, indices);
+}
+
 /* glInterleavedArrays: sets and turns on the arrays for one of the
  * interleaved formats. */
 void APIENTRY sgl_InterleavedArrays(GLenum format, GLsizei stride, const void *pointer) {

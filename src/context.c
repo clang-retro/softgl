@@ -20,7 +20,9 @@ static const char kVersion[] = "1.1.0";
 static const char kExtensions[] =
     "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
     "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
-    "GL_SGIS_texture_edge_clamp GL_EXT_texture_edge_clamp";
+    "GL_SGIS_texture_edge_clamp GL_EXT_texture_edge_clamp GL_ARB_texture_border_clamp "
+    "GL_ARB_texture_mirrored_repeat GL_SGIS_texture_lod GL_EXT_packed_pixels "
+    "GL_EXT_separate_specular_color GL_EXT_rescale_normal GL_EXT_draw_range_elements";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -93,6 +95,7 @@ int sgl_cap_index(GLenum cap) {
     case GL_COLOR_LOGIC_OP: return SGL_COLOR_LOGIC_OP;
     case GL_INDEX_LOGIC_OP: return SGL_INDEX_LOGIC_OP;
     case GL_NORMALIZE: return SGL_NORMALIZE;
+    case GL_RESCALE_NORMAL: return SGL_RESCALE_NORMAL;
     case GL_POINT_SMOOTH: return SGL_POINT_SMOOTH;
     case GL_POLYGON_SMOOTH: return SGL_POLYGON_SMOOTH;
     case GL_POLYGON_STIPPLE: return SGL_POLYGON_STIPPLE;
@@ -198,6 +201,7 @@ static void init_attrib(sgl_attrib *a) {
   a->shade_model = GL_SMOOTH;
   a->color_material_face = GL_FRONT_AND_BACK;
   a->color_material_mode = GL_AMBIENT_AND_DIFFUSE;
+  a->color_control = GL_SINGLE_COLOR;
   a->fog_mode = GL_EXP;
   a->fog_density = 1.0f;
   a->fog_end = 1.0f;
@@ -857,7 +861,7 @@ static GLbitfield cap_group(int cap) {
     case SGL_DEPTH_TEST: return GL_DEPTH_BUFFER_BIT;
     case SGL_FOG: return GL_FOG_BIT;
     case SGL_LINE_SMOOTH: case SGL_LINE_STIPPLE: return GL_LINE_BIT;
-    case SGL_NORMALIZE: return GL_TRANSFORM_BIT;
+    case SGL_NORMALIZE: case SGL_RESCALE_NORMAL: return GL_TRANSFORM_BIT;
     case SGL_POINT_SMOOTH: return GL_POINT_BIT;
     case SGL_SCISSOR_TEST: return GL_SCISSOR_BIT;
     case SGL_STENCIL_TEST: return GL_STENCIL_BUFFER_BIT;
@@ -953,6 +957,7 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE_ARRAY(GL_LIGHTING_BIT, model_ambient);
   RESTORE(GL_LIGHTING_BIT, local_viewer);
   RESTORE(GL_LIGHTING_BIT, two_side);
+  RESTORE(GL_LIGHTING_BIT, color_control);
   RESTORE(GL_LIGHTING_BIT, shade_model);
   RESTORE(GL_LIGHTING_BIT, color_material_face);
   RESTORE(GL_LIGHTING_BIT, color_material_mode);
@@ -1229,6 +1234,14 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
       return 4;
     case GL_LIGHT_MODEL_LOCAL_VIEWER: v[0] = a->local_viewer; *kind = Q_BOOL; return 1;
     case GL_LIGHT_MODEL_TWO_SIDE: v[0] = a->two_side; *kind = Q_BOOL; return 1;
+    case GL_LIGHT_MODEL_COLOR_CONTROL: v[0] = a->color_control; *kind = Q_ENUM; return 1;
+    case GL_MAX_ELEMENTS_VERTICES: case GL_MAX_ELEMENTS_INDICES: v[0] = 65536; return 1;
+    case GL_ALIASED_POINT_SIZE_RANGE:
+    case GL_ALIASED_LINE_WIDTH_RANGE:
+      v[0] = 1;
+      v[1] = 64;
+      *kind = Q_FLOAT;
+      return 2;
     case GL_COLOR_MATERIAL_FACE: v[0] = a->color_material_face; *kind = Q_ENUM; return 1;
     case GL_COLOR_MATERIAL_PARAMETER: v[0] = a->color_material_mode; *kind = Q_ENUM; return 1;
     case GL_FOG_MODE: v[0] = a->fog_mode; *kind = Q_ENUM; return 1;

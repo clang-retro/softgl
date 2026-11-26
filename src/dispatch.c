@@ -2829,6 +2829,15 @@ static void APIENTRY nop_VertexPointerEXT(GLint size, GLenum type, GLsizei strid
   (void)count;
   (void)pointer;
 }
+/* Does nothing: no context is current (glDrawRangeElements). */
+static void APIENTRY nop_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
+  (void)mode;
+  (void)start;
+  (void)end;
+  (void)count;
+  (void)type;
+  (void)indices;
+}
 /* Does nothing: no context is current (glActiveTexture). */
 static void APIENTRY nop_ActiveTexture(GLenum texture) {
   (void)texture;
@@ -4071,6 +4080,7 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_NormalPointerEXT,
   nop_TexCoordPointerEXT,
   nop_VertexPointerEXT,
+  nop_DrawRangeElements,
   nop_ActiveTexture,
   nop_ClientActiveTexture,
   nop_MultiTexCoord1s,
@@ -4464,6 +4474,7 @@ const struct sgl_dispatch sgl_exec_table = {
   sgl_NormalPointerEXT,
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
+  sgl_DrawRangeElements,
   sgl_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -4857,6 +4868,7 @@ const struct sgl_dispatch sgl_save_table = {
   sgl_NormalPointerEXT,
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
+  sgl_DrawRangeElements,
   save_ActiveTexture,
   sgl_ClientActiveTexture,
   cv_MultiTexCoord1s,
@@ -6609,6 +6621,11 @@ void APIENTRY glVertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsize
 void APIENTRY glVertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer) {
   SGL_DISPATCH->VertexPointerEXT(size, type, stride, count, pointer);
 }
+void APIENTRY glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
+/* glDrawRangeElements: an extension, which wglGetProcAddress gives. */
+void APIENTRY glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
+  SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
+}
 void APIENTRY glActiveTexture(GLenum texture);
 /* glActiveTexture: an extension, which wglGetProcAddress gives. */
 void APIENTRY glActiveTexture(GLenum texture) {
@@ -6809,6 +6826,11 @@ void APIENTRY glClientActiveTextureARB(GLenum texture);
 void APIENTRY glClientActiveTextureARB(GLenum texture) {
   SGL_DISPATCH->ClientActiveTexture(texture);
 }
+void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices);
+/* glDrawRangeElementsEXT: the name of glDrawRangeElements in an extension. */
+void APIENTRY glDrawRangeElementsEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices) {
+  SGL_DISPATCH->DrawRangeElements(mode, start, end, count, type, indices);
+}
 void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m);
 /* glLoadTransposeMatrixdARB: the name of glLoadTransposeMatrixd in an extension. */
 void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m) {
@@ -7007,6 +7029,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glNormalPointerEXT", (void (*)(void))glNormalPointerEXT},
   {"glTexCoordPointerEXT", (void (*)(void))glTexCoordPointerEXT},
   {"glVertexPointerEXT", (void (*)(void))glVertexPointerEXT},
+  {"glDrawRangeElements", (void (*)(void))glDrawRangeElements},
   {"glActiveTexture", (void (*)(void))glActiveTexture},
   {"glClientActiveTexture", (void (*)(void))glClientActiveTexture},
   {"glMultiTexCoord1s", (void (*)(void))glMultiTexCoord1s},
@@ -7047,6 +7070,7 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glMultTransposeMatrixd", (void (*)(void))glMultTransposeMatrixd},
   {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
   {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
+  {"glDrawRangeElementsEXT", (void (*)(void))glDrawRangeElementsEXT},
   {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
   {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
   {"glMultTransposeMatrixdARB", (void (*)(void))glMultTransposeMatrixdARB},
