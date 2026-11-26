@@ -365,6 +365,14 @@ struct sgl_dispatch {
   void (APIENTRY *TexImage3D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
   void (APIENTRY *TexSubImage3D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
   void (APIENTRY *CopyTexSubImage3D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
+  void (APIENTRY *CompressedTexImage1D)(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data);
+  void (APIENTRY *CompressedTexImage2D)(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+  void (APIENTRY *CompressedTexImage3D)(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data);
+  void (APIENTRY *CompressedTexSubImage1D)(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data);
+  void (APIENTRY *CompressedTexSubImage2D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
+  void (APIENTRY *CompressedTexSubImage3D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data);
+  void (APIENTRY *GetCompressedTexImage)(GLenum target, GLint level, void *img);
+  void (APIENTRY *SampleCoverage)(GLfloat value, GLboolean invert);
   void (APIENTRY *ActiveTexture)(GLenum texture);
   void (APIENTRY *ClientActiveTexture)(GLenum texture);
   void (APIENTRY *MultiTexCoord1s)(GLenum target, GLshort s);
@@ -499,6 +507,7 @@ enum sgl_op {
   SGL_OP_BindTexture,
   SGL_OP_PrioritizeTextures,
   SGL_OP_CopyTexSubImage3D,
+  SGL_OP_SampleCoverage,
   SGL_OP_ActiveTexture,
   SGL_OP_MultiTexCoord4f,
   SGL_OP_LoadTransposeMatrixf,
@@ -697,6 +706,14 @@ void APIENTRY sgl_DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsiz
 void APIENTRY sgl_TexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
 void APIENTRY sgl_TexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
 void APIENTRY sgl_CopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height);
+void APIENTRY sgl_CompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data);
+void APIENTRY sgl_CompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+void APIENTRY sgl_CompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data);
+void APIENTRY sgl_CompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data);
+void APIENTRY sgl_CompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
+void APIENTRY sgl_CompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data);
+void APIENTRY sgl_GetCompressedTexImage(GLenum target, GLint level, void *img);
+void APIENTRY sgl_SampleCoverage(GLfloat value, GLboolean invert);
 void APIENTRY sgl_ActiveTexture(GLenum texture);
 void APIENTRY sgl_ClientActiveTexture(GLenum texture);
 void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
@@ -719,6 +736,8 @@ void APIENTRY save_ColorTableEXT(GLenum target, GLenum internalFormat, GLsizei w
 void APIENTRY save_ColorSubTableEXT(GLenum target, GLsizei start, GLsizei count, GLenum format, GLenum type, const void *data);
 void APIENTRY save_TexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
 void APIENTRY save_TexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
+void APIENTRY save_CompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data);
+void APIENTRY save_CompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data);
 
 /* Plays the generated command with code op and arguments a back. */
 void sgl_play_generated(int op, const sgl_cell *a);

@@ -425,6 +425,53 @@ void APIENTRY save_TexSubImage3D(GLenum target, GLint level, GLint x, GLint y, G
   if (sgl_list_executes()) sgl_TexSubImage3D(target, level, x, y, z, w, h, d, format, type, pixels);
 }
 
+/* Plays a recorded glCompressedTexImage2D. */
+static void play_CompressedTexImage2D(const sgl_cell *a) {
+  sgl_CompressedTexImage2D(a[1].u, a[2].i, a[3].u, a[4].i, a[5].i, a[6].i, a[7].i, a[8].p);
+}
+
+/* Records glCompressedTexImage2D, with a copy of the blocks. */
+void APIENTRY save_CompressedTexImage2D(GLenum target, GLint level, GLenum internal, GLsizei w, GLsizei h,
+                                        GLint border, GLsizei size, const void *data) {
+  sgl_node *n = sgl_list_add_hand(play_CompressedTexImage2D, 8, NULL);
+  if (n) {
+    sgl_cell *a = n->args;
+    a[1].u = target;
+    a[2].i = level;
+    a[3].u = internal;
+    a[4].i = w;
+    a[5].i = h;
+    a[6].i = border;
+    a[7].i = size;
+    a[8].p = data && size > 0 ? sgl_list_copy(data, (size_t)size) : NULL;
+  }
+  if (sgl_list_executes()) sgl_CompressedTexImage2D(target, level, internal, w, h, border, size, data);
+}
+
+/* Plays a recorded glCompressedTexSubImage2D. */
+static void play_CompressedTexSubImage2D(const sgl_cell *a) {
+  sgl_CompressedTexSubImage2D(a[1].u, a[2].i, a[3].i, a[4].i, a[5].i, a[6].i, a[7].u, a[8].i, a[9].p);
+}
+
+/* Records glCompressedTexSubImage2D, with a copy of the blocks. */
+void APIENTRY save_CompressedTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsizei w,
+                                           GLsizei h, GLenum format, GLsizei size, const void *data) {
+  sgl_node *n = sgl_list_add_hand(play_CompressedTexSubImage2D, 9, NULL);
+  if (n) {
+    sgl_cell *a = n->args;
+    a[1].u = target;
+    a[2].i = level;
+    a[3].i = x;
+    a[4].i = y;
+    a[5].i = w;
+    a[6].i = h;
+    a[7].u = format;
+    a[8].i = size;
+    a[9].p = data && size > 0 ? sgl_list_copy(data, (size_t)size) : NULL;
+  }
+  if (sgl_list_executes()) sgl_CompressedTexSubImage2D(target, level, x, y, w, h, format, size, data);
+}
+
 /* Plays a recorded glTexSubImage2D. */
 static void play_TexSubImage2D(const sgl_cell *a) {
   WITH_STORE((const sgl_pixelstore *)a[10].p,

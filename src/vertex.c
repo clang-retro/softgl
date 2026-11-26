@@ -371,6 +371,24 @@ static void tex_coords(sgl_context *c, int u, const GLfloat obj[4], const GLfloa
         if (i == 1) out[1] = ry / mm + 0.5f;
         break;
       }
+      case GL_NORMAL_MAP:
+        if (i < 3) out[i] = n[i];
+        break;
+      case GL_REFLECTION_MAP: {
+        /* r = u - 2 n (n . u), with u the unit vector to the vertex. */
+        GLfloat ux = eye[0], uy = eye[1], uz = eye[2], len, d;
+        len = sqrtf(ux * ux + uy * uy + uz * uz);
+        if (len > 0.0f) {
+          ux /= len;
+          uy /= len;
+          uz /= len;
+        }
+        d = 2.0f * (n[0] * ux + n[1] * uy + n[2] * uz);
+        if (i == 0) out[0] = ux - n[0] * d;
+        if (i == 1) out[1] = uy - n[1] * d;
+        if (i == 2) out[2] = uz - n[2] * d;
+        break;
+      }
       default:
         break;
     }
@@ -747,7 +765,7 @@ void APIENTRY sgl_Begin(GLenum mode) {
         GLenum gm = c->a.unit[u].gen_mode[i];
         if (!c->a.enabled[SGL_UCAP(u, SGL_U_GEN_S + i)]) continue;
         if (gm != GL_OBJECT_LINEAR) c->need_eye = 1;
-        if (gm == GL_SPHERE_MAP) c->need_normal = 1;
+        if (gm == GL_SPHERE_MAP || gm == GL_NORMAL_MAP || gm == GL_REFLECTION_MAP) c->need_normal = 1;
       }
     }
   }

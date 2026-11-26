@@ -43,7 +43,20 @@ typedef struct tunit {
   int envc[4];
   int one_d;                    /* a 1D texture: t is not used */
   int three_d;                  /* a 3D texture: r selects the image */
+  int cube;                     /* a cube map: s, t and r select the face and the texel */
+  const uint32_t *face[6];      /* a cube map: the texels of each face */
+  /* GL_COMBINE: the functions, the sources (SRC_ values or the index of
+   * a texture of the frag) and the operands of the arguments, and the
+   * scales as shifts. */
+  GLenum crgb, calpha;
+  int srgb[3], salpha[3];
+  GLenum orgb[3], oalpha[3];
+  int rgb_shift, alpha_shift;
 } tunit;
+
+/* The sources of GL_COMBINE that are not textures. A source that is a
+ * texture is the index of its texture in the frag (0 and more). */
+enum { SRC_CONSTANT = -1, SRC_PRIMARY = -2, SRC_PREVIOUS = -3, SRC_WHITE = -4 };
 
 /* The state of the fragment operations for one primitive. */
 typedef struct frag {
@@ -73,6 +86,7 @@ typedef struct frag {
   int ntex;
   int unit[SGL_MAX_TEXTURE_UNITS]; /* the texture unit of each */
   tunit tu[SGL_MAX_TEXTURE_UNITS];
+  int combine;                  /* a texture uses GL_COMBINE */
 } frag;
 
 /* Fills the state of texture unit u (the k-th unit that is on) for a
@@ -121,6 +135,13 @@ static void setup_texture(frag *f, int k, int u, const sgl_texture *t, GLfloat r
   x->hlog = lv->hlog;
   x->dmask = lv->depth - 1;
   x->three_d = t->target == GL_TEXTURE_3D;
+  x->cube = t->target == GL_TEXTURE_CUBE_MAP;
+  if (x->cube) {
+    /* sgl_base_level and t->complete make sure that each face has the
+     * level. */
+    x->face[0] = lv->texels;
+    for (i = 1; i < 6; i++) x->face[i] = t->faces[i - 1][level].texels;
+  }
   x->border = 0;
   for (i = 0; i < 4; i++) {
     static const int shift[4] = {16, 8, 0, 24};
@@ -134,6 +155,50 @@ static void setup_texture(frag *f, int k, int u, const sgl_texture *t, GLfloat r
   x->envc[1] = (int)(ua->env_color[1] * 255.0f + 0.5f);
   x->envc[2] = (int)(ua->env_color[2] * 255.0f + 0.5f);
   x->envc[3] = (int)(ua->env_color[3] * 255.0f + 0.5f);
+  if (x->env == GL_COMBINE) {
+    x->crgb = ua->combine_rgb;
+    x->calpha = ua->combine_alpha;
+    for (i = 0; i < 3; i++) {
+      x->orgb[i] = ua->op_rgb[i];
+      x->oalpha[i] = ua->op_alpha[i];
+    }
+    x->rgb_shift = ua->rgb_scale == 4.0f ? 2 : ua->rgb_scale == 2.0f ? 1 : 0;
+    x->alpha_shift = ua->alpha_scale == 4.0f ? 2 : ua->alpha_scale == 2.0f ? 1 : 0;
+  }
+}
+
+/* Gives the SRC_ value or the texture index of a source of GL_COMBINE
+ * of texture k of f. */
+static int source_of(const frag *f, int k, GLenum src) {
+  int i;
+  switch (src) {
+    case GL_TEXTURE: return k;
+    case GL_CONSTANT: return SRC_CONSTANT;
+    case GL_PRIMARY_COLOR: return SRC_PRIMARY;
+    case GL_PREVIOUS: return SRC_PREVIOUS;
+    default:
+      /* GL_TEXTUREn: the texture of unit n, when it is on. */
+      for (i = 0; i < f->ntex; i++)
+        if ((GLenum)(GL_TEXTURE0 + f->unit[i]) == src) return i;
+      return SRC_WHITE;
+  }
+}
+
+/* Completes the texture state of a primitive when all the textures are
+ * set up: the sources of GL_COMBINE, which can name other units. */
+static void finish_textures(frag *f) {
+  int k, i;
+  f->combine = 0;
+  for (k = 0; k < f->ntex; k++) {
+    tunit *x = &f->tu[k];
+    const sgl_unit_attrib *ua = &f->c->a.unit[f->unit[k]];
+    if (x->env != GL_COMBINE) continue;
+    f->combine = 1;
+    for (i = 0; i < 3; i++) {
+      x->srgb[i] = source_of(f, k, ua->src_rgb[i]);
+      x->salpha[i] = source_of(f, k, ua->src_alpha[i]);
+    }
+  }
 }
 
 /* Fills the fragment state of a primitive from the context. */
@@ -169,6 +234,7 @@ static void setup_frag(frag *f, sgl_context *c) {
   f->masked = f->keep != 0;
   f->write_color = f->keep != 0xFFFFFFFFu && a->draw_buffer != GL_NONE;
   f->ntex = 0;
+  f->combine = 0;
   f->stipple = a->enabled[SGL_POLYGON_STIPPLE];
   f->index_mode = c->index_mode;
   f->logic_op = a->logic_op;
@@ -301,10 +367,60 @@ static uint32_t fetch3(const tunit *f, int32_t s, int32_t t, int32_t r) {
   return out;
 }
 
+/* Gives a texel of a cube map for the direction s, t, r (16.16). The
+ * largest component selects the face; the other two, divided by it,
+ * select the texel. */
+static uint32_t fetch_cube(const tunit *f, int32_t s, int32_t t, int32_t r) {
+  int32_t as = s < 0 ? -s : s, at = t < 0 ? -t : t, ar = r < 0 ? -r : r, sc, tc, ma;
+  int face;
+  if (as >= at && as >= ar) {
+    ma = as;
+    face = s >= 0 ? 0 : 1;
+    sc = s >= 0 ? -r : r;
+    tc = -t;
+  } else if (at >= ar) {
+    ma = at;
+    face = t >= 0 ? 2 : 3;
+    sc = s;
+    tc = t >= 0 ? r : -r;
+  } else {
+    ma = ar;
+    face = r >= 0 ? 4 : 5;
+    sc = r >= 0 ? s : -s;
+    tc = -t;
+  }
+  if (ma == 0) return f->face[0][0];
+  /* Make ma less than 2^15, so that sc * 2^15 fits in 32 bits. */
+  while (ma > 0x7FFF) {
+    ma >>= 1;
+    sc >>= 1;
+    tc >>= 1;
+  }
+  /* (sc / ma + 1) / 2 in 0.16, then in texels (16.16). */
+  sc = (sc * 32768 / ma + 32768) * f->tw;
+  tc = (tc * 32768 / ma + 32768) * f->th;
+  return fetch_at(f, f->face[face], sc, tc);
+}
+
 /* Gives a texel of the texture of a unit at s, t and, for a 3D
- * texture, r (texel units, 16.16). */
+ * texture, r (texel units, 16.16). For a cube map, s, t and r are the
+ * direction (16.16). */
 static inline uint32_t fetch(const tunit *f, int32_t s, int32_t t, int32_t r) {
-  return f->three_d ? fetch3(f, s, t, r) : fetch_at(f, f->texels, s, t);
+  if (f->three_d) return fetch3(f, s, t, r);
+  if (f->cube) return fetch_cube(f, s, t, r);
+  return fetch_at(f, f->texels, s, t);
+}
+
+/* Sets the scales of texture k of a primitive: from the texture
+ * coordinates to the values that fetch takes. */
+static void set_scales(GLfloat *ss, GLfloat *ts, GLfloat *ps, const tunit *x) {
+  if (x->cube) {
+    *ss = *ts = *ps = 65536.0f;
+    return;
+  }
+  *ss = (GLfloat)x->tw * 65536.0f;
+  *ts = x->one_d ? 0.0f : (GLfloat)x->th * 65536.0f;
+  *ps = x->three_d ? (GLfloat)(x->dmask + 1) * 65536.0f : 0.0f;
 }
 
 /* Gives a + b, not more than 255. */
@@ -365,6 +481,113 @@ static inline void texenv(const tunit *f, uint32_t texel, int rgba[4]) {
       }
       if (f->base != GL_RGB && f->base != GL_LUMINANCE) rgba[3] = mul255(rgba[3], ta);
       break;
+  }
+}
+
+/* Gives the color (0 to 255) of a source of GL_COMBINE of unit x: tx
+ * has the texels of the textures of the frag, prim the primary color
+ * and prev the result of the unit before. */
+static inline void combine_source(const frag *f, const tunit *x, int src, const uint32_t *tx,
+                                  const int prim[4], const int prev[4], int out[4]) {
+  int i;
+  uint32_t t;
+  switch (src) {
+    case SRC_CONSTANT: for (i = 0; i < 4; i++) out[i] = x->envc[i]; return;
+    case SRC_PRIMARY: for (i = 0; i < 4; i++) out[i] = prim[i]; return;
+    case SRC_PREVIOUS: for (i = 0; i < 4; i++) out[i] = prev[i]; return;
+    case SRC_WHITE: out[0] = out[1] = out[2] = out[3] = 255; return;
+    default:
+      t = tx[src];
+      if (f->tu[src].base == GL_ALPHA) {
+        /* An alpha texture has the color 0. */
+        out[0] = out[1] = out[2] = 0;
+      } else {
+        out[0] = (int)((t >> 16) & 0xFF);
+        out[1] = (int)((t >> 8) & 0xFF);
+        out[2] = (int)(t & 0xFF);
+      }
+      out[3] = (int)(t >> 24);
+      return;
+  }
+}
+
+/* Gives the value of a GL_COMBINE function fn of the arguments a0, a1
+ * and a2 (0 to 255). */
+static inline int combine_value(GLenum fn, int a0, int a1, int a2) {
+  int v;
+  switch (fn) {
+    case GL_REPLACE: return a0;
+    case GL_ADD: v = a0 + a1; break;
+    case GL_ADD_SIGNED: v = a0 + a1 - 128; break;
+    case GL_INTERPOLATE: return mul255(a0, a2) + mul255(a1, 255 - a2);
+    case GL_SUBTRACT: v = a0 - a1; break;
+    default: return mul255(a0, a1); /* GL_MODULATE */
+  }
+  return v < 0 ? 0 : (v > 255 ? 255 : v);
+}
+
+/* Applies the GL_COMBINE environment of texture k of f to rgba. */
+static void combine(const frag *f, int k, const uint32_t *tx, const int prim[4], int rgba[4]) {
+  const tunit *x = &f->tu[k];
+  int arg[3][4], a[3], out[4], i, j;
+  int prev[4];
+  for (i = 0; i < 4; i++) prev[i] = rgba[i];
+  /* The color arguments. */
+  for (j = 0; j < 3; j++) {
+    int src[4];
+    combine_source(f, x, x->srgb[j], tx, prim, prev, src);
+    for (i = 0; i < 3; i++) {
+      switch (x->orgb[j]) {
+        case GL_ONE_MINUS_SRC_COLOR: arg[j][i] = 255 - src[i]; break;
+        case GL_SRC_ALPHA: arg[j][i] = src[3]; break;
+        case GL_ONE_MINUS_SRC_ALPHA: arg[j][i] = 255 - src[3]; break;
+        default: arg[j][i] = src[i]; break;
+      }
+    }
+  }
+  if (x->crgb == GL_DOT3_RGB || x->crgb == GL_DOT3_RGBA) {
+    /* 4 * sum((a0 - 0.5) * (a1 - 0.5)), with 255 for 1. */
+    int32_t sum = 0;
+    for (i = 0; i < 3; i++) sum += SGL_MUL16(arg[0][i] - 128, arg[1][i] - 128);
+    sum = (sum >> 6) << x->rgb_shift;
+    sum = sum < 0 ? 0 : (sum > 255 ? 255 : sum);
+    out[0] = out[1] = out[2] = (int)sum;
+    if (x->crgb == GL_DOT3_RGBA) {
+      for (i = 0; i < 4; i++) rgba[i] = out[i < 3 ? i : 0];
+      return;
+    }
+  } else {
+    for (i = 0; i < 3; i++) {
+      int v = combine_value(x->crgb, arg[0][i], arg[1][i], arg[2][i]) << x->rgb_shift;
+      out[i] = v > 255 ? 255 : v;
+    }
+  }
+  /* The alpha arguments. */
+  for (j = 0; j < 3; j++) {
+    int src[4];
+    combine_source(f, x, x->salpha[j], tx, prim, prev, src);
+    a[j] = x->oalpha[j] == GL_ONE_MINUS_SRC_ALPHA ? 255 - src[3] : src[3];
+  }
+  {
+    int v = combine_value(x->calpha, a[0], a[1], a[2]) << x->alpha_shift;
+    out[3] = v > 255 ? 255 : v;
+  }
+  for (i = 0; i < 4; i++) rgba[i] = out[i];
+}
+
+/* Applies the environments of all the textures of f, when one uses
+ * GL_COMBINE: tx has their texels. */
+static void env_all(const frag *f, const uint32_t *tx, int rgba[4]) {
+  int prim[4], k;
+  prim[0] = rgba[0];
+  prim[1] = rgba[1];
+  prim[2] = rgba[2];
+  prim[3] = rgba[3];
+  for (k = 0; k < f->ntex; k++) {
+    if (f->tu[k].env == GL_COMBINE)
+      combine(f, k, tx, prim, rgba);
+    else
+      texenv(&f->tu[k], tx[k], rgba);
   }
 }
 
@@ -574,7 +797,7 @@ typedef struct tri {
   int flat[4];
   int sec;                      /* 1: add the secondary color (smooth), 2: add flat_sec */
   int flat_sec[3];
-  int three_d;                  /* a texture of the frag is 3D: the r planes are used */
+  int three_d;                  /* a texture of the frag is 3D or a cube map: the r planes are used */
   /* Texels in the coordinates 0 to 1, for each texture of the frag. */
   GLfloat sscale[SGL_MAX_TEXTURE_UNITS], tscale[SGL_MAX_TEXTURE_UNITS];
   GLfloat pscale[SGL_MAX_TEXTURE_UNITS];
@@ -722,7 +945,13 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       rgba[2] = t->flat[2];
       rgba[3] = t->flat[3];
     }
-    for (k = 0; k < ntex; k++) texenv(&f->tu[k], fetch(&f->tu[k], s[k], tt[k], rr[k]), rgba);
+    if (f->combine) {
+      uint32_t tx[SGL_MAX_TEXTURE_UNITS];
+      for (k = 0; k < ntex; k++) tx[k] = fetch(&f->tu[k], s[k], tt[k], rr[k]);
+      env_all(f, tx, rgba);
+    } else {
+      for (k = 0; k < ntex; k++) texenv(&f->tu[k], fetch(&f->tu[k], s[k], tt[k], rr[k]), rgba);
+    }
     if (t->sec == 1) {
       rgba[0] = add255(rgba[0], col(sr));
       rgba[1] = add255(rgba[1], col(sg));
@@ -894,16 +1123,21 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
           GLfloat d = (GLfloat)bl->depth;
           rx += drdx * drdx * d * d;
           ry += drdy * drdy * d * d;
+        } else if (tex->target == GL_TEXTURE_CUBE_MAP) {
+          /* A direction of length 1 crosses a face of w texels in a
+           * change of 2: approximately w / 2 texels for each unit. */
+          GLfloat q = w * w * 0.25f;
+          rx = (dsdx * dsdx + dtdx * dtdx + drdx * drdx) * q;
+          ry = (dsdy * dsdy + dtdy * dtdy + drdy * drdy) * q;
         }
         rho = sqrtf(rx > ry ? rx : ry);
       }
       setup_texture(&f, k, us[k], tex, rho);
-      t.sscale[k] = (GLfloat)f.tu[k].tw * 65536.0f;
-      t.tscale[k] = f.tu[k].one_d ? 0.0f : (GLfloat)f.tu[k].th * 65536.0f;
-      t.pscale[k] = f.tu[k].three_d ? (GLfloat)(f.tu[k].dmask + 1) * 65536.0f : 0.0f;
-      if (f.tu[k].three_d) t.three_d = 1;
+      set_scales(&t.sscale[k], &t.tscale[k], &t.pscale[k], &f.tu[k]);
+      if (f.tu[k].three_d || f.tu[k].cube) t.three_d = 1;
     }
     f.ntex = n;
+    finish_textures(&f);
   }
   /* The planes in fixed point, for the spans, from the pixel nearest
    * to vertex a. */
@@ -1023,14 +1257,18 @@ static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const in
   rgba[1] = rgba_in[1];
   rgba[2] = rgba_in[2];
   rgba[3] = rgba_in[3];
-  if (tex)
+  if (tex && f->ntex) {
+    uint32_t tx[SGL_MAX_TEXTURE_UNITS] = {0};
     for (k = 0; k < f->ntex; k++) {
       GLfloat q = tex[k][2] != 0.0f ? 1.0f / tex[k][2] : 1.0f;
-      texenv(&f->tu[k],
-             fetch(&f->tu[k], fix(tex[k][0] * q * t->sscale[k]), fix(tex[k][1] * q * t->tscale[k]),
-                   fix(tex[k][3] * q * t->pscale[k])),
-             rgba);
+      tx[k] = fetch(&f->tu[k], fix(tex[k][0] * q * t->sscale[k]), fix(tex[k][1] * q * t->tscale[k]),
+                    fix(tex[k][3] * q * t->pscale[k]));
     }
+    if (f->combine)
+      env_all(f, tx, rgba);
+    else
+      for (k = 0; k < f->ntex; k++) texenv(&f->tu[k], tx[k], rgba);
+  }
   if (t && t->sec) {
     rgba[0] = add255(rgba[0], t->flat_sec[0]);
     rgba[1] = add255(rgba[1], t->flat_sec[1]);
@@ -1053,11 +1291,10 @@ static void setup_simple_texture(frag *f, tri *t) {
     tex = sgl_unit_texture(c, u);
     if (!sgl_base_level(tex)) continue;
     setup_texture(f, k, u, tex, 1.0f);
-    t->sscale[k] = (GLfloat)f->tu[k].tw * 65536.0f;
-    t->tscale[k] = f->tu[k].one_d ? 0.0f : (GLfloat)f->tu[k].th * 65536.0f;
-    t->pscale[k] = f->tu[k].three_d ? (GLfloat)(f->tu[k].dmask + 1) * 65536.0f : 0.0f;
+    set_scales(&t->sscale[k], &t->tscale[k], &t->pscale[k], &f->tu[k]);
     f->ntex = k + 1;
   }
+  finish_textures(f);
 }
 
 /* Gives a color 0 to 1 as an integer 0 to 255. */

@@ -90,6 +90,14 @@ EXTENSIONS += [
     ("void", "TexImage3D", "GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels"),
     ("void", "TexSubImage3D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels"),
     ("void", "CopyTexSubImage3D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height"),
+    ("void", "CompressedTexImage1D", "GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data"),
+    ("void", "CompressedTexImage2D", "GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data"),
+    ("void", "CompressedTexImage3D", "GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data"),
+    ("void", "CompressedTexSubImage1D", "GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data"),
+    ("void", "CompressedTexSubImage2D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data"),
+    ("void", "CompressedTexSubImage3D", "GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data"),
+    ("void", "GetCompressedTexImage", "GLenum target, GLint level, void *img"),
+    ("void", "SampleCoverage", "GLfloat value, GLboolean invert"),
     ("void", "ActiveTexture", "GLenum texture"),
     ("void", "ClientActiveTexture", "GLenum texture"),
 ] + multitexcoord() + [
@@ -107,7 +115,10 @@ ALIASES = dict(
      ("TexSubImage3DEXT", "TexSubImage3D"), ("CopyTexSubImage3DEXT", "CopyTexSubImage3D"),("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
     + [(name + "ARB", name) for _, name, _ in multitexcoord()]
     + [(n + "ARB", n) for n in ("LoadTransposeMatrixf", "LoadTransposeMatrixd",
-                                "MultTransposeMatrixf", "MultTransposeMatrixd")])
+                                "MultTransposeMatrixf", "MultTransposeMatrixd", "SampleCoverage",
+                                "CompressedTexImage1D", "CompressedTexImage2D", "CompressedTexImage3D",
+                                "CompressedTexSubImage1D", "CompressedTexSubImage2D",
+                                "CompressedTexSubImage3D", "GetCompressedTexImage")])
 
 # Functions that the specification does not put in display lists: they
 # run at once, also while a list is compiled.
@@ -120,7 +131,8 @@ VertexPointer EnableClientState DisableClientState InterleavedArrays
 PushClientAttrib PopClientAttrib AddSwapHintRectWIN ClientActiveTexture
 GetColorTableEXT GetColorTableParameterivEXT GetColorTableParameterfvEXT
 ColorPointerEXT EdgeFlagPointerEXT GetPointervEXT IndexPointerEXT
-NormalPointerEXT TexCoordPointerEXT VertexPointerEXT
+NormalPointerEXT TexCoordPointerEXT VertexPointerEXT GetCompressedTexImage
+CompressedTexImage1D CompressedTexImage3D CompressedTexSubImage1D CompressedTexSubImage3D
 """.split())
 
 # Functions that call the canonical functions through the current table.
@@ -135,6 +147,7 @@ Map1d Map2d PixelMapuiv PixelMapusv
 # the arguments do not tell simply.
 HAND_SAVE = set("""
 TexImage1D TexImage2D TexImage3D TexSubImage1D TexSubImage2D TexSubImage3D DrawPixels Bitmap
+CompressedTexImage2D CompressedTexSubImage2D
 PolygonStipple CallLists Map1f Map2f PixelMapfv ColorTableEXT
 ColorSubTableEXT
 """.split())
