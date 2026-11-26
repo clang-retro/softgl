@@ -52,6 +52,106 @@ static int type_size(GLenum type) {
   }
 }
 
+/* A packed pixel type of OpenGL 1.2: all the components of a pixel are
+ * in one element of bytes bytes. */
+typedef struct packed_type {
+  GLenum type;
+  int bytes;               /* the size of the element */
+  int n;                   /* the number of components: 3 or 4 */
+  int rev;                 /* the first component is in the low bits */
+  int bits[4];             /* the bits of each component, first to last */
+} packed_type;
+
+/* The packed pixel types. */
+static const packed_type kPacked[] = {
+    {GL_UNSIGNED_BYTE_3_3_2, 1, 3, 0, {3, 3, 2, 0}},
+    {GL_UNSIGNED_BYTE_2_3_3_REV, 1, 3, 1, {3, 3, 2, 0}},
+    {GL_UNSIGNED_SHORT_5_6_5, 2, 3, 0, {5, 6, 5, 0}},
+    {GL_UNSIGNED_SHORT_5_6_5_REV, 2, 3, 1, {5, 6, 5, 0}},
+    {GL_UNSIGNED_SHORT_4_4_4_4, 2, 4, 0, {4, 4, 4, 4}},
+    {GL_UNSIGNED_SHORT_4_4_4_4_REV, 2, 4, 1, {4, 4, 4, 4}},
+    {GL_UNSIGNED_SHORT_5_5_5_1, 2, 4, 0, {5, 5, 5, 1}},
+    {GL_UNSIGNED_SHORT_1_5_5_5_REV, 2, 4, 1, {5, 5, 5, 1}},
+    {GL_UNSIGNED_INT_8_8_8_8, 4, 4, 0, {8, 8, 8, 8}},
+    {GL_UNSIGNED_INT_8_8_8_8_REV, 4, 4, 1, {8, 8, 8, 8}},
+    {GL_UNSIGNED_INT_10_10_10_2, 4, 4, 0, {10, 10, 10, 2}},
+    {GL_UNSIGNED_INT_2_10_10_10_REV, 4, 4, 1, {10, 10, 10, 2}},
+};
+
+/* Gives the packed pixel type type, or NULL when type is not packed. */
+static const packed_type *packed_of(GLenum type) {
+  size_t i;
+  for (i = 0; i < sizeof kPacked / sizeof kPacked[0]; i++)
+    if (kPacked[i].type == type) return &kPacked[i];
+  return NULL;
+}
+
+/* Gives 1 when format can have the packed type pk: three components
+ * need GL_RGB or GL_BGR, four need GL_RGBA or GL_BGRA. */
+static int packed_format_ok(const packed_type *pk, GLenum format) {
+  if (pk->n == 3) return format == GL_RGB || format == GL_BGR;
+  return format == GL_RGBA || format == GL_BGRA;
+}
+
+/* Gives the shift of component k of a packed type. */
+static int packed_shift(const packed_type *pk, int k) {
+  int i, below = 0, total = 0;
+  for (i = 0; i < pk->n; i++) total += pk->bits[i];
+  for (i = 0; i < k; i++) below += pk->bits[i];
+  return pk->rev ? below : total - below - pk->bits[k];
+}
+
+/* Reads the element of pixel x of a row of a packed type. */
+static uint32_t packed_read(const packed_type *pk, const uint8_t *row, int x, int swap) {
+  const uint8_t *p = row + (size_t)x * pk->bytes;
+  if (pk->bytes == 1) return p[0];
+  if (pk->bytes == 2) {
+    uint16_t v;
+    memcpy(&v, p, 2);
+    if (swap) v = (uint16_t)((v >> 8) | (v << 8));
+    return v;
+  } else {
+    uint32_t v;
+    memcpy(&v, p, 4);
+    if (swap) v = (v >> 24) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) | (v << 24);
+    return v;
+  }
+}
+
+/* Gives the components (0 to 1, first to last) of a packed element. */
+static void packed_unpack(const packed_type *pk, uint32_t e, GLfloat v[4]) {
+  int k;
+  for (k = 0; k < pk->n; k++) {
+    uint32_t max = (1u << pk->bits[k]) - 1u;
+    v[k] = (GLfloat)((e >> packed_shift(pk, k)) & max) / (GLfloat)max;
+  }
+}
+
+/* Gives the packed element of the components v (0 to 1, first to
+ * last). */
+static uint32_t packed_pack(const packed_type *pk, const GLfloat *v) {
+  uint32_t e = 0;
+  int k;
+  for (k = 0; k < pk->n; k++) {
+    uint32_t max = (1u << pk->bits[k]) - 1u;
+    e |= (uint32_t)(sgl_clamp01(v[k]) * (GLfloat)max + 0.5f) << packed_shift(pk, k);
+  }
+  return e;
+}
+
+/* Writes a packed element at pixel x of a row. */
+static void packed_write(const packed_type *pk, uint8_t *row, int x, uint32_t e) {
+  uint8_t *p = row + (size_t)x * pk->bytes;
+  if (pk->bytes == 1) {
+    p[0] = (uint8_t)e;
+  } else if (pk->bytes == 2) {
+    uint16_t v = (uint16_t)e;
+    memcpy(p, &v, 2);
+  } else {
+    memcpy(p, &e, 4);
+  }
+}
+
 /* Gives the number of bytes from one row of an image to the next. */
 static size_t row_bytes(const sgl_pixelstore *ps, int w, int comps, int size) {
   int len = ps->row_length > 0 ? ps->row_length : w;
@@ -71,7 +171,13 @@ static size_t row_bytes(const sgl_pixelstore *ps, int w, int comps, int size) {
  * gives. */
 size_t sgl_image_bytes(const sgl_pixelstore *ps, int w, int h, GLenum format, GLenum type) {
   int comps = sgl_format_components(format), size = type_size(type);
+  const packed_type *pk = packed_of(type);
   size_t rb;
+  if (pk) {
+    /* One element for each pixel. */
+    comps = 1;
+    size = pk->bytes;
+  }
   if (comps == 0 || size < 0 || w <= 0 || h <= 0) return 0;
   rb = row_bytes(ps, w, comps, size);
   if (size == 0)
@@ -240,12 +346,21 @@ int sgl_unpack_rgba8(const sgl_pixelstore *ps, int w, int h, GLenum format, GLen
     free(idx);
     return 1;
   }
+  {
+    const packed_type *pk = packed_of(type);
+    if (pk) {
+      if (!packed_format_ok(pk, format)) return 0;
+      comps = 1;
+      size = pk->bytes;
+    }
+  }
   if (comps == 0 || size <= 0) return 0;
   rb = row_bytes(ps, w, comps, size);
   base += (size_t)ps->skip_rows * rb + (size_t)ps->skip_pixels * comps * size;
   for (y = 0; y < h; y++) {
     const uint8_t *row = base + (size_t)y * rb;
     uint8_t *o = out + (size_t)y * w * 4;
+    const packed_type *pk = packed_of(type);
     if (type == GL_UNSIGNED_BYTE && !transfer) {
       /* The common case, without floats. */
       for (x = 0; x < w; x++, row += comps, o += 4) {
@@ -269,7 +384,8 @@ int sgl_unpack_rgba8(const sgl_pixelstore *ps, int w, int h, GLenum format, GLen
     for (x = 0; x < w; x++, o += 4) {
       GLfloat v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
       int i0 = x * comps, swap = ps->swap_bytes;
-      switch (format) {
+      if (pk) packed_unpack(pk, packed_read(pk, row, x, swap), v);
+      else switch (format) {
         case GL_RGBA:
         case GL_BGRA_EXT:
           v[0] = element(row, i0, type, swap);
@@ -425,8 +541,17 @@ static void pack_rgba(sgl_context *c, int w, int h, const uint32_t *src, GLenum 
                       GLenum type, void *dst) {
   const sgl_pixelstore *ps = &c->c.pack;
   int comps = sgl_format_components(format), size = type_size(type), x, y, k;
+  const packed_type *pk = packed_of(type);
   size_t rb;
   uint8_t *base = (uint8_t *)dst;
+  if (pk) {
+    if (!packed_format_ok(pk, format)) {
+      sgl_error(GL_INVALID_OPERATION);
+      return;
+    }
+    comps = 1;
+    size = pk->bytes;
+  }
   if (comps == 0 || size <= 0) {
     sgl_error(GL_INVALID_ENUM);
     return;
@@ -455,6 +580,10 @@ static void pack_rgba(sgl_context *c, int w, int h, const uint32_t *src, GLenum 
         case GL_LUMINANCE: out[0] = sgl_clamp01(v[0] + v[1] + v[2]); n = 1; break;
         case GL_LUMINANCE_ALPHA: out[0] = sgl_clamp01(v[0] + v[1] + v[2]); out[1] = v[3]; n = 2; break;
         default: out[0] = v[0]; n = 1; break;
+      }
+      if (pk) {
+        packed_write(pk, row, x, packed_pack(pk, out));
+        continue;
       }
       for (k = 0; k < n; k++) {
         uint8_t *e = row + ((size_t)x * comps + k) * size;
@@ -515,6 +644,17 @@ static void store(sgl_pixelstore *ps, GLenum pname, GLint v) {
     case GL_PACK_ROW_LENGTH: case GL_UNPACK_ROW_LENGTH: ps->row_length = v; break;
     case GL_PACK_SKIP_ROWS: case GL_UNPACK_SKIP_ROWS: ps->skip_rows = v; break;
     case GL_PACK_SKIP_PIXELS: case GL_UNPACK_SKIP_PIXELS: ps->skip_pixels = v; break;
+    case GL_PACK_IMAGE_HEIGHT: case GL_UNPACK_IMAGE_HEIGHT:
+    case GL_PACK_SKIP_IMAGES: case GL_UNPACK_SKIP_IMAGES:
+      if (v < 0) {
+        sgl_error(GL_INVALID_VALUE);
+        return;
+      }
+      if (pname == GL_PACK_IMAGE_HEIGHT || pname == GL_UNPACK_IMAGE_HEIGHT)
+        ps->image_height = v;
+      else
+        ps->skip_images = v;
+      break;
     case GL_PACK_ALIGNMENT:
     case GL_UNPACK_ALIGNMENT:
       if (v != 1 && v != 2 && v != 4 && v != 8) {
@@ -849,9 +989,13 @@ void APIENTRY sgl_DrawPixels(GLsizei w, GLsizei h, GLenum format, GLenum type, c
     sgl_error(GL_INVALID_VALUE);
     return;
   }
-  if (sgl_format_components(format) == 0 || type_size(type) < 0 ||
+  if (sgl_format_components(format) == 0 || (type_size(type) < 0 && !packed_of(type)) ||
       (type == GL_BITMAP && format != GL_COLOR_INDEX && format != GL_STENCIL_INDEX)) {
     sgl_error(GL_INVALID_ENUM);
+    return;
+  }
+  if (packed_of(type) && !packed_format_ok(packed_of(type), format)) {
+    sgl_error(GL_INVALID_OPERATION);
     return;
   }
   if (c->index_mode && format != GL_COLOR_INDEX && format != GL_STENCIL_INDEX &&

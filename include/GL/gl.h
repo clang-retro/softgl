@@ -1,7 +1,6 @@
-/* gl.h - OpenGL 1.2, the functions of the generic implementation of
- * port/softgl (a software renderer). The generic implementation has the
- * OpenGL 1.1 functions; glTexImage3D and the other OpenGL 1.2 functions
- * are declared here for GLU only.
+/* gl.h - OpenGL 1.2, the functions of softgl (a software renderer).
+ * softgl exports the OpenGL 1.1 and 1.2 functions. wglGetProcAddress
+ * gives the functions of the later versions and of the extensions.
  *
  * A copy of include/GL/gl.h of clang-retro/mac-sdk, which tools/gen-gl.py
  * makes from the Khronos OpenGL API registry (gl.xml, Copyright

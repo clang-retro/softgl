@@ -215,11 +215,13 @@ static GLfloat light_vertex_index(sgl_context *c, int side, const GLfloat eye[4]
 }
 
 /* Computes the color of one side of a lit vertex at eye position eye
- * with unit eye normal n. */
+ * with unit eye normal n. spec, when not NULL, gets the specular part
+ * (GL_SEPARATE_SPECULAR_COLOR); else the specular part is in out. */
 static void light_vertex(sgl_context *c, int side, const GLfloat eye[4], const GLfloat n[3],
-                         GLfloat out[4]) {
+                         GLfloat out[4], GLfloat *spec) {
   const sgl_material *m = &c->a.material[side];
   GLfloat r = c->base_color[side][0], g = c->base_color[side][1], b = c->base_color[side][2];
+  GLfloat sr = 0.0f, sg = 0.0f, sb = 0.0f;
   GLfloat vx = 0.0f, vy = 0.0f, vz = 1.0f;
   int i;
   if (c->a.local_viewer) {
@@ -286,11 +288,20 @@ static void light_vertex(sgl_context *c, int side, const GLfloat eye[4], const G
       GLfloat ndoth = n[0] * hx + n[1] * hy + n[2] * hz;
       if (ndoth > 0.0f) {
         GLfloat s = att * shine(m, ndoth > 1.0f ? 1.0f : ndoth);
-        r += s * c->light_spec[side][i][0];
-        g += s * c->light_spec[side][i][1];
-        b += s * c->light_spec[side][i][2];
+        sr += s * c->light_spec[side][i][0];
+        sg += s * c->light_spec[side][i][1];
+        sb += s * c->light_spec[side][i][2];
       }
     }
+  }
+  if (spec) {
+    spec[0] = sgl_clamp01(sr);
+    spec[1] = sgl_clamp01(sg);
+    spec[2] = sgl_clamp01(sb);
+  } else {
+    r += sr;
+    g += sg;
+    b += sb;
   }
   out[0] = sgl_clamp01(r);
   out[1] = sgl_clamp01(g);
@@ -299,14 +310,15 @@ static void light_vertex(sgl_context *c, int side, const GLfloat eye[4], const G
 }
 
 /* Gives the eye normal of the current normal, made a unit vector when
- * GL_NORMALIZE is on or lighting needs it. */
+ * GL_NORMALIZE or GL_RESCALE_NORMAL is on. GL_RESCALE_NORMAL is done
+ * as GL_NORMALIZE: for a unit normal the result is the same. */
 static void eye_normal(sgl_context *c, GLfloat out[3]) {
   const GLfloat *m = c->inv_modelview.m;
   const GLfloat *n = c->a.normal;
   out[0] = m[0] * n[0] + m[1] * n[1] + m[2] * n[2];
   out[1] = m[4] * n[0] + m[5] * n[1] + m[6] * n[2];
   out[2] = m[8] * n[0] + m[9] * n[1] + m[10] * n[2];
-  if (c->a.enabled[SGL_NORMALIZE]) {
+  if (c->a.enabled[SGL_NORMALIZE] || c->a.enabled[SGL_RESCALE_NORMAL]) {
     GLfloat len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
     if (len > 0.0f) {
       len = 1.0f / len;
@@ -438,13 +450,13 @@ void sgl_transform_vertex(sgl_context *c, const GLfloat obj[4], sgl_vertex *v) {
     v->color[0][0] = c->a.index;
   } else if (c->lit) {
     if (c->light_dirty) update_lighting(c);
-    light_vertex(c, 0, v->eye, n, v->color[0]);
+    light_vertex(c, 0, v->eye, n, v->color[0], c->sec_on ? v->spec[0] : NULL);
     if (c->a.two_side) {
       GLfloat back[3];
       back[0] = -n[0];
       back[1] = -n[1];
       back[2] = -n[2];
-      light_vertex(c, 1, v->eye, back, v->color[1]);
+      light_vertex(c, 1, v->eye, back, v->color[1], c->sec_on ? v->spec[1] : NULL);
     }
   } else {
     memcpy(v->color[0], c->a.color, sizeof v->color[0]);
@@ -527,6 +539,11 @@ static void lerp_vertex(const sgl_context *c, const sgl_vertex *a, const sgl_ver
       for (i = 0; i < 4; i++) out->tex[u][i] = a->tex[u][i] + (b->tex[u][i] - a->tex[u][i]) * t;
   if (c->lit && c->a.two_side)
     for (i = 0; i < 4; i++) out->color[1][i] = a->color[1][i] + (b->color[1][i] - a->color[1][i]) * t;
+  if (c->sec_on)
+    for (i = 0; i < 3; i++) {
+      out->spec[0][i] = a->spec[0][i] + (b->spec[0][i] - a->spec[0][i]) * t;
+      if (c->a.two_side) out->spec[1][i] = a->spec[1][i] + (b->spec[1][i] - a->spec[1][i]) * t;
+    }
   out->fog = a->fog + (b->fog - a->fog) * t;
   out->edge = a->edge;
   out->clipmask = clip_mask(c, out);
@@ -622,7 +639,10 @@ void sgl_draw_polygon(sgl_context *c, sgl_vertex **v, int n, int provoking) {
     if (!front && c->a.cull_face == GL_BACK) goto done;
   }
   side = (!front && c->lit && c->a.two_side) ? 1 : 0;
-  if (c->a.shade_model == GL_FLAT) flat = prov->color[side];
+  if (c->a.shade_model == GL_FLAT) {
+    flat = prov->color[side];
+    c->flat_spec = prov->spec[side];
+  }
   mode = c->a.polygon_mode[front ? 0 : 1];
   if (c->render_mode != GL_RENDER) {
     sgl_feedback_polygon(c, p, n, side, flat, (GLenum)mode);
@@ -647,7 +667,10 @@ void sgl_draw_line(sgl_context *c, sgl_vertex *a, sgl_vertex *b, int provoking) 
   GLfloat t0 = 0.0f, t1 = 1.0f;
   unsigned m = a->clipmask | b->clipmask, bit;
   if (a->clipmask & b->clipmask) return;
-  if (c->a.shade_model == GL_FLAT) flat = (provoking ? b : a)->color[0];
+  if (c->a.shade_model == GL_FLAT) {
+    flat = (provoking ? b : a)->color[0];
+    c->flat_spec = (provoking ? b : a)->spec[0];
+  }
   if (m) {
     for (bit = 1; bit <= (CLIP_USER0 << (SGL_MAX_CLIP_PLANES - 1)); bit <<= 1) {
       GLfloat da, db, t;
@@ -705,6 +728,7 @@ void APIENTRY sgl_Begin(GLenum mode) {
   }
   sgl_update_matrices(c);
   c->lit = c->a.enabled[SGL_LIGHTING];
+  c->sec_on = c->lit && !c->index_mode && c->a.color_control == GL_SEPARATE_SPECULAR_COLOR;
   c->clip_user = 0;
   for (i = 0; i < SGL_MAX_CLIP_PLANES; i++)
     if (c->a.enabled[SGL_CLIP_PLANE0 + i]) c->clip_user |= 1u << i;
@@ -1101,6 +1125,15 @@ void APIENTRY sgl_LightModelfv(GLenum pname, const GLfloat *params) {
     case GL_LIGHT_MODEL_AMBIENT: memcpy(c->a.model_ambient, params, sizeof c->a.model_ambient); break;
     case GL_LIGHT_MODEL_LOCAL_VIEWER: c->a.local_viewer = params[0] != 0.0f; break;
     case GL_LIGHT_MODEL_TWO_SIDE: c->a.two_side = params[0] != 0.0f; break;
+    case GL_LIGHT_MODEL_COLOR_CONTROL: {
+      GLenum v = (GLenum)params[0];
+      if (v != GL_SINGLE_COLOR && v != GL_SEPARATE_SPECULAR_COLOR) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      c->a.color_control = v;
+      break;
+    }
     default: sgl_error(GL_INVALID_ENUM); return;
   }
   c->light_dirty = 1;

@@ -93,6 +93,10 @@ typedef uint32_t sgl_depth_t;
 #define SGL_LIST_DEPTH 64
 #define SGL_MAX_TEXTURE_LEVELS 11
 #define SGL_MAX_TEXTURE_SIZE 1024
+/* The largest 3D texture: 64 x 64 x 64 texels are 1 MB. */
+#ifndef SGL_MAX_3D_TEXTURE_SIZE
+#define SGL_MAX_3D_TEXTURE_SIZE 64
+#endif
 #define SGL_MAX_EVAL_ORDER 16
 #define SGL_SHINE_TABLE 256
 #define SGL_SHINE_CACHE 4
@@ -143,6 +147,8 @@ typedef struct sgl_vertex {
   GLfloat color[2][4]; /* front and back color, 0 to 1 */
   GLfloat tex[SGL_MAX_TEXTURE_UNITS][4]; /* texture coordinates of each unit,
                                           * after the texture matrix */
+  GLfloat spec[2][3];  /* front and back secondary color (the separate
+                        * specular color), 0 to 1 */
   GLfloat fog;         /* fog factor: 1 is no fog */
   GLfloat eye[4];      /* eye coordinates (for clipping by the user planes) */
   unsigned clipmask;   /* the planes that it is outside of */
@@ -180,8 +186,8 @@ typedef struct sgl_material {
 typedef struct sgl_level {
   uint32_t *texels;
   uint8_t *indices;        /* for a paletted texture: the indices */
-  int width, height;
-  int wlog, hlog;          /* log2 of the size, or -1 */
+  int width, height, depth; /* depth is 1 for a 1D or 2D texture */
+  int wlog, hlog, dlog;    /* log2 of the size, or -1 */
   GLenum internal;         /* the internal format that was asked for */
   GLenum base;             /* GL_RGBA, GL_RGB, GL_ALPHA, GL_LUMINANCE, ... */
   GLint border;
@@ -193,13 +199,15 @@ typedef struct sgl_texture {
   int refs;
   GLenum target;
   sgl_level level[SGL_MAX_TEXTURE_LEVELS];
-  GLenum min_filter, mag_filter, wrap_s, wrap_t;
+  GLenum min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
   GLfloat border_color[4];
+  GLint base_level, max_level; /* OpenGL 1.2: the levels that are used */
+  GLfloat min_lod, max_lod;
   GLfloat priority;
   uint32_t palette[256];   /* GL_EXT_paletted_texture */
   int palette_size;
   GLenum palette_format;
-  int complete;            /* all the mipmap levels are there */
+  int complete;            /* all the mipmap levels from base_level are there */
   struct sgl_texture *next;
 } sgl_texture;
 
@@ -239,7 +247,7 @@ typedef struct sgl_map {
 /* The capabilities of each texture unit, in the order of their bits. */
 enum sgl_unit_cap {
   SGL_U_TEXTURE_1D, SGL_U_TEXTURE_2D, SGL_U_GEN_S, SGL_U_GEN_T, SGL_U_GEN_R, SGL_U_GEN_Q,
-  SGL_UNIT_CAP_COUNT
+  SGL_U_TEXTURE_3D, SGL_UNIT_CAP_COUNT
 };
 
 /* The bits of the enables, by capability. */
@@ -256,7 +264,7 @@ enum sgl_cap {
   SGL_MAP2_VERTEX_4, SGL_MAP2_NORMAL, SGL_MAP2_COLOR_4,
   SGL_MAP2_TEXTURE_COORD_1, SGL_MAP2_TEXTURE_COORD_2,
   SGL_MAP2_TEXTURE_COORD_3, SGL_MAP2_TEXTURE_COORD_4, SGL_MAP2_INDEX,
-  SGL_INDEX_LOGIC_OP,
+  SGL_INDEX_LOGIC_OP, SGL_RESCALE_NORMAL,
   SGL_LIGHT0, /* to SGL_LIGHT0 + 7 */
   SGL_CLIP_PLANE0 = SGL_LIGHT0 + SGL_MAX_LIGHTS, /* to + 5 */
   SGL_UNIT_CAPS = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES, /* the caps of the texture units */
@@ -274,7 +282,7 @@ typedef struct sgl_unit_attrib {
   GLfloat env_color[4];
   GLenum gen_mode[4];
   GLfloat gen_object[4][4], gen_eye[4][4];
-  GLuint bound_1d, bound_2d; /* the bound names, at glPushAttrib */
+  GLuint bound_1d, bound_2d, bound_3d; /* the bound names, at glPushAttrib */
 } sgl_unit_attrib;
 
 /* The evaluator maps, in the order of the SGL_MAP1_ and SGL_MAP2_ caps. */
@@ -313,6 +321,7 @@ typedef struct sgl_attrib {
   sgl_material material[2];
   GLfloat model_ambient[4];
   GLboolean local_viewer, two_side;
+  GLenum color_control;    /* GL_SINGLE_COLOR or GL_SEPARATE_SPECULAR_COLOR */
   GLenum shade_model, color_material_face, color_material_mode;
   /* GL_FOG_BIT */
   GLenum fog_mode;
@@ -366,6 +375,7 @@ typedef struct sgl_array {
 typedef struct sgl_pixelstore {
   GLboolean swap_bytes, lsb_first;
   GLint row_length, skip_rows, skip_pixels, alignment;
+  GLint image_height, skip_images; /* OpenGL 1.2: for the 3D images */
 } sgl_pixelstore;
 
 /* The state of the client: arrays and pixel store, which
@@ -422,6 +432,8 @@ struct sgl_context {
   int clip_user;           /* the user clip planes that are on (bits) */
   unsigned tex_units;      /* the texture units that are on (bits) */
   unsigned tex_coords;     /* the units whose coordinates the vertices have */
+  int sec_on;              /* the vertices have a secondary color to add */
+  const GLfloat *flat_spec;/* the secondary color of flat shading */
   sgl_vertex *clipverts;   /* the vertices that clipping makes */
   int nclip, maxclip;
 
@@ -441,8 +453,9 @@ struct sgl_context {
   int call_depth;
 
   /* Textures. */
-  sgl_texture default_1d, default_2d;
+  sgl_texture default_1d, default_2d, default_3d;
   sgl_texture *tex_1d[SGL_MAX_TEXTURE_UNITS], *tex_2d[SGL_MAX_TEXTURE_UNITS];
+  sgl_texture *tex_3d[SGL_MAX_TEXTURE_UNITS];
 
   /* Evaluators. */
   sgl_map map1[SGL_MAP_TYPES], map2[SGL_MAP_TYPES];
@@ -518,6 +531,7 @@ void sgl_texture_free_all(sgl_shared *s);
 void sgl_texture_release(sgl_context *c);
 sgl_texture *sgl_unit_texture(sgl_context *c, int u);
 unsigned sgl_texture_units(const sgl_context *c);
+const sgl_level *sgl_base_level(const sgl_texture *t);
 
 /* pixels.c */
 size_t sgl_image_bytes(const sgl_pixelstore *ps, int w, int h, GLenum format, GLenum type);
