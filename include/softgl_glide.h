@@ -206,6 +206,14 @@ int sgl_glide_mga(sgl_glide_api *api);
  * backends/glide/glide_ati.c. */
 int sgl_glide_ati(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for an ATI Rage 128, Rage 128
+ * Pro, Rage 128 Ultra or Rage Mobility M3 or M4 card, for 32-bit DOS.
+ * The driver uses the command engine (the CCE) of the card and the VBE
+ * BIOS. On a real card it loads the CCE microcode from the file
+ * R128CCE.BIN. Gives 1 on success. The code is in
+ * backends/glide/glide_r128.c. */
+int sgl_glide_r128(sgl_glide_api *api);
+
 /* Fills api with the built-in driver for a PowerVR PCX2 card (Matrox
  * m3D, VideoLogic Apocalypse 3Dx or 5D), for 32-bit DOS. The card draws
  * into the frame buffer of the VGA card, in a VBE mode. The driver sets
@@ -215,7 +223,7 @@ int sgl_glide_pvr(sgl_glide_api *api);
 
 /* Fills api with the built-in driver of the first 3D card that is in
  * the computer (32-bit DOS). With name ("voodoo", "powervr", "virge",
- * "matrox" or "ati"), only that driver is tried. Gives the name of the driver, or NULL when there is
+ * "matrox", "ati" or "rage128"), only that driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
 const char *sgl_glide_dos(sgl_glide_api *api, const char *name);
 

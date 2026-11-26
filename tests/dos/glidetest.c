@@ -6,10 +6,10 @@
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
  * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a PowerVR, a
- * ViRGE, a Matrox or an ATI Rage card (tools/test-glide-86box.py), or on a
+ * ViRGE, a Matrox, an ATI Rage or a Rage 128 card (tools/test-glide-86box.py), or on a
  * computer with one of the cards.
  *
- *     glidetest [voodoo | powervr | virge | matrox | ati]
+ *     glidetest [voodoo | powervr | virge | matrox | ati | rage128]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -100,7 +100,8 @@ static void texture(void) {
 }
 
 /* Opens the card, draws each test scene, reads it back and closes all.
- * The argument can name the driver (voodoo, virge, matrox or ati). */
+ * The argument can name the driver (voodoo, powervr, virge, matrox, ati
+ * or rage128). */
 int main(int argc, char **argv) {
   static uint32_t color[WIDTH * HEIGHT];
   sgl_glide g = {0};
@@ -174,6 +175,18 @@ int main(int argc, char **argv) {
   expect("depth middle", 250, 250, 0, 255, 0, 8);
   expect("depth far", 350, 350, 255, 255, 255, 8);
   expect("depth near", 150, 150, 255, 0, 0, 8);
+
+  /* 3b: the same depth scene in the next frame, with the same state: a
+   * driver must keep its depth state after a swap and a clear. */
+  glEnable(GL_DEPTH_TEST);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glColor3f(0, 1, 0);
+  quad(100, 100, 300, 300, 0.5f);
+  glColor3f(1, 1, 1);
+  quad(200, 200, 400, 400, -0.5f);
+  sgl_present(ctx);
+  glDisable(GL_DEPTH_TEST);
+  expect("depth next frame", 250, 250, 0, 255, 0, 8);
 
   /* 4: a texture. */
   glClear(GL_COLOR_BUFFER_BIT);
