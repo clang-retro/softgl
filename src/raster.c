@@ -18,6 +18,17 @@
  * with perspective correction. Between them the coordinates are linear. */
 #define PERSP_STEP 16
 
+/* The state of one texture unit for one primitive. */
+typedef struct tunit {
+  const uint32_t *texels;
+  int tw, th, wmask, hmask, wlog;
+  int repeat_s, repeat_t;
+  int linear;
+  GLenum env, base;
+  int envc[4];
+  int one_d;                    /* a 1D texture: t is not used */
+} tunit;
+
 /* The state of the fragment operations for one primitive. */
 typedef struct frag {
   sgl_context *c;
@@ -42,19 +53,20 @@ typedef struct frag {
   uint32_t index_max;
   int fog_index;
   int stipple;                  /* the polygon stipple is on */
-  /* The texture: */
-  const sgl_texture *tex;
-  const uint32_t *texels;
-  int tw, th, wmask, hmask, wlog;
-  int repeat_s, repeat_t;
-  int linear;
-  GLenum env, base;
-  int envc[4];
+  /* The textures: ntex units that are on, in the order of the units. */
+  int ntex;
+  int unit[SGL_MAX_TEXTURE_UNITS]; /* the texture unit of each */
+  tunit tu[SGL_MAX_TEXTURE_UNITS];
 } frag;
 
-/* Gives the level of detail state of a texture for a primitive. */
-static void setup_texture(frag *f, const sgl_texture *t, GLfloat rho) {
+/* Fills the state of texture unit u (the k-th unit that is on) for a
+ * primitive from texture t: the level of detail for the scale rho
+ * (texels for each pixel), the filter, the wrap modes and the
+ * environment. */
+static void setup_texture(frag *f, int k, int u, const sgl_texture *t, GLfloat rho) {
   sgl_context *c = f->c;
+  const sgl_unit_attrib *ua = &c->a.unit[u];
+  tunit *x = &f->tu[k];
   const sgl_level *lv;
   int level = 0, linear;
   GLenum filter;
@@ -75,22 +87,23 @@ static void setup_texture(frag *f, const sgl_texture *t, GLfloat rho) {
   }
   linear = filter == GL_LINEAR || filter == GL_LINEAR_MIPMAP_NEAREST || filter == GL_LINEAR_MIPMAP_LINEAR;
   lv = &t->level[level];
-  f->tex = t;
-  f->texels = lv->texels;
-  f->tw = lv->width;
-  f->th = lv->height;
-  f->wmask = lv->width - 1;
-  f->hmask = lv->height - 1;
-  f->wlog = lv->wlog;
-  f->repeat_s = t->wrap_s == GL_REPEAT;
-  f->repeat_t = t->wrap_t == GL_REPEAT;
-  f->linear = linear;
-  f->env = c->a.tex_env_mode;
-  f->base = lv->base;
-  f->envc[0] = (int)(c->a.tex_env_color[0] * 255.0f + 0.5f);
-  f->envc[1] = (int)(c->a.tex_env_color[1] * 255.0f + 0.5f);
-  f->envc[2] = (int)(c->a.tex_env_color[2] * 255.0f + 0.5f);
-  f->envc[3] = (int)(c->a.tex_env_color[3] * 255.0f + 0.5f);
+  f->unit[k] = u;
+  x->texels = lv->texels;
+  x->tw = lv->width;
+  x->th = lv->height;
+  x->wmask = lv->width - 1;
+  x->hmask = lv->height - 1;
+  x->wlog = lv->wlog;
+  x->repeat_s = t->wrap_s == GL_REPEAT;
+  x->repeat_t = t->wrap_t == GL_REPEAT;
+  x->linear = linear;
+  x->env = ua->env_mode;
+  x->base = lv->base;
+  x->one_d = t->target == GL_TEXTURE_1D;
+  x->envc[0] = (int)(ua->env_color[0] * 255.0f + 0.5f);
+  x->envc[1] = (int)(ua->env_color[1] * 255.0f + 0.5f);
+  x->envc[2] = (int)(ua->env_color[2] * 255.0f + 0.5f);
+  x->envc[3] = (int)(ua->env_color[3] * 255.0f + 0.5f);
 }
 
 /* Fills the fragment state of a primitive from the context. */
@@ -125,7 +138,7 @@ static void setup_frag(frag *f, sgl_context *c) {
             (a->color_mask[1] ? 0 : 0x0000FF00u) | (a->color_mask[2] ? 0 : 0x000000FFu);
   f->masked = f->keep != 0;
   f->write_color = f->keep != 0xFFFFFFFFu && a->draw_buffer != GL_NONE;
-  f->tex = NULL;
+  f->ntex = 0;
   f->stipple = a->enabled[SGL_POLYGON_STIPPLE];
   f->index_mode = c->index_mode;
   f->logic_op = a->logic_op;
@@ -174,8 +187,8 @@ static inline int mul255(int a, int b) {
   return (t + (t >> 8)) >> 8;
 }
 
-/* Gives a texel of the primitive's texture at s, t (texel units, 16.16). */
-static inline uint32_t fetch(const frag *f, int32_t s, int32_t t) {
+/* Gives a texel of the texture of a unit at s, t (texel units, 16.16). */
+static inline uint32_t fetch(const tunit *f, int32_t s, int32_t t) {
   int x, y;
   if (!f->linear) {
     x = s >> 16;
@@ -226,9 +239,13 @@ static inline uint32_t fetch(const frag *f, int32_t s, int32_t t) {
   }
 }
 
+/* Gives a + b, not more than 255. */
+static inline int add255(int a, int b) { return a + b > 255 ? 255 : a + b; }
+
 /* Combines the fragment color rgba (0 to 255) with a texel by the
- * texture environment. */
-static inline void texenv(const frag *f, uint32_t texel, int rgba[4]) {
+ * texture environment of a unit. rgba is the result of the unit before
+ * it, or the primary color for the first unit. */
+static inline void texenv(const tunit *f, uint32_t texel, int rgba[4]) {
   int tr = (int)((texel >> 16) & 0xFF), tg = (int)((texel >> 8) & 0xFF);
   int tb = (int)(texel & 0xFF), ta = (int)(texel >> 24);
   switch (f->env) {
@@ -258,6 +275,17 @@ static inline void texenv(const frag *f, uint32_t texel, int rgba[4]) {
       }
       if (f->base == GL_INTENSITY)
         rgba[3] = mul255(rgba[3], 255 - ta) + mul255(f->envc[3], ta);
+      else if (f->base != GL_RGB && f->base != GL_LUMINANCE)
+        rgba[3] = mul255(rgba[3], ta);
+      break;
+    case GL_ADD:
+      if (f->base != GL_ALPHA) {
+        rgba[0] = add255(rgba[0], tr);
+        rgba[1] = add255(rgba[1], tg);
+        rgba[2] = add255(rgba[2], tb);
+      }
+      if (f->base == GL_INTENSITY)
+        rgba[3] = add255(rgba[3], ta);
       else if (f->base != GL_RGB && f->base != GL_LUMINANCE)
         rgba[3] = mul255(rgba[3], ta);
       break;
@@ -467,12 +495,15 @@ static inline int32_t fplane_at(const fplane *fp, int x, int y) {
 
 /* The values of a triangle that the span function reads. */
 typedef struct tri {
-  plane z, r, g, b, al, fog, s, t, q;
-  fplane fz, fr, fg, fb, fal, ffog, fs, ft; /* the planes in fixed point */
+  plane z, r, g, b, al, fog;
+  plane s[SGL_MAX_TEXTURE_UNITS], t[SGL_MAX_TEXTURE_UNITS], q[SGL_MAX_TEXTURE_UNITS];
+  fplane fz, fr, fg, fb, fal, ffog;  /* the planes in fixed point */
+  fplane fs[SGL_MAX_TEXTURE_UNITS], ft[SGL_MAX_TEXTURE_UNITS];
   GLfloat ox, oy;               /* the position of vertex a */
-  int smooth, textured, persp;
+  int smooth, persp;
   int flat[4];
-  GLfloat sscale, tscale;       /* texels in the coordinates 0 to 1 */
+  /* Texels in the coordinates 0 to 1, for each texture of the frag. */
+  GLfloat sscale[SGL_MAX_TEXTURE_UNITS], tscale[SGL_MAX_TEXTURE_UNITS];
 } tri;
 
 /* Draws the pixels [xs, xe) of row y of a triangle in color index
@@ -517,9 +548,11 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
   int32_t z = fplane_at(&t->fz, xs, y), dz = t->fz.dx;
   int32_t r = 0, g = 0, b = 0, al = 0, dr = 0, dg = 0, db = 0, dal = 0;
   int32_t fg = 0xFF0000, dfg = 0;
-  int32_t s = 0, tt = 0, ds = 0, dt = 0;
-  GLfloat sw = 0, tw = 0, qw = 0;
-  int x, n = xe - xs, left = 0;
+  /* Zero for the compilers that cannot see that ntex limits the use. */
+  int32_t s[SGL_MAX_TEXTURE_UNITS] = {0}, tt[SGL_MAX_TEXTURE_UNITS] = {0};
+  int32_t ds[SGL_MAX_TEXTURE_UNITS] = {0}, dt[SGL_MAX_TEXTURE_UNITS] = {0};
+  GLfloat sw[SGL_MAX_TEXTURE_UNITS], tw[SGL_MAX_TEXTURE_UNITS], qw[SGL_MAX_TEXTURE_UNITS];
+  int x, k, n = xe - xs, left = 0, ntex = f->ntex;
   if (t->smooth) {
     r = fplane_at(&t->fr, xs, y);
     g = fplane_at(&t->fg, xs, y);
@@ -534,18 +567,20 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
     fg = fplane_at(&t->ffog, xs, y);
     dfg = t->ffog.dx;
   }
-  if (t->textured) {
-    if (!t->persp) {
-      s = fplane_at(&t->fs, xs, y);
-      tt = fplane_at(&t->ft, xs, y);
-      ds = t->fs.dx;
-      dt = t->ft.dx;
-    } else {
-      /* Perspective needs a division: the coordinates stay floats. */
-      GLfloat px = (GLfloat)xs + 0.5f - t->ox, py = (GLfloat)y + 0.5f - t->oy;
-      sw = t->s.a0 + t->s.dx * px + t->s.dy * py;
-      tw = t->t.a0 + t->t.dx * px + t->t.dy * py;
-      qw = t->q.a0 + t->q.dx * px + t->q.dy * py;
+  if (ntex && !t->persp) {
+    for (k = 0; k < ntex; k++) {
+      s[k] = fplane_at(&t->fs[k], xs, y);
+      tt[k] = fplane_at(&t->ft[k], xs, y);
+      ds[k] = t->fs[k].dx;
+      dt[k] = t->ft[k].dx;
+    }
+  } else if (ntex) {
+    /* Perspective needs a division: the coordinates stay floats. */
+    GLfloat px = (GLfloat)xs + 0.5f - t->ox, py = (GLfloat)y + 0.5f - t->oy;
+    for (k = 0; k < ntex; k++) {
+      sw[k] = t->s[k].a0 + t->s[k].dx * px + t->s[k].dy * py;
+      tw[k] = t->t[k].a0 + t->t[k].dx * px + t->t[k].dy * py;
+      qw[k] = t->q[k].a0 + t->q[k].dx * px + t->q[k].dy * py;
     }
   }
   for (x = 0; x < n; x++, cp++, zp++, di++) {
@@ -553,20 +588,22 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
     if (t->persp && left == 0) {
       /* The exact coordinates here and PERSP_STEP pixels on; linear
        * between. */
-      int k = n - x < PERSP_STEP ? n - x : PERSP_STEP;
-      GLfloat q0 = qw != 0.0f ? 1.0f / qw : 0.0f;
-      GLfloat s0 = sw * q0 * t->sscale, t0 = tw * q0 * t->tscale, q1, s1, t1;
-      sw += t->s.dx * (GLfloat)k;
-      tw += t->t.dx * (GLfloat)k;
-      qw += t->q.dx * (GLfloat)k;
-      q1 = qw != 0.0f ? 1.0f / qw : 0.0f;
-      s1 = sw * q1 * t->sscale;
-      t1 = tw * q1 * t->tscale;
-      s = fix(s0);
-      tt = fix(t0);
-      ds = fix((s1 - s0) / (GLfloat)k);
-      dt = fix((t1 - t0) / (GLfloat)k);
-      left = k;
+      int m = n - x < PERSP_STEP ? n - x : PERSP_STEP;
+      for (k = 0; k < ntex; k++) {
+        GLfloat q0 = qw[k] != 0.0f ? 1.0f / qw[k] : 0.0f;
+        GLfloat s0 = sw[k] * q0 * t->sscale[k], t0 = tw[k] * q0 * t->tscale[k], q1, s1, t1;
+        sw[k] += t->s[k].dx * (GLfloat)m;
+        tw[k] += t->t[k].dx * (GLfloat)m;
+        qw[k] += t->q[k].dx * (GLfloat)m;
+        q1 = qw[k] != 0.0f ? 1.0f / qw[k] : 0.0f;
+        s1 = sw[k] * q1 * t->sscale[k];
+        t1 = tw[k] * q1 * t->tscale[k];
+        s[k] = fix(s0);
+        tt[k] = fix(t0);
+        ds[k] = fix((s1 - s0) / (GLfloat)m);
+        dt[k] = fix((t1 - t0) / (GLfloat)m);
+      }
+      left = m;
     }
     if (f->stipple && !((c->a.stipple[y & 31] >> ((xs + x) & 31)) & 1)) goto next;
     if (c->stencil && f->stencil) {
@@ -587,7 +624,7 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       rgba[2] = t->flat[2];
       rgba[3] = t->flat[3];
     }
-    if (t->textured) texenv(f, fetch(f, s, tt), rgba);
+    for (k = 0; k < ntex; k++) texenv(&f->tu[k], fetch(&f->tu[k], s[k], tt[k]), rgba);
     if (f->alpha_test && !compare(f->afunc, (uint32_t)rgba[3], (uint32_t)f->aref)) goto next;
     if (f->write_color) finish(f, cp, rgba, col(fg));
   next:
@@ -597,8 +634,10 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
     b += db;
     al += dal;
     fg += dfg;
-    s += ds;
-    tt += dt;
+    for (k = 0; k < ntex; k++) {
+      s[k] += ds[k];
+      tt[k] += dt[k];
+    }
     if (left) left--;
   }
 }
@@ -616,13 +655,10 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
   const sgl_vertex *v[3], *tmp;
   GLfloat xy[4], det, inv_det, za, zb, zd;
   int ystart, yend, y;
-  sgl_texture *tex = NULL;
+  unsigned units;
   setup_frag(&f, c);
   if (f.x0 >= f.x1 || f.y0 >= f.y1) return;
-  if (!c->index_mode && (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D])) {
-    tex = sgl_current_texture(c);
-    if (tex && !tex->level[0].texels) tex = NULL;
-  }
+  units = sgl_texture_units(c);
   xy[0] = b->win[0] - a->win[0];
   xy[1] = b->win[1] - a->win[1];
   xy[2] = d->win[0] - a->win[0];
@@ -674,49 +710,59 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
     const GLfloat k = 255.0f * 65536.0f;
     make_plane(&t.fog, xy, a->fog * k, b->fog * k, d->fog * k, inv_det);
   }
-  t.textured = 0;
   t.persp = 0;
-  if (tex) {
+  if (units) {
     /* The coordinates s / w, t / w and q / w are linear in the window. */
     GLfloat wa = a->win[3], wb = b->win[3], wd = d->win[3];
-    GLfloat rho, dsdx, dsdy, dtdx, dtdy, qc;
-    int persp = c->a.hint_perspective != GL_FASTEST &&
-                (fabsf(wa - wb) > 0.001f * fabsf(wa) || fabsf(wa - wd) > 0.001f * fabsf(wa) ||
-                 a->tex[3] != b->tex[3] || a->tex[3] != d->tex[3]);
-    if (persp) {
-      make_plane(&t.s, xy, a->tex[0] * wa, b->tex[0] * wb, d->tex[0] * wd, inv_det);
-      make_plane(&t.t, xy, a->tex[1] * wa, b->tex[1] * wb, d->tex[1] * wd, inv_det);
-      make_plane(&t.q, xy, a->tex[3] * wa, b->tex[3] * wb, d->tex[3] * wd, inv_det);
-      /* The rate of change at the middle of the triangle, for the level
-       * of the mipmap. */
-      qc = (a->tex[3] * wa + b->tex[3] * wb + d->tex[3] * wd) / 3.0f;
-      if (qc == 0.0f) qc = 1.0f;
-      dsdx = t.s.dx / qc;
-      dsdy = t.s.dy / qc;
-      dtdx = t.t.dx / qc;
-      dtdy = t.t.dy / qc;
-    } else {
-      GLfloat qa = a->tex[3] != 0.0f ? 1.0f / a->tex[3] : 1.0f;
-      make_plane(&t.s, xy, a->tex[0] * qa, b->tex[0] * qa, d->tex[0] * qa, inv_det);
-      make_plane(&t.t, xy, a->tex[1] * qa, b->tex[1] * qa, d->tex[1] * qa, inv_det);
-      dsdx = t.s.dx;
-      dsdy = t.s.dy;
-      dtdx = t.t.dx;
-      dtdy = t.t.dy;
+    sgl_texture *texs[SGL_MAX_TEXTURE_UNITS];
+    int us[SGL_MAX_TEXTURE_UNITS], n = 0, u, k;
+    int persp = fabsf(wa - wb) > 0.001f * fabsf(wa) || fabsf(wa - wd) > 0.001f * fabsf(wa);
+    for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+      sgl_texture *tex;
+      if (!(units & (1u << u))) continue;
+      tex = sgl_unit_texture(c, u);
+      if (!tex || !tex->level[0].texels) continue;
+      if (a->tex[u][3] != b->tex[u][3] || a->tex[u][3] != d->tex[u][3]) persp = 1;
+      texs[n] = tex;
+      us[n++] = u;
     }
-    {
-      GLfloat w = (GLfloat)tex->level[0].width, h = (GLfloat)tex->level[0].height;
-      GLfloat rx = dsdx * dsdx * w * w + dtdx * dtdx * h * h;
-      GLfloat ry = dsdy * dsdy * w * w + dtdy * dtdy * h * h;
-      rho = sqrtf(rx > ry ? rx : ry);
+    t.persp = persp && n > 0 && c->a.hint_perspective != GL_FASTEST;
+    for (k = 0; k < n; k++) {
+      const GLfloat *ta = a->tex[us[k]], *tb = b->tex[us[k]], *td = d->tex[us[k]];
+      sgl_texture *tex = texs[k];
+      GLfloat rho, dsdx, dsdy, dtdx, dtdy, qc;
+      if (t.persp) {
+        make_plane(&t.s[k], xy, ta[0] * wa, tb[0] * wb, td[0] * wd, inv_det);
+        make_plane(&t.t[k], xy, ta[1] * wa, tb[1] * wb, td[1] * wd, inv_det);
+        make_plane(&t.q[k], xy, ta[3] * wa, tb[3] * wb, td[3] * wd, inv_det);
+        /* The rate of change at the middle of the triangle, for the
+         * level of the mipmap. */
+        qc = (ta[3] * wa + tb[3] * wb + td[3] * wd) / 3.0f;
+        if (qc == 0.0f) qc = 1.0f;
+        dsdx = t.s[k].dx / qc;
+        dsdy = t.s[k].dy / qc;
+        dtdx = t.t[k].dx / qc;
+        dtdy = t.t[k].dy / qc;
+      } else {
+        GLfloat qa = ta[3] != 0.0f ? 1.0f / ta[3] : 1.0f;
+        make_plane(&t.s[k], xy, ta[0] * qa, tb[0] * qa, td[0] * qa, inv_det);
+        make_plane(&t.t[k], xy, ta[1] * qa, tb[1] * qa, td[1] * qa, inv_det);
+        dsdx = t.s[k].dx;
+        dsdy = t.s[k].dy;
+        dtdx = t.t[k].dx;
+        dtdy = t.t[k].dy;
+      }
+      {
+        GLfloat w = (GLfloat)tex->level[0].width, h = (GLfloat)tex->level[0].height;
+        GLfloat rx = dsdx * dsdx * w * w + dtdx * dtdx * h * h;
+        GLfloat ry = dsdy * dsdy * w * w + dtdy * dtdy * h * h;
+        rho = sqrtf(rx > ry ? rx : ry);
+      }
+      setup_texture(&f, k, us[k], tex, rho);
+      t.sscale[k] = (GLfloat)f.tu[k].tw * 65536.0f;
+      t.tscale[k] = f.tu[k].one_d ? 0.0f : (GLfloat)f.tu[k].th * 65536.0f;
     }
-    setup_texture(&f, tex, rho);
-    if (c->a.enabled[SGL_TEXTURE_2D] || tex->target == GL_TEXTURE_1D) {
-      t.textured = 1;
-      t.persp = persp;
-      t.sscale = (GLfloat)f.tw * 65536.0f;
-      t.tscale = tex->target == GL_TEXTURE_1D ? 0.0f : (GLfloat)f.th * 65536.0f;
-    }
+    f.ntex = n;
   }
   /* The planes in fixed point, for the spans, from the pixel nearest
    * to vertex a. */
@@ -733,9 +779,12 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
       }
     }
     if (f.fog) make_fplane(&t.ffog, &t.fog, x0, y0, ex, ey, 1.0f);
-    if (t.textured && !t.persp) {
-      make_fplane(&t.fs, &t.s, x0, y0, ex, ey, t.sscale);
-      make_fplane(&t.ft, &t.t, x0, y0, ex, ey, t.tscale);
+    if (!t.persp) {
+      int k;
+      for (k = 0; k < f.ntex; k++) {
+        make_fplane(&t.fs[k], &t.s[k], x0, y0, ex, ey, t.sscale[k]);
+        make_fplane(&t.ft[k], &t.t[k], x0, y0, ex, ey, t.tscale[k]);
+      }
     }
   }
   /* Sort by y, bottom first. */
@@ -802,13 +851,13 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
 
 /* Writes one fragment with fixed attributes: for points, lines and
  * pixel rectangles. tex, when not NULL, has the texture coordinates
- * (s, t, q). */
+ * (s, t, q) of each texture of f. */
 static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const int rgba_in[4],
-                 int fogf, const GLfloat *tex) {
+                 int fogf, const GLfloat (*tex)[3]) {
   sgl_context *c = f->c;
   long row;
   size_t di;
-  int rgba[4];
+  int rgba[4], k;
   if (x < f->x0 || x >= f->x1 || y < f->y0 || y >= f->y1) return;
   row = (long)(c->height - 1 - y);
   di = (size_t)row * (size_t)c->width + (size_t)x;
@@ -827,29 +876,33 @@ static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const in
   rgba[1] = rgba_in[1];
   rgba[2] = rgba_in[2];
   rgba[3] = rgba_in[3];
-  if (t && t->textured && tex) {
-    GLfloat q = tex[2] != 0.0f ? 1.0f / tex[2] : 1.0f;
-    texenv(f, fetch(f, fix(tex[0] * q * t->sscale), fix(tex[1] * q * t->tscale)), rgba);
-  }
+  if (tex)
+    for (k = 0; k < f->ntex; k++) {
+      GLfloat q = tex[k][2] != 0.0f ? 1.0f / tex[k][2] : 1.0f;
+      texenv(&f->tu[k], fetch(&f->tu[k], fix(tex[k][0] * q * t->sscale[k]), fix(tex[k][1] * q * t->tscale[k])),
+             rgba);
+    }
   if (f->alpha_test && !compare(f->afunc, (uint32_t)rgba[3], (uint32_t)f->aref)) return;
   if (f->write_color) finish(f, c->color + row * c->rowpixels + x, rgba, fogf);
 }
 
-/* Fills the texture state of a point or a line from the context. Gives
- * 1 when the primitive is textured. */
-static int setup_simple_texture(frag *f, tri *t) {
+/* Fills the texture state of a point or a line from the context: the
+ * units that are on, at level 0 of their textures. */
+static void setup_simple_texture(frag *f, tri *t) {
   sgl_context *c = f->c;
-  sgl_texture *tex;
-  t->textured = 0;
-  if (c->index_mode) return 0;
-  if (!c->a.enabled[SGL_TEXTURE_2D] && !c->a.enabled[SGL_TEXTURE_1D]) return 0;
-  tex = sgl_current_texture(c);
-  if (!tex || !tex->level[0].texels) return 0;
-  setup_texture(f, tex, 1.0f);
-  t->textured = 1;
-  t->sscale = (GLfloat)f->tw * 65536.0f;
-  t->tscale = tex->target == GL_TEXTURE_1D ? 0.0f : (GLfloat)f->th * 65536.0f;
-  return 1;
+  unsigned units = sgl_texture_units(c);
+  int u;
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+    sgl_texture *tex;
+    int k = f->ntex;
+    if (!(units & (1u << u))) continue;
+    tex = sgl_unit_texture(c, u);
+    if (!tex || !tex->level[0].texels) continue;
+    setup_texture(f, k, u, tex, 1.0f);
+    t->sscale[k] = (GLfloat)f->tu[k].tw * 65536.0f;
+    t->tscale[k] = f->tu[k].one_d ? 0.0f : (GLfloat)f->tu[k].th * 65536.0f;
+    f->ntex = k + 1;
+  }
 }
 
 /* Gives a color 0 to 1 as an integer 0 to 255. */
@@ -877,7 +930,7 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
     GLfloat x = a->win[0] + dx * u, y = a->win[1] + dy * u;
     GLfloat z = a->win[2] + (b->win[2] - a->win[2]) * u;
     int rgba[4], fogf;
-    GLfloat tc[3];
+    GLfloat tc[SGL_MAX_TEXTURE_UNITS][3];
     if (stipple) {
       int bit = (i / c->a.line_repeat) & 15;
       if (!((c->a.line_pattern >> bit) & 1)) continue;
@@ -898,9 +951,12 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
       rgba[3] = byte(ca[3] + (cb[3] - ca[3]) * u);
     }
     fogf = byte(a->fog + (b->fog - a->fog) * u);
-    tc[0] = a->tex[0] + (b->tex[0] - a->tex[0]) * u;
-    tc[1] = a->tex[1] + (b->tex[1] - a->tex[1]) * u;
-    tc[2] = a->tex[3] + (b->tex[3] - a->tex[3]) * u;
+    for (k = 0; k < f.ntex; k++) {
+      const GLfloat *ta = a->tex[f.unit[k]], *tb = b->tex[f.unit[k]];
+      tc[k][0] = ta[0] + (tb[0] - ta[0]) * u;
+      tc[k][1] = ta[1] + (tb[1] - ta[1]) * u;
+      tc[k][2] = ta[3] + (tb[3] - ta[3]) * u;
+    }
     for (k = 0; k < w; k++) {
       int o = k - (w - 1) / 2;
       int px = (int)floorf(x) + (xmajor ? 0 : o), py = (int)floorf(y) + (xmajor ? o : 0);
@@ -913,8 +969,8 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
 void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat offset) {
   frag f;
   tri t;
-  int size = (int)(c->a.point_size + 0.5f), x0, y0, x, y, rgba[4];
-  GLfloat tc[3];
+  int size = (int)(c->a.point_size + 0.5f), x0, y0, x, y, k, rgba[4];
+  GLfloat tc[SGL_MAX_TEXTURE_UNITS][3];
   uint32_t z = (uint32_t)fix(sgl_clamp01(a->win[2]) * (GLfloat)SGL_Z_MAX);
   (void)offset;
   setup_frag(&f, c);
@@ -928,30 +984,28 @@ void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat off
   rgba[2] = byte(a->color[side][2]);
   rgba[3] = byte(a->color[side][3]);
   if (c->index_mode) rgba[0] = (int)(a->color[side][0] + 0.5f);
-  tc[0] = a->tex[0];
-  tc[1] = a->tex[1];
-  tc[2] = a->tex[3];
+  for (k = 0; k < f.ntex; k++) {
+    tc[k][0] = a->tex[f.unit[k]][0];
+    tc[k][1] = a->tex[f.unit[k]][1];
+    tc[k][2] = a->tex[f.unit[k]][3];
+  }
   for (y = y0; y < y0 + size; y++)
     for (x = x0; x < x0 + size; x++) plot(&f, &t, x, y, z, rgba, byte(a->fog), tc);
 }
 
 /* Writes one fragment of a pixel rectangle (glDrawPixels, glBitmap) at
- * window position x, y with window z z (0 to SGL_Z_MAX), color rgba
- * (0 to 1) and texture coordinates tex (or NULL). */
-void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat rgba[4],
-                        const GLfloat *tex) {
+ * window position x, y with window z z (0 to SGL_Z_MAX) and color rgba
+ * (0 to 1). */
+void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat rgba[4]) {
   frag f;
-  tri t;
   int v[4];
   setup_frag(&f, c);
-  t.textured = 0;
-  if (tex) setup_simple_texture(&f, &t);
   v[0] = byte(rgba[0]);
   v[1] = byte(rgba[1]);
   v[2] = byte(rgba[2]);
   v[3] = byte(rgba[3]);
   if (c->index_mode) v[0] = (int)(rgba[0] + 0.5f);
-  plot(&f, &t, x, y, z, v, 255, tex);
+  plot(&f, NULL, x, y, z, v, 255, NULL);
 }
 
 /* Narrows [x0, x1) x [y0, y1) to the pixels that can change: the buffer

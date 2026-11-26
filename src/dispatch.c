@@ -784,6 +784,144 @@ static void APIENTRY cv_Indexub(GLubyte c) {
 static void APIENTRY cv_Indexubv(const GLubyte *c) {
   SGL_DISPATCH->Indexf((GLfloat)c[0]);
 }
+/* Converts the arguments of glMultiTexCoord1s for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1s(GLenum target, GLshort s) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1sv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1i for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1i(GLenum target, GLint s) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1iv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1f for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1f(GLenum target, GLfloat s) {
+  SGL_DISPATCH->MultiTexCoord4f(target, s, 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1fv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, v[0], 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1d for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1d(GLenum target, GLdouble s) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord1dv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord1dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], 0.0f, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2s for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2s(GLenum target, GLshort s, GLshort t) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2sv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2i for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2i(GLenum target, GLint s, GLint t) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2iv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2f for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2f(GLenum target, GLfloat s, GLfloat t) {
+  SGL_DISPATCH->MultiTexCoord4f(target, s, t, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2fv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, v[0], v[1], 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2d for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2d(GLenum target, GLdouble s, GLdouble t) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord2dv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord2dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], 0.0f, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3s for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3s(GLenum target, GLshort s, GLshort t, GLshort r) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3sv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3i for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3i(GLenum target, GLint s, GLint t, GLint r) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3iv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3f for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3f(GLenum target, GLfloat s, GLfloat t, GLfloat r) {
+  SGL_DISPATCH->MultiTexCoord4f(target, s, t, r, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3fv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, v[0], v[1], v[2], 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3d for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3d(GLenum target, GLdouble s, GLdouble t, GLdouble r) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord3dv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord3dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], 1.0f);
+}
+/* Converts the arguments of glMultiTexCoord4s for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4s(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, (GLfloat)q);
+}
+/* Converts the arguments of glMultiTexCoord4sv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], (GLfloat)v[3]);
+}
+/* Converts the arguments of glMultiTexCoord4i for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4i(GLenum target, GLint s, GLint t, GLint r, GLint q) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, (GLfloat)q);
+}
+/* Converts the arguments of glMultiTexCoord4iv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], (GLfloat)v[3]);
+}
+/* Converts the arguments of glMultiTexCoord4fv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, v[0], v[1], v[2], v[3]);
+}
+/* Converts the arguments of glMultiTexCoord4d for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4d(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)s, (GLfloat)t, (GLfloat)r, (GLfloat)q);
+}
+/* Converts the arguments of glMultiTexCoord4dv for the canonical function. */
+static void APIENTRY cv_MultiTexCoord4dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4f(target, (GLfloat)v[0], (GLfloat)v[1], (GLfloat)v[2], (GLfloat)v[3]);
+}
+/* Converts the arguments of glLoadTransposeMatrixd for the canonical function. */
+static void APIENTRY cv_LoadTransposeMatrixd(const GLdouble *m) {
+  GLfloat f[16];
+  int i;
+  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];
+  SGL_DISPATCH->LoadTransposeMatrixf(f);
+}
+/* Converts the arguments of glMultTransposeMatrixd for the canonical function. */
+static void APIENTRY cv_MultTransposeMatrixd(const GLdouble *m) {
+  GLfloat f[16];
+  int i;
+  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];
+  SGL_DISPATCH->MultTransposeMatrixf(f);
+}
 
 /* The functions of the table when no context is current: each does
  * nothing and gives zero. */
@@ -2691,6 +2829,214 @@ static void APIENTRY nop_VertexPointerEXT(GLint size, GLenum type, GLsizei strid
   (void)count;
   (void)pointer;
 }
+/* Does nothing: no context is current (glActiveTexture). */
+static void APIENTRY nop_ActiveTexture(GLenum texture) {
+  (void)texture;
+}
+/* Does nothing: no context is current (glClientActiveTexture). */
+static void APIENTRY nop_ClientActiveTexture(GLenum texture) {
+  (void)texture;
+}
+/* Does nothing: no context is current (glMultiTexCoord1s). */
+static void APIENTRY nop_MultiTexCoord1s(GLenum target, GLshort s) {
+  (void)target;
+  (void)s;
+}
+/* Does nothing: no context is current (glMultiTexCoord1sv). */
+static void APIENTRY nop_MultiTexCoord1sv(GLenum target, const GLshort *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord1i). */
+static void APIENTRY nop_MultiTexCoord1i(GLenum target, GLint s) {
+  (void)target;
+  (void)s;
+}
+/* Does nothing: no context is current (glMultiTexCoord1iv). */
+static void APIENTRY nop_MultiTexCoord1iv(GLenum target, const GLint *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord1f). */
+static void APIENTRY nop_MultiTexCoord1f(GLenum target, GLfloat s) {
+  (void)target;
+  (void)s;
+}
+/* Does nothing: no context is current (glMultiTexCoord1fv). */
+static void APIENTRY nop_MultiTexCoord1fv(GLenum target, const GLfloat *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord1d). */
+static void APIENTRY nop_MultiTexCoord1d(GLenum target, GLdouble s) {
+  (void)target;
+  (void)s;
+}
+/* Does nothing: no context is current (glMultiTexCoord1dv). */
+static void APIENTRY nop_MultiTexCoord1dv(GLenum target, const GLdouble *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord2s). */
+static void APIENTRY nop_MultiTexCoord2s(GLenum target, GLshort s, GLshort t) {
+  (void)target;
+  (void)s;
+  (void)t;
+}
+/* Does nothing: no context is current (glMultiTexCoord2sv). */
+static void APIENTRY nop_MultiTexCoord2sv(GLenum target, const GLshort *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord2i). */
+static void APIENTRY nop_MultiTexCoord2i(GLenum target, GLint s, GLint t) {
+  (void)target;
+  (void)s;
+  (void)t;
+}
+/* Does nothing: no context is current (glMultiTexCoord2iv). */
+static void APIENTRY nop_MultiTexCoord2iv(GLenum target, const GLint *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord2f). */
+static void APIENTRY nop_MultiTexCoord2f(GLenum target, GLfloat s, GLfloat t) {
+  (void)target;
+  (void)s;
+  (void)t;
+}
+/* Does nothing: no context is current (glMultiTexCoord2fv). */
+static void APIENTRY nop_MultiTexCoord2fv(GLenum target, const GLfloat *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord2d). */
+static void APIENTRY nop_MultiTexCoord2d(GLenum target, GLdouble s, GLdouble t) {
+  (void)target;
+  (void)s;
+  (void)t;
+}
+/* Does nothing: no context is current (glMultiTexCoord2dv). */
+static void APIENTRY nop_MultiTexCoord2dv(GLenum target, const GLdouble *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord3s). */
+static void APIENTRY nop_MultiTexCoord3s(GLenum target, GLshort s, GLshort t, GLshort r) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+}
+/* Does nothing: no context is current (glMultiTexCoord3sv). */
+static void APIENTRY nop_MultiTexCoord3sv(GLenum target, const GLshort *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord3i). */
+static void APIENTRY nop_MultiTexCoord3i(GLenum target, GLint s, GLint t, GLint r) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+}
+/* Does nothing: no context is current (glMultiTexCoord3iv). */
+static void APIENTRY nop_MultiTexCoord3iv(GLenum target, const GLint *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord3f). */
+static void APIENTRY nop_MultiTexCoord3f(GLenum target, GLfloat s, GLfloat t, GLfloat r) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+}
+/* Does nothing: no context is current (glMultiTexCoord3fv). */
+static void APIENTRY nop_MultiTexCoord3fv(GLenum target, const GLfloat *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord3d). */
+static void APIENTRY nop_MultiTexCoord3d(GLenum target, GLdouble s, GLdouble t, GLdouble r) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+}
+/* Does nothing: no context is current (glMultiTexCoord3dv). */
+static void APIENTRY nop_MultiTexCoord3dv(GLenum target, const GLdouble *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord4s). */
+static void APIENTRY nop_MultiTexCoord4s(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+  (void)q;
+}
+/* Does nothing: no context is current (glMultiTexCoord4sv). */
+static void APIENTRY nop_MultiTexCoord4sv(GLenum target, const GLshort *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord4i). */
+static void APIENTRY nop_MultiTexCoord4i(GLenum target, GLint s, GLint t, GLint r, GLint q) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+  (void)q;
+}
+/* Does nothing: no context is current (glMultiTexCoord4iv). */
+static void APIENTRY nop_MultiTexCoord4iv(GLenum target, const GLint *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord4f). */
+static void APIENTRY nop_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+  (void)q;
+}
+/* Does nothing: no context is current (glMultiTexCoord4fv). */
+static void APIENTRY nop_MultiTexCoord4fv(GLenum target, const GLfloat *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glMultiTexCoord4d). */
+static void APIENTRY nop_MultiTexCoord4d(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q) {
+  (void)target;
+  (void)s;
+  (void)t;
+  (void)r;
+  (void)q;
+}
+/* Does nothing: no context is current (glMultiTexCoord4dv). */
+static void APIENTRY nop_MultiTexCoord4dv(GLenum target, const GLdouble *v) {
+  (void)target;
+  (void)v;
+}
+/* Does nothing: no context is current (glLoadTransposeMatrixf). */
+static void APIENTRY nop_LoadTransposeMatrixf(const GLfloat *m) {
+  (void)m;
+}
+/* Does nothing: no context is current (glLoadTransposeMatrixd). */
+static void APIENTRY nop_LoadTransposeMatrixd(const GLdouble *m) {
+  (void)m;
+}
+/* Does nothing: no context is current (glMultTransposeMatrixf). */
+static void APIENTRY nop_MultTransposeMatrixf(const GLfloat *m) {
+  (void)m;
+}
+/* Does nothing: no context is current (glMultTransposeMatrixd). */
+static void APIENTRY nop_MultTransposeMatrixd(const GLdouble *m) {
+  (void)m;
+}
 
 /* Records glCullFace in the display list that is compiled. */
 static void APIENTRY save_CullFace(GLenum mode) {
@@ -3343,6 +3689,34 @@ static void APIENTRY save_PrioritizeTextures(GLsizei n, const GLuint *textures, 
   if (a) a[2].p = sgl_list_copy(priorities, (size_t)(n) * sizeof(GLfloat));
   if (sgl_list_executes()) sgl_PrioritizeTextures(n, textures, priorities);
 }
+/* Records glActiveTexture in the display list that is compiled. */
+static void APIENTRY save_ActiveTexture(GLenum texture) {
+  sgl_cell *a = sgl_list_add(SGL_OP_ActiveTexture, 1);
+  if (a) a[0].u = texture;
+  if (sgl_list_executes()) sgl_ActiveTexture(texture);
+}
+/* Records glMultiTexCoord4f in the display list that is compiled. */
+static void APIENTRY save_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+  sgl_cell *a = sgl_list_add(SGL_OP_MultiTexCoord4f, 5);
+  if (a) a[0].u = target;
+  if (a) a[1].f = s;
+  if (a) a[2].f = t;
+  if (a) a[3].f = r;
+  if (a) a[4].f = q;
+  if (sgl_list_executes()) sgl_MultiTexCoord4f(target, s, t, r, q);
+}
+/* Records glLoadTransposeMatrixf in the display list that is compiled. */
+static void APIENTRY save_LoadTransposeMatrixf(const GLfloat *m) {
+  sgl_cell *a = sgl_list_add(SGL_OP_LoadTransposeMatrixf, 1);
+  if (a) a[0].p = sgl_list_copy(m, (size_t)(16) * sizeof(GLfloat));
+  if (sgl_list_executes()) sgl_LoadTransposeMatrixf(m);
+}
+/* Records glMultTransposeMatrixf in the display list that is compiled. */
+static void APIENTRY save_MultTransposeMatrixf(const GLfloat *m) {
+  sgl_cell *a = sgl_list_add(SGL_OP_MultTransposeMatrixf, 1);
+  if (a) a[0].p = sgl_list_copy(m, (size_t)(16) * sizeof(GLfloat));
+  if (sgl_list_executes()) sgl_MultTransposeMatrixf(m);
+}
 
 /* The table when no context is current. */
 const struct sgl_dispatch sgl_nop_table = {
@@ -3697,6 +4071,44 @@ const struct sgl_dispatch sgl_nop_table = {
   nop_NormalPointerEXT,
   nop_TexCoordPointerEXT,
   nop_VertexPointerEXT,
+  nop_ActiveTexture,
+  nop_ClientActiveTexture,
+  nop_MultiTexCoord1s,
+  nop_MultiTexCoord1sv,
+  nop_MultiTexCoord1i,
+  nop_MultiTexCoord1iv,
+  nop_MultiTexCoord1f,
+  nop_MultiTexCoord1fv,
+  nop_MultiTexCoord1d,
+  nop_MultiTexCoord1dv,
+  nop_MultiTexCoord2s,
+  nop_MultiTexCoord2sv,
+  nop_MultiTexCoord2i,
+  nop_MultiTexCoord2iv,
+  nop_MultiTexCoord2f,
+  nop_MultiTexCoord2fv,
+  nop_MultiTexCoord2d,
+  nop_MultiTexCoord2dv,
+  nop_MultiTexCoord3s,
+  nop_MultiTexCoord3sv,
+  nop_MultiTexCoord3i,
+  nop_MultiTexCoord3iv,
+  nop_MultiTexCoord3f,
+  nop_MultiTexCoord3fv,
+  nop_MultiTexCoord3d,
+  nop_MultiTexCoord3dv,
+  nop_MultiTexCoord4s,
+  nop_MultiTexCoord4sv,
+  nop_MultiTexCoord4i,
+  nop_MultiTexCoord4iv,
+  nop_MultiTexCoord4f,
+  nop_MultiTexCoord4fv,
+  nop_MultiTexCoord4d,
+  nop_MultiTexCoord4dv,
+  nop_LoadTransposeMatrixf,
+  nop_LoadTransposeMatrixd,
+  nop_MultTransposeMatrixf,
+  nop_MultTransposeMatrixd,
 };
 
 /* The table for execution. */
@@ -4052,6 +4464,44 @@ const struct sgl_dispatch sgl_exec_table = {
   sgl_NormalPointerEXT,
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
+  sgl_ActiveTexture,
+  sgl_ClientActiveTexture,
+  cv_MultiTexCoord1s,
+  cv_MultiTexCoord1sv,
+  cv_MultiTexCoord1i,
+  cv_MultiTexCoord1iv,
+  cv_MultiTexCoord1f,
+  cv_MultiTexCoord1fv,
+  cv_MultiTexCoord1d,
+  cv_MultiTexCoord1dv,
+  cv_MultiTexCoord2s,
+  cv_MultiTexCoord2sv,
+  cv_MultiTexCoord2i,
+  cv_MultiTexCoord2iv,
+  cv_MultiTexCoord2f,
+  cv_MultiTexCoord2fv,
+  cv_MultiTexCoord2d,
+  cv_MultiTexCoord2dv,
+  cv_MultiTexCoord3s,
+  cv_MultiTexCoord3sv,
+  cv_MultiTexCoord3i,
+  cv_MultiTexCoord3iv,
+  cv_MultiTexCoord3f,
+  cv_MultiTexCoord3fv,
+  cv_MultiTexCoord3d,
+  cv_MultiTexCoord3dv,
+  cv_MultiTexCoord4s,
+  cv_MultiTexCoord4sv,
+  cv_MultiTexCoord4i,
+  cv_MultiTexCoord4iv,
+  sgl_MultiTexCoord4f,
+  cv_MultiTexCoord4fv,
+  cv_MultiTexCoord4d,
+  cv_MultiTexCoord4dv,
+  sgl_LoadTransposeMatrixf,
+  cv_LoadTransposeMatrixd,
+  sgl_MultTransposeMatrixf,
+  cv_MultTransposeMatrixd,
 };
 
 /* The table for the compilation of a display list. */
@@ -4407,6 +4857,44 @@ const struct sgl_dispatch sgl_save_table = {
   sgl_NormalPointerEXT,
   sgl_TexCoordPointerEXT,
   sgl_VertexPointerEXT,
+  save_ActiveTexture,
+  sgl_ClientActiveTexture,
+  cv_MultiTexCoord1s,
+  cv_MultiTexCoord1sv,
+  cv_MultiTexCoord1i,
+  cv_MultiTexCoord1iv,
+  cv_MultiTexCoord1f,
+  cv_MultiTexCoord1fv,
+  cv_MultiTexCoord1d,
+  cv_MultiTexCoord1dv,
+  cv_MultiTexCoord2s,
+  cv_MultiTexCoord2sv,
+  cv_MultiTexCoord2i,
+  cv_MultiTexCoord2iv,
+  cv_MultiTexCoord2f,
+  cv_MultiTexCoord2fv,
+  cv_MultiTexCoord2d,
+  cv_MultiTexCoord2dv,
+  cv_MultiTexCoord3s,
+  cv_MultiTexCoord3sv,
+  cv_MultiTexCoord3i,
+  cv_MultiTexCoord3iv,
+  cv_MultiTexCoord3f,
+  cv_MultiTexCoord3fv,
+  cv_MultiTexCoord3d,
+  cv_MultiTexCoord3dv,
+  cv_MultiTexCoord4s,
+  cv_MultiTexCoord4sv,
+  cv_MultiTexCoord4i,
+  cv_MultiTexCoord4iv,
+  save_MultiTexCoord4f,
+  cv_MultiTexCoord4fv,
+  cv_MultiTexCoord4d,
+  cv_MultiTexCoord4dv,
+  save_LoadTransposeMatrixf,
+  cv_LoadTransposeMatrixd,
+  save_MultTransposeMatrixf,
+  cv_MultTransposeMatrixd,
 };
 
 /* Plays the generated command with code op and arguments a back. */
@@ -4678,6 +5166,18 @@ void sgl_play_generated(int op, const sgl_cell *a) {
       break;
     case SGL_OP_PrioritizeTextures:
       sgl_PrioritizeTextures((GLsizei)a[0].i, (const GLuint *)a[1].p, (const GLfloat *)a[2].p);
+      break;
+    case SGL_OP_ActiveTexture:
+      sgl_ActiveTexture((GLenum)a[0].u);
+      break;
+    case SGL_OP_MultiTexCoord4f:
+      sgl_MultiTexCoord4f((GLenum)a[0].u, (GLfloat)a[1].f, (GLfloat)a[2].f, (GLfloat)a[3].f, (GLfloat)a[4].f);
+      break;
+    case SGL_OP_LoadTransposeMatrixf:
+      sgl_LoadTransposeMatrixf((const GLfloat *)a[0].p);
+      break;
+    case SGL_OP_MultTransposeMatrixf:
+      sgl_MultTransposeMatrixf((const GLfloat *)a[0].p);
       break;
     default:
       (void)a;
@@ -6109,6 +6609,386 @@ void APIENTRY glVertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsize
 void APIENTRY glVertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer) {
   SGL_DISPATCH->VertexPointerEXT(size, type, stride, count, pointer);
 }
+void APIENTRY glActiveTexture(GLenum texture);
+/* glActiveTexture: an extension, which wglGetProcAddress gives. */
+void APIENTRY glActiveTexture(GLenum texture) {
+  SGL_DISPATCH->ActiveTexture(texture);
+}
+void APIENTRY glClientActiveTexture(GLenum texture);
+/* glClientActiveTexture: an extension, which wglGetProcAddress gives. */
+void APIENTRY glClientActiveTexture(GLenum texture) {
+  SGL_DISPATCH->ClientActiveTexture(texture);
+}
+void APIENTRY glMultiTexCoord1s(GLenum target, GLshort s);
+/* glMultiTexCoord1s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1s(GLenum target, GLshort s) {
+  SGL_DISPATCH->MultiTexCoord1s(target, s);
+}
+void APIENTRY glMultiTexCoord1sv(GLenum target, const GLshort *v);
+/* glMultiTexCoord1sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord1sv(target, v);
+}
+void APIENTRY glMultiTexCoord1i(GLenum target, GLint s);
+/* glMultiTexCoord1i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1i(GLenum target, GLint s) {
+  SGL_DISPATCH->MultiTexCoord1i(target, s);
+}
+void APIENTRY glMultiTexCoord1iv(GLenum target, const GLint *v);
+/* glMultiTexCoord1iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord1iv(target, v);
+}
+void APIENTRY glMultiTexCoord1f(GLenum target, GLfloat s);
+/* glMultiTexCoord1f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1f(GLenum target, GLfloat s) {
+  SGL_DISPATCH->MultiTexCoord1f(target, s);
+}
+void APIENTRY glMultiTexCoord1fv(GLenum target, const GLfloat *v);
+/* glMultiTexCoord1fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord1fv(target, v);
+}
+void APIENTRY glMultiTexCoord1d(GLenum target, GLdouble s);
+/* glMultiTexCoord1d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1d(GLenum target, GLdouble s) {
+  SGL_DISPATCH->MultiTexCoord1d(target, s);
+}
+void APIENTRY glMultiTexCoord1dv(GLenum target, const GLdouble *v);
+/* glMultiTexCoord1dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord1dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord1dv(target, v);
+}
+void APIENTRY glMultiTexCoord2s(GLenum target, GLshort s, GLshort t);
+/* glMultiTexCoord2s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2s(GLenum target, GLshort s, GLshort t) {
+  SGL_DISPATCH->MultiTexCoord2s(target, s, t);
+}
+void APIENTRY glMultiTexCoord2sv(GLenum target, const GLshort *v);
+/* glMultiTexCoord2sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord2sv(target, v);
+}
+void APIENTRY glMultiTexCoord2i(GLenum target, GLint s, GLint t);
+/* glMultiTexCoord2i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2i(GLenum target, GLint s, GLint t) {
+  SGL_DISPATCH->MultiTexCoord2i(target, s, t);
+}
+void APIENTRY glMultiTexCoord2iv(GLenum target, const GLint *v);
+/* glMultiTexCoord2iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord2iv(target, v);
+}
+void APIENTRY glMultiTexCoord2f(GLenum target, GLfloat s, GLfloat t);
+/* glMultiTexCoord2f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2f(GLenum target, GLfloat s, GLfloat t) {
+  SGL_DISPATCH->MultiTexCoord2f(target, s, t);
+}
+void APIENTRY glMultiTexCoord2fv(GLenum target, const GLfloat *v);
+/* glMultiTexCoord2fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord2fv(target, v);
+}
+void APIENTRY glMultiTexCoord2d(GLenum target, GLdouble s, GLdouble t);
+/* glMultiTexCoord2d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2d(GLenum target, GLdouble s, GLdouble t) {
+  SGL_DISPATCH->MultiTexCoord2d(target, s, t);
+}
+void APIENTRY glMultiTexCoord2dv(GLenum target, const GLdouble *v);
+/* glMultiTexCoord2dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord2dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord2dv(target, v);
+}
+void APIENTRY glMultiTexCoord3s(GLenum target, GLshort s, GLshort t, GLshort r);
+/* glMultiTexCoord3s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3s(GLenum target, GLshort s, GLshort t, GLshort r) {
+  SGL_DISPATCH->MultiTexCoord3s(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3sv(GLenum target, const GLshort *v);
+/* glMultiTexCoord3sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord3sv(target, v);
+}
+void APIENTRY glMultiTexCoord3i(GLenum target, GLint s, GLint t, GLint r);
+/* glMultiTexCoord3i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3i(GLenum target, GLint s, GLint t, GLint r) {
+  SGL_DISPATCH->MultiTexCoord3i(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3iv(GLenum target, const GLint *v);
+/* glMultiTexCoord3iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord3iv(target, v);
+}
+void APIENTRY glMultiTexCoord3f(GLenum target, GLfloat s, GLfloat t, GLfloat r);
+/* glMultiTexCoord3f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3f(GLenum target, GLfloat s, GLfloat t, GLfloat r) {
+  SGL_DISPATCH->MultiTexCoord3f(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3fv(GLenum target, const GLfloat *v);
+/* glMultiTexCoord3fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord3fv(target, v);
+}
+void APIENTRY glMultiTexCoord3d(GLenum target, GLdouble s, GLdouble t, GLdouble r);
+/* glMultiTexCoord3d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3d(GLenum target, GLdouble s, GLdouble t, GLdouble r) {
+  SGL_DISPATCH->MultiTexCoord3d(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3dv(GLenum target, const GLdouble *v);
+/* glMultiTexCoord3dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord3dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord3dv(target, v);
+}
+void APIENTRY glMultiTexCoord4s(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q);
+/* glMultiTexCoord4s: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4s(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q) {
+  SGL_DISPATCH->MultiTexCoord4s(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4sv(GLenum target, const GLshort *v);
+/* glMultiTexCoord4sv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4sv(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4sv(target, v);
+}
+void APIENTRY glMultiTexCoord4i(GLenum target, GLint s, GLint t, GLint r, GLint q);
+/* glMultiTexCoord4i: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4i(GLenum target, GLint s, GLint t, GLint r, GLint q) {
+  SGL_DISPATCH->MultiTexCoord4i(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4iv(GLenum target, const GLint *v);
+/* glMultiTexCoord4iv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4iv(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4iv(target, v);
+}
+void APIENTRY glMultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+/* glMultiTexCoord4f: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+  SGL_DISPATCH->MultiTexCoord4f(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4fv(GLenum target, const GLfloat *v);
+/* glMultiTexCoord4fv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4fv(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4fv(target, v);
+}
+void APIENTRY glMultiTexCoord4d(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q);
+/* glMultiTexCoord4d: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4d(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q) {
+  SGL_DISPATCH->MultiTexCoord4d(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4dv(GLenum target, const GLdouble *v);
+/* glMultiTexCoord4dv: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultiTexCoord4dv(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4dv(target, v);
+}
+void APIENTRY glLoadTransposeMatrixf(const GLfloat *m);
+/* glLoadTransposeMatrixf: an extension, which wglGetProcAddress gives. */
+void APIENTRY glLoadTransposeMatrixf(const GLfloat *m) {
+  SGL_DISPATCH->LoadTransposeMatrixf(m);
+}
+void APIENTRY glLoadTransposeMatrixd(const GLdouble *m);
+/* glLoadTransposeMatrixd: an extension, which wglGetProcAddress gives. */
+void APIENTRY glLoadTransposeMatrixd(const GLdouble *m) {
+  SGL_DISPATCH->LoadTransposeMatrixd(m);
+}
+void APIENTRY glMultTransposeMatrixf(const GLfloat *m);
+/* glMultTransposeMatrixf: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultTransposeMatrixf(const GLfloat *m) {
+  SGL_DISPATCH->MultTransposeMatrixf(m);
+}
+void APIENTRY glMultTransposeMatrixd(const GLdouble *m);
+/* glMultTransposeMatrixd: an extension, which wglGetProcAddress gives. */
+void APIENTRY glMultTransposeMatrixd(const GLdouble *m) {
+  SGL_DISPATCH->MultTransposeMatrixd(m);
+}
+void APIENTRY glActiveTextureARB(GLenum texture);
+/* glActiveTextureARB: the name of glActiveTexture in an extension. */
+void APIENTRY glActiveTextureARB(GLenum texture) {
+  SGL_DISPATCH->ActiveTexture(texture);
+}
+void APIENTRY glClientActiveTextureARB(GLenum texture);
+/* glClientActiveTextureARB: the name of glClientActiveTexture in an extension. */
+void APIENTRY glClientActiveTextureARB(GLenum texture) {
+  SGL_DISPATCH->ClientActiveTexture(texture);
+}
+void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m);
+/* glLoadTransposeMatrixdARB: the name of glLoadTransposeMatrixd in an extension. */
+void APIENTRY glLoadTransposeMatrixdARB(const GLdouble *m) {
+  SGL_DISPATCH->LoadTransposeMatrixd(m);
+}
+void APIENTRY glLoadTransposeMatrixfARB(const GLfloat *m);
+/* glLoadTransposeMatrixfARB: the name of glLoadTransposeMatrixf in an extension. */
+void APIENTRY glLoadTransposeMatrixfARB(const GLfloat *m) {
+  SGL_DISPATCH->LoadTransposeMatrixf(m);
+}
+void APIENTRY glMultTransposeMatrixdARB(const GLdouble *m);
+/* glMultTransposeMatrixdARB: the name of glMultTransposeMatrixd in an extension. */
+void APIENTRY glMultTransposeMatrixdARB(const GLdouble *m) {
+  SGL_DISPATCH->MultTransposeMatrixd(m);
+}
+void APIENTRY glMultTransposeMatrixfARB(const GLfloat *m);
+/* glMultTransposeMatrixfARB: the name of glMultTransposeMatrixf in an extension. */
+void APIENTRY glMultTransposeMatrixfARB(const GLfloat *m) {
+  SGL_DISPATCH->MultTransposeMatrixf(m);
+}
+void APIENTRY glMultiTexCoord1dARB(GLenum target, GLdouble s);
+/* glMultiTexCoord1dARB: the name of glMultiTexCoord1d in an extension. */
+void APIENTRY glMultiTexCoord1dARB(GLenum target, GLdouble s) {
+  SGL_DISPATCH->MultiTexCoord1d(target, s);
+}
+void APIENTRY glMultiTexCoord1dvARB(GLenum target, const GLdouble *v);
+/* glMultiTexCoord1dvARB: the name of glMultiTexCoord1dv in an extension. */
+void APIENTRY glMultiTexCoord1dvARB(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord1dv(target, v);
+}
+void APIENTRY glMultiTexCoord1fARB(GLenum target, GLfloat s);
+/* glMultiTexCoord1fARB: the name of glMultiTexCoord1f in an extension. */
+void APIENTRY glMultiTexCoord1fARB(GLenum target, GLfloat s) {
+  SGL_DISPATCH->MultiTexCoord1f(target, s);
+}
+void APIENTRY glMultiTexCoord1fvARB(GLenum target, const GLfloat *v);
+/* glMultiTexCoord1fvARB: the name of glMultiTexCoord1fv in an extension. */
+void APIENTRY glMultiTexCoord1fvARB(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord1fv(target, v);
+}
+void APIENTRY glMultiTexCoord1iARB(GLenum target, GLint s);
+/* glMultiTexCoord1iARB: the name of glMultiTexCoord1i in an extension. */
+void APIENTRY glMultiTexCoord1iARB(GLenum target, GLint s) {
+  SGL_DISPATCH->MultiTexCoord1i(target, s);
+}
+void APIENTRY glMultiTexCoord1ivARB(GLenum target, const GLint *v);
+/* glMultiTexCoord1ivARB: the name of glMultiTexCoord1iv in an extension. */
+void APIENTRY glMultiTexCoord1ivARB(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord1iv(target, v);
+}
+void APIENTRY glMultiTexCoord1sARB(GLenum target, GLshort s);
+/* glMultiTexCoord1sARB: the name of glMultiTexCoord1s in an extension. */
+void APIENTRY glMultiTexCoord1sARB(GLenum target, GLshort s) {
+  SGL_DISPATCH->MultiTexCoord1s(target, s);
+}
+void APIENTRY glMultiTexCoord1svARB(GLenum target, const GLshort *v);
+/* glMultiTexCoord1svARB: the name of glMultiTexCoord1sv in an extension. */
+void APIENTRY glMultiTexCoord1svARB(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord1sv(target, v);
+}
+void APIENTRY glMultiTexCoord2dARB(GLenum target, GLdouble s, GLdouble t);
+/* glMultiTexCoord2dARB: the name of glMultiTexCoord2d in an extension. */
+void APIENTRY glMultiTexCoord2dARB(GLenum target, GLdouble s, GLdouble t) {
+  SGL_DISPATCH->MultiTexCoord2d(target, s, t);
+}
+void APIENTRY glMultiTexCoord2dvARB(GLenum target, const GLdouble *v);
+/* glMultiTexCoord2dvARB: the name of glMultiTexCoord2dv in an extension. */
+void APIENTRY glMultiTexCoord2dvARB(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord2dv(target, v);
+}
+void APIENTRY glMultiTexCoord2fARB(GLenum target, GLfloat s, GLfloat t);
+/* glMultiTexCoord2fARB: the name of glMultiTexCoord2f in an extension. */
+void APIENTRY glMultiTexCoord2fARB(GLenum target, GLfloat s, GLfloat t) {
+  SGL_DISPATCH->MultiTexCoord2f(target, s, t);
+}
+void APIENTRY glMultiTexCoord2fvARB(GLenum target, const GLfloat *v);
+/* glMultiTexCoord2fvARB: the name of glMultiTexCoord2fv in an extension. */
+void APIENTRY glMultiTexCoord2fvARB(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord2fv(target, v);
+}
+void APIENTRY glMultiTexCoord2iARB(GLenum target, GLint s, GLint t);
+/* glMultiTexCoord2iARB: the name of glMultiTexCoord2i in an extension. */
+void APIENTRY glMultiTexCoord2iARB(GLenum target, GLint s, GLint t) {
+  SGL_DISPATCH->MultiTexCoord2i(target, s, t);
+}
+void APIENTRY glMultiTexCoord2ivARB(GLenum target, const GLint *v);
+/* glMultiTexCoord2ivARB: the name of glMultiTexCoord2iv in an extension. */
+void APIENTRY glMultiTexCoord2ivARB(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord2iv(target, v);
+}
+void APIENTRY glMultiTexCoord2sARB(GLenum target, GLshort s, GLshort t);
+/* glMultiTexCoord2sARB: the name of glMultiTexCoord2s in an extension. */
+void APIENTRY glMultiTexCoord2sARB(GLenum target, GLshort s, GLshort t) {
+  SGL_DISPATCH->MultiTexCoord2s(target, s, t);
+}
+void APIENTRY glMultiTexCoord2svARB(GLenum target, const GLshort *v);
+/* glMultiTexCoord2svARB: the name of glMultiTexCoord2sv in an extension. */
+void APIENTRY glMultiTexCoord2svARB(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord2sv(target, v);
+}
+void APIENTRY glMultiTexCoord3dARB(GLenum target, GLdouble s, GLdouble t, GLdouble r);
+/* glMultiTexCoord3dARB: the name of glMultiTexCoord3d in an extension. */
+void APIENTRY glMultiTexCoord3dARB(GLenum target, GLdouble s, GLdouble t, GLdouble r) {
+  SGL_DISPATCH->MultiTexCoord3d(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3dvARB(GLenum target, const GLdouble *v);
+/* glMultiTexCoord3dvARB: the name of glMultiTexCoord3dv in an extension. */
+void APIENTRY glMultiTexCoord3dvARB(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord3dv(target, v);
+}
+void APIENTRY glMultiTexCoord3fARB(GLenum target, GLfloat s, GLfloat t, GLfloat r);
+/* glMultiTexCoord3fARB: the name of glMultiTexCoord3f in an extension. */
+void APIENTRY glMultiTexCoord3fARB(GLenum target, GLfloat s, GLfloat t, GLfloat r) {
+  SGL_DISPATCH->MultiTexCoord3f(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3fvARB(GLenum target, const GLfloat *v);
+/* glMultiTexCoord3fvARB: the name of glMultiTexCoord3fv in an extension. */
+void APIENTRY glMultiTexCoord3fvARB(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord3fv(target, v);
+}
+void APIENTRY glMultiTexCoord3iARB(GLenum target, GLint s, GLint t, GLint r);
+/* glMultiTexCoord3iARB: the name of glMultiTexCoord3i in an extension. */
+void APIENTRY glMultiTexCoord3iARB(GLenum target, GLint s, GLint t, GLint r) {
+  SGL_DISPATCH->MultiTexCoord3i(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3ivARB(GLenum target, const GLint *v);
+/* glMultiTexCoord3ivARB: the name of glMultiTexCoord3iv in an extension. */
+void APIENTRY glMultiTexCoord3ivARB(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord3iv(target, v);
+}
+void APIENTRY glMultiTexCoord3sARB(GLenum target, GLshort s, GLshort t, GLshort r);
+/* glMultiTexCoord3sARB: the name of glMultiTexCoord3s in an extension. */
+void APIENTRY glMultiTexCoord3sARB(GLenum target, GLshort s, GLshort t, GLshort r) {
+  SGL_DISPATCH->MultiTexCoord3s(target, s, t, r);
+}
+void APIENTRY glMultiTexCoord3svARB(GLenum target, const GLshort *v);
+/* glMultiTexCoord3svARB: the name of glMultiTexCoord3sv in an extension. */
+void APIENTRY glMultiTexCoord3svARB(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord3sv(target, v);
+}
+void APIENTRY glMultiTexCoord4dARB(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q);
+/* glMultiTexCoord4dARB: the name of glMultiTexCoord4d in an extension. */
+void APIENTRY glMultiTexCoord4dARB(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q) {
+  SGL_DISPATCH->MultiTexCoord4d(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4dvARB(GLenum target, const GLdouble *v);
+/* glMultiTexCoord4dvARB: the name of glMultiTexCoord4dv in an extension. */
+void APIENTRY glMultiTexCoord4dvARB(GLenum target, const GLdouble *v) {
+  SGL_DISPATCH->MultiTexCoord4dv(target, v);
+}
+void APIENTRY glMultiTexCoord4fARB(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+/* glMultiTexCoord4fARB: the name of glMultiTexCoord4f in an extension. */
+void APIENTRY glMultiTexCoord4fARB(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+  SGL_DISPATCH->MultiTexCoord4f(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4fvARB(GLenum target, const GLfloat *v);
+/* glMultiTexCoord4fvARB: the name of glMultiTexCoord4fv in an extension. */
+void APIENTRY glMultiTexCoord4fvARB(GLenum target, const GLfloat *v) {
+  SGL_DISPATCH->MultiTexCoord4fv(target, v);
+}
+void APIENTRY glMultiTexCoord4iARB(GLenum target, GLint s, GLint t, GLint r, GLint q);
+/* glMultiTexCoord4iARB: the name of glMultiTexCoord4i in an extension. */
+void APIENTRY glMultiTexCoord4iARB(GLenum target, GLint s, GLint t, GLint r, GLint q) {
+  SGL_DISPATCH->MultiTexCoord4i(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4ivARB(GLenum target, const GLint *v);
+/* glMultiTexCoord4ivARB: the name of glMultiTexCoord4iv in an extension. */
+void APIENTRY glMultiTexCoord4ivARB(GLenum target, const GLint *v) {
+  SGL_DISPATCH->MultiTexCoord4iv(target, v);
+}
+void APIENTRY glMultiTexCoord4sARB(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q);
+/* glMultiTexCoord4sARB: the name of glMultiTexCoord4s in an extension. */
+void APIENTRY glMultiTexCoord4sARB(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q) {
+  SGL_DISPATCH->MultiTexCoord4s(target, s, t, r, q);
+}
+void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v);
+/* glMultiTexCoord4svARB: the name of glMultiTexCoord4sv in an extension. */
+void APIENTRY glMultiTexCoord4svARB(GLenum target, const GLshort *v) {
+  SGL_DISPATCH->MultiTexCoord4sv(target, v);
+}
 
 /* The extension functions by name, for wglGetProcAddress. */
 const struct sgl_proc sgl_extension_procs[] = {
@@ -6127,5 +7007,81 @@ const struct sgl_proc sgl_extension_procs[] = {
   {"glNormalPointerEXT", (void (*)(void))glNormalPointerEXT},
   {"glTexCoordPointerEXT", (void (*)(void))glTexCoordPointerEXT},
   {"glVertexPointerEXT", (void (*)(void))glVertexPointerEXT},
+  {"glActiveTexture", (void (*)(void))glActiveTexture},
+  {"glClientActiveTexture", (void (*)(void))glClientActiveTexture},
+  {"glMultiTexCoord1s", (void (*)(void))glMultiTexCoord1s},
+  {"glMultiTexCoord1sv", (void (*)(void))glMultiTexCoord1sv},
+  {"glMultiTexCoord1i", (void (*)(void))glMultiTexCoord1i},
+  {"glMultiTexCoord1iv", (void (*)(void))glMultiTexCoord1iv},
+  {"glMultiTexCoord1f", (void (*)(void))glMultiTexCoord1f},
+  {"glMultiTexCoord1fv", (void (*)(void))glMultiTexCoord1fv},
+  {"glMultiTexCoord1d", (void (*)(void))glMultiTexCoord1d},
+  {"glMultiTexCoord1dv", (void (*)(void))glMultiTexCoord1dv},
+  {"glMultiTexCoord2s", (void (*)(void))glMultiTexCoord2s},
+  {"glMultiTexCoord2sv", (void (*)(void))glMultiTexCoord2sv},
+  {"glMultiTexCoord2i", (void (*)(void))glMultiTexCoord2i},
+  {"glMultiTexCoord2iv", (void (*)(void))glMultiTexCoord2iv},
+  {"glMultiTexCoord2f", (void (*)(void))glMultiTexCoord2f},
+  {"glMultiTexCoord2fv", (void (*)(void))glMultiTexCoord2fv},
+  {"glMultiTexCoord2d", (void (*)(void))glMultiTexCoord2d},
+  {"glMultiTexCoord2dv", (void (*)(void))glMultiTexCoord2dv},
+  {"glMultiTexCoord3s", (void (*)(void))glMultiTexCoord3s},
+  {"glMultiTexCoord3sv", (void (*)(void))glMultiTexCoord3sv},
+  {"glMultiTexCoord3i", (void (*)(void))glMultiTexCoord3i},
+  {"glMultiTexCoord3iv", (void (*)(void))glMultiTexCoord3iv},
+  {"glMultiTexCoord3f", (void (*)(void))glMultiTexCoord3f},
+  {"glMultiTexCoord3fv", (void (*)(void))glMultiTexCoord3fv},
+  {"glMultiTexCoord3d", (void (*)(void))glMultiTexCoord3d},
+  {"glMultiTexCoord3dv", (void (*)(void))glMultiTexCoord3dv},
+  {"glMultiTexCoord4s", (void (*)(void))glMultiTexCoord4s},
+  {"glMultiTexCoord4sv", (void (*)(void))glMultiTexCoord4sv},
+  {"glMultiTexCoord4i", (void (*)(void))glMultiTexCoord4i},
+  {"glMultiTexCoord4iv", (void (*)(void))glMultiTexCoord4iv},
+  {"glMultiTexCoord4f", (void (*)(void))glMultiTexCoord4f},
+  {"glMultiTexCoord4fv", (void (*)(void))glMultiTexCoord4fv},
+  {"glMultiTexCoord4d", (void (*)(void))glMultiTexCoord4d},
+  {"glMultiTexCoord4dv", (void (*)(void))glMultiTexCoord4dv},
+  {"glLoadTransposeMatrixf", (void (*)(void))glLoadTransposeMatrixf},
+  {"glLoadTransposeMatrixd", (void (*)(void))glLoadTransposeMatrixd},
+  {"glMultTransposeMatrixf", (void (*)(void))glMultTransposeMatrixf},
+  {"glMultTransposeMatrixd", (void (*)(void))glMultTransposeMatrixd},
+  {"glActiveTextureARB", (void (*)(void))glActiveTextureARB},
+  {"glClientActiveTextureARB", (void (*)(void))glClientActiveTextureARB},
+  {"glLoadTransposeMatrixdARB", (void (*)(void))glLoadTransposeMatrixdARB},
+  {"glLoadTransposeMatrixfARB", (void (*)(void))glLoadTransposeMatrixfARB},
+  {"glMultTransposeMatrixdARB", (void (*)(void))glMultTransposeMatrixdARB},
+  {"glMultTransposeMatrixfARB", (void (*)(void))glMultTransposeMatrixfARB},
+  {"glMultiTexCoord1dARB", (void (*)(void))glMultiTexCoord1dARB},
+  {"glMultiTexCoord1dvARB", (void (*)(void))glMultiTexCoord1dvARB},
+  {"glMultiTexCoord1fARB", (void (*)(void))glMultiTexCoord1fARB},
+  {"glMultiTexCoord1fvARB", (void (*)(void))glMultiTexCoord1fvARB},
+  {"glMultiTexCoord1iARB", (void (*)(void))glMultiTexCoord1iARB},
+  {"glMultiTexCoord1ivARB", (void (*)(void))glMultiTexCoord1ivARB},
+  {"glMultiTexCoord1sARB", (void (*)(void))glMultiTexCoord1sARB},
+  {"glMultiTexCoord1svARB", (void (*)(void))glMultiTexCoord1svARB},
+  {"glMultiTexCoord2dARB", (void (*)(void))glMultiTexCoord2dARB},
+  {"glMultiTexCoord2dvARB", (void (*)(void))glMultiTexCoord2dvARB},
+  {"glMultiTexCoord2fARB", (void (*)(void))glMultiTexCoord2fARB},
+  {"glMultiTexCoord2fvARB", (void (*)(void))glMultiTexCoord2fvARB},
+  {"glMultiTexCoord2iARB", (void (*)(void))glMultiTexCoord2iARB},
+  {"glMultiTexCoord2ivARB", (void (*)(void))glMultiTexCoord2ivARB},
+  {"glMultiTexCoord2sARB", (void (*)(void))glMultiTexCoord2sARB},
+  {"glMultiTexCoord2svARB", (void (*)(void))glMultiTexCoord2svARB},
+  {"glMultiTexCoord3dARB", (void (*)(void))glMultiTexCoord3dARB},
+  {"glMultiTexCoord3dvARB", (void (*)(void))glMultiTexCoord3dvARB},
+  {"glMultiTexCoord3fARB", (void (*)(void))glMultiTexCoord3fARB},
+  {"glMultiTexCoord3fvARB", (void (*)(void))glMultiTexCoord3fvARB},
+  {"glMultiTexCoord3iARB", (void (*)(void))glMultiTexCoord3iARB},
+  {"glMultiTexCoord3ivARB", (void (*)(void))glMultiTexCoord3ivARB},
+  {"glMultiTexCoord3sARB", (void (*)(void))glMultiTexCoord3sARB},
+  {"glMultiTexCoord3svARB", (void (*)(void))glMultiTexCoord3svARB},
+  {"glMultiTexCoord4dARB", (void (*)(void))glMultiTexCoord4dARB},
+  {"glMultiTexCoord4dvARB", (void (*)(void))glMultiTexCoord4dvARB},
+  {"glMultiTexCoord4fARB", (void (*)(void))glMultiTexCoord4fARB},
+  {"glMultiTexCoord4fvARB", (void (*)(void))glMultiTexCoord4fvARB},
+  {"glMultiTexCoord4iARB", (void (*)(void))glMultiTexCoord4iARB},
+  {"glMultiTexCoord4ivARB", (void (*)(void))glMultiTexCoord4ivARB},
+  {"glMultiTexCoord4sARB", (void (*)(void))glMultiTexCoord4sARB},
+  {"glMultiTexCoord4svARB", (void (*)(void))glMultiTexCoord4svARB},
   {0, 0}
 };

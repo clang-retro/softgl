@@ -361,6 +361,44 @@ struct sgl_dispatch {
   void (APIENTRY *NormalPointerEXT)(GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *TexCoordPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
   void (APIENTRY *VertexPointerEXT)(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
+  void (APIENTRY *ActiveTexture)(GLenum texture);
+  void (APIENTRY *ClientActiveTexture)(GLenum texture);
+  void (APIENTRY *MultiTexCoord1s)(GLenum target, GLshort s);
+  void (APIENTRY *MultiTexCoord1sv)(GLenum target, const GLshort *v);
+  void (APIENTRY *MultiTexCoord1i)(GLenum target, GLint s);
+  void (APIENTRY *MultiTexCoord1iv)(GLenum target, const GLint *v);
+  void (APIENTRY *MultiTexCoord1f)(GLenum target, GLfloat s);
+  void (APIENTRY *MultiTexCoord1fv)(GLenum target, const GLfloat *v);
+  void (APIENTRY *MultiTexCoord1d)(GLenum target, GLdouble s);
+  void (APIENTRY *MultiTexCoord1dv)(GLenum target, const GLdouble *v);
+  void (APIENTRY *MultiTexCoord2s)(GLenum target, GLshort s, GLshort t);
+  void (APIENTRY *MultiTexCoord2sv)(GLenum target, const GLshort *v);
+  void (APIENTRY *MultiTexCoord2i)(GLenum target, GLint s, GLint t);
+  void (APIENTRY *MultiTexCoord2iv)(GLenum target, const GLint *v);
+  void (APIENTRY *MultiTexCoord2f)(GLenum target, GLfloat s, GLfloat t);
+  void (APIENTRY *MultiTexCoord2fv)(GLenum target, const GLfloat *v);
+  void (APIENTRY *MultiTexCoord2d)(GLenum target, GLdouble s, GLdouble t);
+  void (APIENTRY *MultiTexCoord2dv)(GLenum target, const GLdouble *v);
+  void (APIENTRY *MultiTexCoord3s)(GLenum target, GLshort s, GLshort t, GLshort r);
+  void (APIENTRY *MultiTexCoord3sv)(GLenum target, const GLshort *v);
+  void (APIENTRY *MultiTexCoord3i)(GLenum target, GLint s, GLint t, GLint r);
+  void (APIENTRY *MultiTexCoord3iv)(GLenum target, const GLint *v);
+  void (APIENTRY *MultiTexCoord3f)(GLenum target, GLfloat s, GLfloat t, GLfloat r);
+  void (APIENTRY *MultiTexCoord3fv)(GLenum target, const GLfloat *v);
+  void (APIENTRY *MultiTexCoord3d)(GLenum target, GLdouble s, GLdouble t, GLdouble r);
+  void (APIENTRY *MultiTexCoord3dv)(GLenum target, const GLdouble *v);
+  void (APIENTRY *MultiTexCoord4s)(GLenum target, GLshort s, GLshort t, GLshort r, GLshort q);
+  void (APIENTRY *MultiTexCoord4sv)(GLenum target, const GLshort *v);
+  void (APIENTRY *MultiTexCoord4i)(GLenum target, GLint s, GLint t, GLint r, GLint q);
+  void (APIENTRY *MultiTexCoord4iv)(GLenum target, const GLint *v);
+  void (APIENTRY *MultiTexCoord4f)(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+  void (APIENTRY *MultiTexCoord4fv)(GLenum target, const GLfloat *v);
+  void (APIENTRY *MultiTexCoord4d)(GLenum target, GLdouble s, GLdouble t, GLdouble r, GLdouble q);
+  void (APIENTRY *MultiTexCoord4dv)(GLenum target, const GLdouble *v);
+  void (APIENTRY *LoadTransposeMatrixf)(const GLfloat *m);
+  void (APIENTRY *LoadTransposeMatrixd)(const GLdouble *m);
+  void (APIENTRY *MultTransposeMatrixf)(const GLfloat *m);
+  void (APIENTRY *MultTransposeMatrixd)(const GLdouble *m);
 };
 
 /* The operation codes of the commands in a display list. */
@@ -456,6 +494,10 @@ enum sgl_op {
   SGL_OP_CopyTexSubImage2D,
   SGL_OP_BindTexture,
   SGL_OP_PrioritizeTextures,
+  SGL_OP_ActiveTexture,
+  SGL_OP_MultiTexCoord4f,
+  SGL_OP_LoadTransposeMatrixf,
+  SGL_OP_MultTransposeMatrixf,
   SGL_OP_COUNT
 };
 
@@ -646,6 +688,11 @@ void APIENTRY sgl_IndexPointerEXT(GLenum type, GLsizei stride, GLsizei count, co
 void APIENTRY sgl_NormalPointerEXT(GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_TexCoordPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
 void APIENTRY sgl_VertexPointerEXT(GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer);
+void APIENTRY sgl_ActiveTexture(GLenum texture);
+void APIENTRY sgl_ClientActiveTexture(GLenum texture);
+void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+void APIENTRY sgl_LoadTransposeMatrixf(const GLfloat *m);
+void APIENTRY sgl_MultTransposeMatrixf(const GLfloat *m);
 
 /* The hand-written save functions (list.c). */
 void APIENTRY save_TexImage1D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const void *pixels);

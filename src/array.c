@@ -62,13 +62,14 @@ void APIENTRY sgl_IndexPointer(GLenum type, GLsizei stride, const void *p) {
   set_array(&sgl_ctx->c.index, 1, type, stride, p);
 }
 
-/* glTexCoordPointer: sets the texture coordinate array. */
+/* glTexCoordPointer: sets the texture coordinate array of the texture
+ * unit of glClientActiveTexture. */
 void APIENTRY sgl_TexCoordPointer(GLint size, GLenum type, GLsizei stride, const void *p) {
   if (size < 1 || size > 4) {
     sgl_error(GL_INVALID_VALUE);
     return;
   }
-  set_array(&sgl_ctx->c.tex, size, type, stride, p);
+  set_array(&sgl_ctx->c.tex[sgl_ctx->c.client_active], size, type, stride, p);
 }
 
 /* glEdgeFlagPointer: sets the edge flag array. */
@@ -176,12 +177,18 @@ void APIENTRY sgl_ArrayElement(GLint i) {
   sgl_context *c = sgl_ctx;
   const struct sgl_dispatch *d = SGL_DISPATCH;
   GLfloat v[4];
+  int u;
   if (c->c.edge.enabled) d->EdgeFlag(((const GLboolean *)c->c.edge.pointer)[(c->c.edge.stride ? c->c.edge.stride : 1) * i]);
-  if (c->c.tex.enabled) {
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+    const sgl_array *t = &c->c.tex[u];
+    if (!t->enabled) continue;
     v[1] = v[2] = 0.0f;
     v[3] = 1.0f;
-    fetch(&c->c.tex, i, c->c.tex.size, 0, v);
-    d->TexCoord4f(v[0], v[1], v[2], v[3]);
+    fetch(t, i, t->size, 0, v);
+    if (u == 0)
+      d->TexCoord4f(v[0], v[1], v[2], v[3]);
+    else
+      d->MultiTexCoord4f(GL_TEXTURE0 + (GLenum)u, v[0], v[1], v[2], v[3]);
   }
   if (c->c.color.enabled) {
     v[3] = 1.0f;
@@ -273,8 +280,11 @@ void APIENTRY sgl_InterleavedArrays(GLenum format, GLsizei stride, const void *p
   if (stride == 0) stride = size;
   c->c.edge.enabled = GL_FALSE;
   c->c.index.enabled = GL_FALSE;
-  c->c.tex.enabled = tc != 0;
-  if (tc) set_array(&c->c.tex, tc, GL_FLOAT, stride, p);
+  {
+    sgl_array *t = &c->c.tex[c->c.client_active];
+    t->enabled = tc != 0;
+    if (tc) set_array(t, tc, GL_FLOAT, stride, p);
+  }
   p += tc * f;
   c->c.color.enabled = cc != 0;
   if (cc) set_array(&c->c.color, cc, cub ? GL_UNSIGNED_BYTE : GL_FLOAT, stride, p);

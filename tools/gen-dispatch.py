@@ -67,6 +67,43 @@ EXTENSIONS = [
     ("void", "VertexPointerEXT", "GLint size, GLenum type, GLsizei stride, GLsizei count, const void *pointer"),
 ]
 
+
+def multitexcoord():
+    """Give the glMultiTexCoord family of OpenGL 1.3, in the form of
+    EXTENSIONS."""
+    out = []
+    types = {"s": "GLshort", "i": "GLint", "f": "GLfloat", "d": "GLdouble"}
+    for n in range(1, 5):
+        for t in "sifd":
+            names = ["s", "t", "r", "q"][:n]
+            out.append(("void", "MultiTexCoord%d%s" % (n, t),
+                        "GLenum target, " + ", ".join("%s %s" % (types[t], x) for x in names)))
+            out.append(("void", "MultiTexCoord%d%sv" % (n, t),
+                        "GLenum target, const %s *v" % types[t]))
+    return out
+
+
+# The functions of OpenGL 1.2 to 1.5 that the renderer has. On Windows,
+# opengl32.dll does not export them: wglGetProcAddress gives them.
+EXTENSIONS += [
+    ("void", "ActiveTexture", "GLenum texture"),
+    ("void", "ClientActiveTexture", "GLenum texture"),
+] + multitexcoord() + [
+    ("void", "LoadTransposeMatrixf", "const GLfloat *m"),
+    ("void", "LoadTransposeMatrixd", "const GLdouble *m"),
+    ("void", "MultTransposeMatrixf", "const GLfloat *m"),
+    ("void", "MultTransposeMatrixd", "const GLdouble *m"),
+]
+
+# Other names of the functions: the names of the ARB and EXT extensions
+# that became part of OpenGL. Each is exported and given by
+# wglGetProcAddress, and calls the entry of the core name.
+ALIASES = dict(
+    [("ActiveTextureARB", "ActiveTexture"), ("ClientActiveTextureARB", "ClientActiveTexture")]
+    + [(name + "ARB", name) for _, name, _ in multitexcoord()]
+    + [(n + "ARB", n) for n in ("LoadTransposeMatrixf", "LoadTransposeMatrixd",
+                                "MultTransposeMatrixf", "MultTransposeMatrixd")])
+
 # Functions that the specification does not put in display lists: they
 # run at once, also while a list is compiled.
 IMMEDIATE = set("""
@@ -75,7 +112,7 @@ RenderMode ReadPixels PixelStoref PixelStorei GenTextures DeleteTextures
 AreTexturesResident IsTexture IsEnabled Finish Flush GetError GetString
 EdgeFlagPointer ColorPointer IndexPointer NormalPointer TexCoordPointer
 VertexPointer EnableClientState DisableClientState InterleavedArrays
-PushClientAttrib PopClientAttrib AddSwapHintRectWIN
+PushClientAttrib PopClientAttrib AddSwapHintRectWIN ClientActiveTexture
 GetColorTableEXT GetColorTableParameterivEXT GetColorTableParameterfvEXT
 ColorPointerEXT EdgeFlagPointerEXT GetPointervEXT IndexPointerEXT
 NormalPointerEXT TexCoordPointerEXT VertexPointerEXT
@@ -110,6 +147,8 @@ POINTER_COUNTS = {
     ("Fogfv", "params"): "sgl_pname_count(pname)",
     ("LoadMatrixf", "m"): "16",
     ("MultMatrixf", "m"): "16",
+    ("LoadTransposeMatrixf", "m"): "16",
+    ("MultTransposeMatrixf", "m"): "16",
     ("ClipPlane", "equation"): "4",
     ("PrioritizeTextures", "textures"): "n",
     ("PrioritizeTextures", "priorities"): "n",
@@ -201,6 +240,17 @@ def converter(name, params):
             vals = [scalar(t, ps[i][1], False) for i in range(n)]
         vals += ["0.0f", "0.0f", "0.0f", "1.0f"][n:]
         return "SGL_DISPATCH->TexCoord4f(%s);" % ", ".join(vals)
+    m = re.match(r"^MultiTexCoord([1234])(s|i|f|d)(v?)$", name)
+    if m:
+        n, t, v = int(m.group(1)), m.group(2), m.group(3)
+        if name == "MultiTexCoord4f":
+            return None
+        if v:
+            vals = [scalar(t, "v[%d]" % i, False) for i in range(n)]
+        else:
+            vals = [scalar(t, ps[i + 1][1], False) for i in range(n)]
+        vals += ["0.0f", "0.0f", "0.0f", "1.0f"][n:]
+        return "SGL_DISPATCH->MultiTexCoord4f(target, %s);" % ", ".join(vals)
     m = re.match(r"^Color([34])(b|s|i|f|d|ub|us|ui)(v?)$", name)
     if m:
         n, t, v = int(m.group(1)), m.group(2), m.group(3)
@@ -281,6 +331,8 @@ def converter(name, params):
         "PixelStoref": None,
         "LoadMatrixd": "GLfloat f[16];\n  int i;\n  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];\n  SGL_DISPATCH->LoadMatrixf(f);",
         "MultMatrixd": "GLfloat f[16];\n  int i;\n  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];\n  SGL_DISPATCH->MultMatrixf(f);",
+        "LoadTransposeMatrixd": "GLfloat f[16];\n  int i;\n  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];\n  SGL_DISPATCH->LoadTransposeMatrixf(f);",
+        "MultTransposeMatrixd": "GLfloat f[16];\n  int i;\n  for (i = 0; i < 16; i++) f[i] = (GLfloat)m[i];\n  SGL_DISPATCH->MultTransposeMatrixf(f);",
         "Rotated": "SGL_DISPATCH->Rotatef((GLfloat)angle, (GLfloat)x, (GLfloat)y, (GLfloat)z);",
         "Translated": "SGL_DISPATCH->Translatef((GLfloat)x, (GLfloat)y, (GLfloat)z);",
         "Scaled": "SGL_DISPATCH->Scalef((GLfloat)x, (GLfloat)y, (GLfloat)z);",
@@ -485,11 +537,22 @@ def main():
         c.append("}")
         if layer:
             c.append("#endif")
+    byname = dict((f[1], f) for f in funcs)
+    for alias in sorted(ALIASES):
+        ret, name, params = byname[ALIASES[alias]]
+        r = "return " if ret != "void" else ""
+        c.append("%s APIENTRY gl%s(%s);" % (ret, alias, decl_params(params)))
+        c.append("/* gl%s: the name of gl%s in an extension. */" % (alias, name))
+        c.append("%s APIENTRY gl%s(%s) {" % (ret, alias, decl_params(params)))
+        c.append("  %sSGL_DISPATCH->%s(%s);" % (r, name, call_args(params)))
+        c.append("}")
     c.append("")
     c.append("/* The extension functions by name, for wglGetProcAddress. */")
     c.append("const struct sgl_proc sgl_extension_procs[] = {")
     for _, name, _ in EXTENSIONS:
         c.append('  {"gl%s", (void (*)(void))gl%s},' % (name, name))
+    for alias in sorted(ALIASES):
+        c.append('  {"gl%s", (void (*)(void))gl%s},' % (alias, alias))
     c.append("  {0, 0}")
     c.append("};")
 

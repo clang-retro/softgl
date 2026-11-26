@@ -317,26 +317,27 @@ static void eye_normal(sgl_context *c, GLfloat out[3]) {
   }
 }
 
-/* Computes the texture coordinates of a vertex: generation, then the
- * texture matrix. */
-static void tex_coords(sgl_context *c, const GLfloat obj[4], const GLfloat eye[4],
+/* Computes the texture coordinates of texture unit u of a vertex:
+ * generation, then the texture matrix. */
+static void tex_coords(sgl_context *c, int u, const GLfloat obj[4], const GLfloat eye[4],
                        const GLfloat n[3], GLfloat out[4]) {
   const sgl_attrib *a = &c->a;
+  const sgl_unit_attrib *ua = &a->unit[u];
   int i;
-  out[0] = a->tex[0];
-  out[1] = a->tex[1];
-  out[2] = a->tex[2];
-  out[3] = a->tex[3];
+  out[0] = a->tex[u][0];
+  out[1] = a->tex[u][1];
+  out[2] = a->tex[u][2];
+  out[3] = a->tex[u][3];
   for (i = 0; i < 4; i++) {
-    if (!a->enabled[SGL_TEXTURE_GEN_S + i]) continue;
-    switch (a->gen_mode[i]) {
+    if (!a->enabled[SGL_UCAP(u, SGL_U_GEN_S + i)]) continue;
+    switch (ua->gen_mode[i]) {
       case GL_OBJECT_LINEAR: {
-        const GLfloat *p = a->gen_object[i];
+        const GLfloat *p = ua->gen_object[i];
         out[i] = p[0] * obj[0] + p[1] * obj[1] + p[2] * obj[2] + p[3] * obj[3];
         break;
       }
       case GL_EYE_LINEAR: {
-        const GLfloat *p = a->gen_eye[i];
+        const GLfloat *p = ua->gen_eye[i];
         out[i] = p[0] * eye[0] + p[1] * eye[1] + p[2] * eye[2] + p[3] * eye[3];
         break;
       }
@@ -362,9 +363,9 @@ static void tex_coords(sgl_context *c, const GLfloat obj[4], const GLfloat eye[4
         break;
     }
   }
-  if (!c->texture_identity) {
+  if (!c->texture_identity[u]) {
     GLfloat t[4];
-    sgl_matrix_apply(c->texture.top, out, t);
+    sgl_matrix_apply(c->texture[u].top, out, t);
     out[0] = t[0];
     out[1] = t[1];
     out[2] = t[2];
@@ -448,9 +449,12 @@ void sgl_transform_vertex(sgl_context *c, const GLfloat obj[4], sgl_vertex *v) {
   } else {
     memcpy(v->color[0], c->a.color, sizeof v->color[0]);
   }
-  if (!c->index_mode && (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D] ||
-                         c->render_mode == GL_FEEDBACK))
-    tex_coords(c, obj, v->eye, n, v->tex);
+  if (c->tex_coords) {
+    unsigned m = c->tex_coords;
+    int u;
+    for (u = 0; m; u++, m >>= 1)
+      if (m & 1) tex_coords(c, u, obj, v->eye, n, v->tex[u]);
+  }
   v->fog = c->a.enabled[SGL_FOG] ? fog_factor(c, v->eye) : 1.0f;
   v->edge = c->a.edge;
   v->clipmask = clip_mask(c, v);
@@ -511,13 +515,16 @@ static int reserve_clip(sgl_context *c, int n) {
 /* Sets out to the vertex at t from a to b. */
 static void lerp_vertex(const sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, GLfloat t,
                         sgl_vertex *out) {
-  int i;
+  int i, u;
+  unsigned m;
   for (i = 0; i < 4; i++) {
     out->clip[i] = a->clip[i] + (b->clip[i] - a->clip[i]) * t;
     out->color[0][i] = a->color[0][i] + (b->color[0][i] - a->color[0][i]) * t;
-    out->tex[i] = a->tex[i] + (b->tex[i] - a->tex[i]) * t;
     out->eye[i] = a->eye[i] + (b->eye[i] - a->eye[i]) * t;
   }
+  for (u = 0, m = c->tex_coords; m; u++, m >>= 1)
+    if (m & 1)
+      for (i = 0; i < 4; i++) out->tex[u][i] = a->tex[u][i] + (b->tex[u][i] - a->tex[u][i]) * t;
   if (c->lit && c->a.two_side)
     for (i = 0; i < 4; i++) out->color[1][i] = a->color[1][i] + (b->color[1][i] - a->color[1][i]) * t;
   out->fog = a->fog + (b->fog - a->fog) * t;
@@ -703,11 +710,21 @@ void APIENTRY sgl_Begin(GLenum mode) {
     if (c->a.enabled[SGL_CLIP_PLANE0 + i]) c->clip_user |= 1u << i;
   c->need_normal = 0;
   c->need_eye = c->lit || c->a.enabled[SGL_FOG] || c->clip_user;
-  if (c->a.enabled[SGL_TEXTURE_2D] || c->a.enabled[SGL_TEXTURE_1D]) {
-    for (i = 0; i < 4; i++) {
-      if (!c->a.enabled[SGL_TEXTURE_GEN_S + i]) continue;
-      if (c->a.gen_mode[i] != GL_OBJECT_LINEAR) c->need_eye = 1;
-      if (c->a.gen_mode[i] == GL_SPHERE_MAP) c->need_normal = 1;
+  /* The units with a texture on need texture coordinates; feedback
+   * needs those of unit 0. */
+  c->tex_units = sgl_texture_units(c);
+  c->tex_coords = c->tex_units;
+  if (c->render_mode == GL_FEEDBACK && !c->index_mode) c->tex_coords |= 1u;
+  {
+    int u;
+    for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+      if (!(c->tex_coords & (1u << u))) continue;
+      for (i = 0; i < 4; i++) {
+        GLenum gm = c->a.unit[u].gen_mode[i];
+        if (!c->a.enabled[SGL_UCAP(u, SGL_U_GEN_S + i)]) continue;
+        if (gm != GL_OBJECT_LINEAR) c->need_eye = 1;
+        if (gm == GL_SPHERE_MAP) c->need_normal = 1;
+      }
     }
   }
   if (c->lit || c->need_normal) sgl_update_inverse(c);
@@ -876,9 +893,10 @@ void APIENTRY sgl_Normal3f(GLfloat x, GLfloat y, GLfloat z) {
   n[2] = z;
 }
 
-/* glTexCoord4f: sets the current texture coordinates. */
+/* glTexCoord4f: sets the current texture coordinates of texture unit
+ * 0. */
 void APIENTRY sgl_TexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
-  GLfloat *v = sgl_ctx->a.tex;
+  GLfloat *v = sgl_ctx->a.tex[0];
   v[0] = s;
   v[1] = t;
   v[2] = r;

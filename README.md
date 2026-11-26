@@ -2,7 +2,8 @@
 
 softgl is a software renderer for OpenGL. It copies the design of the
 "generic implementation" of `opengl32.dll` on Windows NT: OpenGL 1.1
-with the Windows extensions, and GLU 1.3 from the SGI reference code.
+with the Windows extensions and multitexture, and GLU 1.3 from the SGI
+reference code.
 It operates on a 68000 without a floating-point unit. clang-retro MFC
 uses it under the `wgl` functions on the systems that have no OpenGL
 of their own.
