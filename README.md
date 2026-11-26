@@ -6,7 +6,8 @@ OpenGL 1.5 with the Windows extensions and multitexture, and GLU 1.3
 from the SGI reference code.
 It operates on a 68000 without a floating-point unit. clang-retro MFC
 uses it under the `wgl` functions on the systems that have no OpenGL
-of their own.
+of their own. A driver can give it a back end that uses graphics
+hardware (see [docs/backends.md](docs/backends.md)).
 
 To build and test: `make check`. For the design, the build, the tests
 and the limits, see [docs/software-opengl.md](docs/software-opengl.md).

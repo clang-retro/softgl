@@ -371,8 +371,8 @@ void sgl_destroy_context(sgl_context *c) {
   for (i = 0; i < 10; i++) free(c->pixel_map[i]);
   free(c->verts);
   free(c->clipverts);
-  free(c->depth);
-  free(c->stencil);
+  c->color = NULL; /* sgl_set_backend makes no new buffers */
+  sgl_set_backend(c, NULL, NULL);
   free(c->accum);
   free(c);
 }
@@ -397,10 +397,12 @@ int sgl_set_buffer(sgl_context *c, int w, int h, void *pixels, long rowpixels) {
     return 0;
   n = (size_t)w * (size_t)h;
   if (n != c->depth_size || !c->depth) {
-    sgl_depth_t *d = (sgl_depth_t *)malloc((n ? n : 1) * sizeof *d);
+    sgl_depth_t *d;
+    sgl_be_wait(c);
+    d = (sgl_depth_t *)sgl_be_alloc(c, (n ? n : 1) * sizeof *d, 0);
     if (!d) return 0;
-    free(c->depth);
-    free(c->stencil);
+    sgl_be_free(c, c->depth);
+    sgl_be_free(c, c->stencil);
     c->depth = d;
     c->stencil = NULL; /* made on first use */
     free(c->accum);
@@ -934,12 +936,21 @@ void APIENTRY sgl_ReadBuffer(GLenum mode) {
   if (c) c->a.read_buffer = mode;
 }
 
-/* glFlush: the renderer draws at once, so there is nothing to wait for.
- * The wgl layer copies the picture of a single-buffered window. */
-void APIENTRY sgl_Flush(void) {}
+/* glFlush: the renderer draws at once; only a back end can have work
+ * to start. The wgl layer copies the picture of a single-buffered
+ * window. */
+void APIENTRY sgl_Flush(void) {
+  sgl_context *c = sgl_ctx;
+  if (c->be && c->be->flush) c->be->flush(c->be_user, 0);
+}
 
-/* glFinish: as glFlush. */
-void APIENTRY sgl_Finish(void) {}
+/* glFinish: as glFlush, and waits until the work of the back end is
+ * done. */
+void APIENTRY sgl_Finish(void) {
+  sgl_context *c = sgl_ctx;
+  if (c->be && c->be->flush) c->be->flush(c->be_user, 1);
+  sgl_be_wait(c);
+}
 
 /* glAddSwapHintRectWIN: the layer copies the whole buffer; the hint is
  * not used. */
@@ -960,6 +971,7 @@ void APIENTRY sgl_Accum(GLenum op, GLfloat value) {
   sgl_context *c = outside();
   int x, y;
   if (!c || !c->color || !need_accum(c)) return;
+  sgl_be_wait(c);
   for (y = 0; y < c->height; y++) {
     uint32_t *row = c->color + (long)(c->height - 1 - y) * c->rowpixels;
     GLfloat *acc = c->accum + (size_t)y * c->width * 4;

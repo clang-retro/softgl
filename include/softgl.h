@@ -17,6 +17,9 @@
 #ifndef SOFTGL_H
 #define SOFTGL_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -70,6 +73,98 @@ int sgl_share_lists(sgl_context *from, sgl_context *ctx);
 /* Gives the address of an extension function by its name, as
  * wglGetProcAddress does, or NULL. */
 void *sgl_get_proc(const char *name);
+
+/* Back ends.
+ *
+ * A back end lets a driver use hardware for some of the work of a
+ * context. softgl always does the GL state, the transform, lighting,
+ * clipping, culling, selection and feedback. A back end can then clear
+ * the buffers, fill flat spans, draw whole primitives, and show the
+ * frame. Each entry can be NULL: softgl then does that work in software.
+ * docs/backends.md tells more. */
+
+/* A vertex in window coordinates, as softgl gives it to a back end. */
+typedef struct sgl_hw_vertex {
+  float x, y, z;     /* x and y in pixels from the bottom-left corner, z 0 to 1 */
+  float w;           /* 1 / w of the clip coordinates */
+  float color[4];    /* the color (of the correct side, or the flat color), 0 to 1 */
+  float spec[3];     /* the secondary color, 0 to 1 */
+  float fog;         /* the fog factor: 1 is no fog */
+  float tex[2][4];   /* s, t, r and q of the texture units 0 and 1 */
+} sgl_hw_vertex;
+
+/* A rectangle of glClear for a back end. Row 0 is the top row of each
+ * buffer. The pointers give the first pixel of the rectangle. */
+typedef struct sgl_clear_rect {
+  unsigned mask;          /* the GL_..._BUFFER_BIT values to clear */
+  int width, height;      /* the size of the rectangle in pixels */
+  uint32_t *color;        /* the color buffer */
+  long color_pitch;       /* pixels from one row of the color buffer to the next */
+  uint32_t color_value;   /* the 32-bit value of each color pixel */
+  void *depth;            /* the depth buffer */
+  int depth_bytes;        /* the size of a depth value: 2 or 4 */
+  long depth_pitch;       /* values from one row of the depth buffer to the next */
+  uint32_t depth_value;   /* the value of each depth value */
+  uint8_t *stencil;       /* the stencil buffer */
+  long stencil_pitch;     /* bytes from one row of the stencil buffer to the next */
+  uint8_t stencil_value;  /* the value of each stencil byte */
+} sgl_clear_rect;
+
+/* The entries of a back end. user is the value of sgl_set_backend. */
+typedef struct sgl_backend {
+  /* Allocates and frees the depth and stencil buffers, for example in
+   * memory that a blitter can get to. alloc gives NULL on failure. */
+  void *(*alloc)(void *user, size_t bytes);
+  void (*release)(void *user, void *p);
+  /* Clears a rectangle. Gives the GL_..._BUFFER_BIT values that it
+   * cleared (or started to clear); softgl clears the other buffers. */
+  unsigned (*clear)(void *user, const sgl_clear_rect *r);
+  /* Sets count pixels from dst to value: one row of a flat triangle.
+   * softgl calls it only when no per-pixel test or operation is on.
+   * It can start the work and return before the work is done. */
+  void (*fill_span)(void *user, uint32_t *dst, int count, uint32_t value);
+  /* Waits until all the work of clear and fill_span is done. softgl
+   * calls it before it reads or writes the buffers itself. */
+  void (*sync)(void *user);
+  /* Draws a primitive in hardware. Gives 1 when it drew the primitive,
+   * and 0 when softgl must draw it. The back end reads the GL state of
+   * c to know if it can. */
+  int (*triangle)(void *user, sgl_context *c, const sgl_hw_vertex *a, const sgl_hw_vertex *b,
+                  const sgl_hw_vertex *d);
+  int (*line)(void *user, sgl_context *c, const sgl_hw_vertex *a, const sgl_hw_vertex *b);
+  int (*point)(void *user, sgl_context *c, const sgl_hw_vertex *a);
+  /* softgl will draw in software after triangle, line or point drew in
+   * hardware. The back end makes the buffers of the context agree with
+   * the hardware. */
+  void (*software)(void *user, sgl_context *c);
+  /* A texture object (the value of sgl_texture_id) is deleted. */
+  void (*texture_deleted)(void *user, unsigned long id);
+  /* glFlush (finish 0) or glFinish (finish 1). */
+  void (*flush)(void *user, int finish);
+  /* Shows the frame (sgl_present). */
+  void (*present)(void *user, sgl_context *c, const uint32_t *pixels, int width, int height,
+                  long rowpixels);
+  /* The back end is no longer used by c: the context is destroyed or
+   * has a different back end. */
+  void (*detach)(void *user, sgl_context *c);
+} sgl_backend;
+
+/* Gives ctx the back end be (which must stay valid while ctx uses it),
+ * or no back end when be is NULL. Set it before sgl_set_buffer, so that
+ * alloc makes the depth buffer. Gives 1 on success. */
+int sgl_set_backend(sgl_context *ctx, const sgl_backend *be, void *user);
+
+/* Finishes the drawing of ctx and shows the frame through the present
+ * entry of its back end. Without a present entry, it only finishes the
+ * drawing; the window layer then shows the color buffer itself. */
+void sgl_present(sgl_context *ctx);
+
+/* Gives the id of the texture object bound to the 2D target of unit u
+ * of ctx, and its serial: the serial changes each time the image or a
+ * parameter of the texture changes. A back end keeps its copy of a
+ * texture by id and makes it again when the serial changes. Gives 0
+ * when ctx has no 2D texture with an image on that unit. */
+unsigned long sgl_texture_id(sgl_context *ctx, int u, unsigned long *serial);
 
 #ifdef __cplusplus
 }

@@ -377,6 +377,11 @@ To use the renderer on a different system, write a file that has the
 same function as `opengl_soft.cpp`: give a buffer to the context, and
 copy the buffer to the screen after `SwapBuffers` or `glFlush`.
 
+A driver can also give a context a back end (`sgl_set_backend`). A
+back end uses hardware for some of the work: clears, flat spans,
+primitives and the display of the frame. See
+[backends.md](backends.md).
+
 ## Speed on the 68000
 
 The 68000 has no floating-point unit and no 32-bit multiply
@@ -395,6 +400,10 @@ instruction. The renderer is designed for these limits:
 - Perspective correction divides once for each 16 pixels.
   `glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST)` removes the
   division.
+- A triangle of one color with no per-pixel test or operation (no
+  depth test, blending, texture, fog, stencil, stipple, color mask or
+  logical operation) is a fill of each row with one 32-bit value. A
+  back end can give these rows to a blitter (`fill_span`).
 - The table of the specular power keeps the four last shininess
   values. A program that changes between some materials does not
   calculate the table again.
@@ -441,6 +450,12 @@ values that OpenGL gives back:
   a shared context), the occlusion queries (also with the depth test,
   the alpha test and in a display list) and the eight shadow
   functions. The output is `PASS softgl gl15`.
+- `tests/backend.c`: the back-end interface. A back end in the test
+  records each call. The test makes sure that the picture is the same
+  with and without the back end, that the entries get the correct
+  values, that softgl waits for the work of the back end before it
+  uses the buffers, and that the texture serials change. The output is
+  `PASS softgl backend`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
 Atari TOS (68000) with the clang-retro toolchain.

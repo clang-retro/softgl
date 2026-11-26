@@ -1127,6 +1127,9 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
   int ystart, yend, y;
   unsigned units;
   int flat_shade = flat != NULL; /* before a one-color triangle is made flat */
+  int fill = 0;                  /* 1: a flat fill; 2: a flat fill by the back end */
+  uint32_t value = 0;            /* the pixel value of a flat fill */
+  if (c->be && c->be->triangle && sgl_be_triangle(c, a, b, d, side, flat, offset)) return;
   setup_frag(&f, c);
   if (f.x0 >= f.x1 || f.y0 >= f.y1) return;
   units = sgl_texture_units(c);
@@ -1297,6 +1300,26 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
       }
     }
   }
+  /* A triangle of one color with no test and no operation on the
+   * fragments is a fill of each span with one value. */
+  if (!t.smooth && !f.ntex && !f.depth_test && !f.stencil && !f.blend && !f.alpha_test && !f.fog &&
+      !f.masked && f.write_color && !f.stipple && !f.logic &&
+      (!f.index_mode || f.imask == f.index_max)) {
+    if (f.index_mode) {
+      value = (uint32_t)(t.flat[0] < 0 ? 0 : t.flat[0]) & f.index_max;
+    } else {
+      int k, rgb[3];
+      for (k = 0; k < 3; k++) rgb[k] = t.sec == 2 ? add255(t.flat[k], t.flat_sec[k]) : t.flat[k];
+      value = ((uint32_t)t.flat[3] << 24) | ((uint32_t)rgb[0] << 16) | ((uint32_t)rgb[1] << 8) |
+              (uint32_t)rgb[2];
+    }
+    fill = t.sec == 1 && !f.index_mode ? 0 : 1;
+    if (fill && c->be && c->be->fill_span) fill = 2;
+  }
+  /* The spans of the back end can run while softgl works: wait only for
+   * the work of the hardware. */
+  if (fill == 2 ? (c->be_pending & SGL_BE_HARDWARE) != 0 : c->be_pending != 0) sgl_be_finish_work(c);
+  if (fill == 2) c->be_pending |= SGL_BE_ASYNC;
   /* Sort by y, bottom first. */
   v[0] = a;
   v[1] = b;
@@ -1351,7 +1374,17 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
         int xs = (xl - 0x8000 + 0xFFFF) >> 16, xe = (xr - 0x8000 + 0xFFFF) >> 16;
         if (xs < f.x0) xs = f.x0;
         if (xe > f.x1) xe = f.x1;
-        if (xs < xe) (f.index_mode ? span_index : span)(&f, &t, y, xs, xe);
+        if (xs < xe && fill) {
+          uint32_t *p = c->color + SGL_MUL16(c->height - 1 - y, c->rowpixels) + xs;
+          int n = xe - xs;
+          if (f.count) *f.count += (GLuint)n;
+          if (fill == 2)
+            c->be->fill_span(c->be_user, p, n, value);
+          else
+            while (n--) *p++ = value;
+        } else if (xs < xe) {
+          (f.index_mode ? span_index : span)(&f, &t, y, xs, xe);
+        }
         xl += dxl;
         xr += dxr;
       }
@@ -1434,6 +1467,8 @@ void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, i
   int steps, i, w, k, xmajor = fabsf(dx) >= fabsf(dy);
   int stipple = c->a.enabled[SGL_LINE_STIPPLE];
   (void)offset;
+  if (c->be && c->be->line && sgl_be_line(c, a, b, side, flat)) return;
+  sgl_be_wait(c);
   setup_frag(&f, c);
   if (f.x0 >= f.x1 || f.y0 >= f.y1) return;
   setup_simple_texture(&f, &t);
@@ -1497,6 +1532,8 @@ void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat off
   GLfloat tc[SGL_MAX_TEXTURE_UNITS][4];
   uint32_t z = (uint32_t)fix(sgl_clamp01(a->win[2]) * (GLfloat)SGL_Z_MAX);
   (void)offset;
+  if (c->be && c->be->point && sgl_be_point(c, a, side)) return;
+  sgl_be_wait(c);
   setup_frag(&f, c);
   if (f.x0 >= f.x1 || f.y0 >= f.y1) return;
   setup_simple_texture(&f, &t);
@@ -1542,6 +1579,7 @@ void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat off
 void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat rgba[4]) {
   frag f;
   int v[4];
+  sgl_be_wait(c);
   setup_frag(&f, c);
   v[0] = byte(rgba[0]);
   v[1] = byte(rgba[1]);

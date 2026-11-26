@@ -223,6 +223,8 @@ typedef struct sgl_texture {
   int palette_size;
   GLenum palette_format;
   int complete;            /* all the mipmap levels from base_level are there */
+  unsigned long id;        /* for a back end: unique to the object, 0 until it is asked */
+  unsigned long serial;    /* for a back end: changes with each change of the texture */
   struct sgl_texture *next;
 } sgl_texture;
 
@@ -552,7 +554,17 @@ struct sgl_context {
 
   /* The paletted texture of GL_PROXY_TEXTURE_2D. */
   int proxy_palette_size;
+
+  /* The back end (backend.c), or NULL, and the work that it has not
+   * finished (SGL_BE_ASYNC, SGL_BE_HARDWARE). */
+  const sgl_backend *be;
+  void *be_user;
+  unsigned be_pending;
 };
+
+/* The work of a back end that is not finished. */
+#define SGL_BE_ASYNC 1u    /* clear or fill_span can still run: call sync */
+#define SGL_BE_HARDWARE 2u /* a primitive was drawn in hardware: call software */
 
 /* The current context and the current table of this thread. */
 extern SGL_THREAD sgl_context *sgl_ctx;
@@ -632,6 +644,21 @@ void sgl_buffer_set(sgl_buffer **slot, sgl_buffer *b);
 void sgl_client_refs(sgl_client *cl, int delta);
 void sgl_buffer_free_all(sgl_shared *s);
 void sgl_query_free_all(sgl_context *c);
+
+/* backend.c */
+void sgl_be_finish_work(sgl_context *c);
+/* Finishes the work of the back end before softgl uses the buffers. */
+static inline void sgl_be_wait(sgl_context *c) {
+  if (c->be_pending) sgl_be_finish_work(c);
+}
+void *sgl_be_alloc(sgl_context *c, size_t bytes, int zero);
+void sgl_be_free(sgl_context *c, void *p);
+int sgl_be_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, const sgl_vertex *d,
+                    int side, const GLfloat *flat, GLfloat zoffset);
+int sgl_be_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, int side,
+                const GLfloat *flat);
+int sgl_be_point(sgl_context *c, const sgl_vertex *a, int side);
+void sgl_texture_touch(sgl_texture *t);
 const uint8_t *sgl_array_base(const sgl_array *a);
 
 /* select.c */
