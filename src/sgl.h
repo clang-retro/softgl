@@ -226,6 +226,27 @@ typedef struct sgl_texture {
   struct sgl_texture *next;
 } sgl_texture;
 
+/* A buffer object (OpenGL 1.5). The name table of the shared objects
+ * and each binding hold a reference: the buffer is freed when the last
+ * one lets go of it. */
+typedef struct sgl_buffer {
+  GLuint name;
+  int refs;
+  uint8_t *data;
+  size_t size;
+  GLenum usage, access;
+  GLboolean mapped;
+  struct sgl_buffer *next;
+} sgl_buffer;
+
+/* An occlusion query object (OpenGL 1.5): the samples that passed the
+ * depth test while it was active. Each context has its own. */
+typedef struct sgl_query {
+  GLuint name;
+  GLuint result;
+  struct sgl_query *next;
+} sgl_query;
+
 /* A command of a display list. */
 typedef struct sgl_node {
   struct sgl_node *next;
@@ -248,7 +269,8 @@ typedef struct sgl_shared {
   int refs;
   sgl_list *lists[64];       /* a hash table by name */
   sgl_texture *textures[64]; /* a hash table by name */
-  GLuint next_list, next_texture;
+  sgl_buffer *buffers[64];   /* a hash table by name (OpenGL 1.5) */
+  GLuint next_list, next_texture, next_buffer;
 } sgl_shared;
 
 /* A map of an evaluator. */
@@ -406,7 +428,8 @@ typedef struct sgl_array {
   GLint size;
   GLenum type;
   GLsizei stride;
-  const void *pointer;
+  const void *pointer;     /* with a buffer: the offset in the buffer */
+  sgl_buffer *buf;         /* OpenGL 1.5: the buffer of the array, or NULL */
 } sgl_array;
 
 /* The pixel store of packing or unpacking. */
@@ -424,6 +447,7 @@ typedef struct sgl_client {
   sgl_array color2, fog;   /* OpenGL 1.4: the secondary color and fog coordinate */
   sgl_array tex[SGL_MAX_TEXTURE_UNITS];
   int client_active;       /* the unit of glClientActiveTexture, from 0 */
+  sgl_buffer *array_buffer, *element_buffer; /* OpenGL 1.5: the bound buffers */
   sgl_pixelstore pack, unpack;
 } sgl_client;
 
@@ -520,6 +544,12 @@ struct sgl_context {
   GLfloat *pixel_map[10];
   GLint pixel_map_size[10];
 
+  /* The occlusion queries (OpenGL 1.5): a hash table by name, and the
+   * active query or NULL. */
+  sgl_query *queries[16];
+  GLuint next_query;
+  sgl_query *query;
+
   /* The paletted texture of GL_PROXY_TEXTURE_2D. */
   int proxy_palette_size;
 };
@@ -595,6 +625,14 @@ void *sgl_list_copy(const void *p, size_t bytes);
 int sgl_list_executes(void);
 void sgl_list_free_all(sgl_shared *s);
 sgl_node *sgl_list_add_hand(void (*play)(const sgl_cell *), int count, void *data);
+
+/* buffer.c */
+void sgl_buffer_release(sgl_buffer *b);
+void sgl_buffer_set(sgl_buffer **slot, sgl_buffer *b);
+void sgl_client_refs(sgl_client *cl, int delta);
+void sgl_buffer_free_all(sgl_shared *s);
+void sgl_query_free_all(sgl_context *c);
+const uint8_t *sgl_array_base(const sgl_array *a);
 
 /* select.c */
 void sgl_select_hit(sgl_context *c, GLfloat z);

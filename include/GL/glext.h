@@ -13,6 +13,8 @@
 
 #include <GL/gl.h>
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -558,6 +560,146 @@ GLAPI void APIENTRY glWindowPos3fv(const GLfloat *v);
 GLAPI void APIENTRY glWindowPos3d(GLdouble x, GLdouble y, GLdouble z);
 GLAPI void APIENTRY glWindowPos3dv(const GLdouble *v);
 #endif /* GL_VERSION_1_4 */
+
+#ifndef GL_VERSION_1_5
+#define GL_VERSION_1_5 1
+typedef ptrdiff_t GLsizeiptr;
+typedef ptrdiff_t GLintptr;
+#define GL_BUFFER_SIZE 0x8764
+#define GL_BUFFER_USAGE 0x8765
+#define GL_QUERY_COUNTER_BITS 0x8864
+#define GL_CURRENT_QUERY 0x8865
+#define GL_QUERY_RESULT 0x8866
+#define GL_QUERY_RESULT_AVAILABLE 0x8867
+#define GL_ARRAY_BUFFER 0x8892
+#define GL_ELEMENT_ARRAY_BUFFER 0x8893
+#define GL_ARRAY_BUFFER_BINDING 0x8894
+#define GL_ELEMENT_ARRAY_BUFFER_BINDING 0x8895
+#define GL_VERTEX_ARRAY_BUFFER_BINDING 0x8896
+#define GL_NORMAL_ARRAY_BUFFER_BINDING 0x8897
+#define GL_COLOR_ARRAY_BUFFER_BINDING 0x8898
+#define GL_INDEX_ARRAY_BUFFER_BINDING 0x8899
+#define GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING 0x889A
+#define GL_EDGE_FLAG_ARRAY_BUFFER_BINDING 0x889B
+#define GL_SECONDARY_COLOR_ARRAY_BUFFER_BINDING 0x889C
+#define GL_FOG_COORDINATE_ARRAY_BUFFER_BINDING 0x889D
+#define GL_WEIGHT_ARRAY_BUFFER_BINDING 0x889E
+#define GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING 0x889F
+#define GL_READ_ONLY 0x88B8
+#define GL_WRITE_ONLY 0x88B9
+#define GL_READ_WRITE 0x88BA
+#define GL_BUFFER_ACCESS 0x88BB
+#define GL_BUFFER_MAPPED 0x88BC
+#define GL_BUFFER_MAP_POINTER 0x88BD
+#define GL_STREAM_DRAW 0x88E0
+#define GL_STREAM_READ 0x88E1
+#define GL_STREAM_COPY 0x88E2
+#define GL_STATIC_DRAW 0x88E4
+#define GL_STATIC_READ 0x88E5
+#define GL_STATIC_COPY 0x88E6
+#define GL_DYNAMIC_DRAW 0x88E8
+#define GL_DYNAMIC_READ 0x88E9
+#define GL_DYNAMIC_COPY 0x88EA
+#define GL_SAMPLES_PASSED 0x8914
+#define GL_FOG_COORD_SRC 0x8450
+#define GL_FOG_COORD 0x8451
+#define GL_CURRENT_FOG_COORD 0x8453
+#define GL_FOG_COORD_ARRAY_TYPE 0x8454
+#define GL_FOG_COORD_ARRAY_STRIDE 0x8455
+#define GL_FOG_COORD_ARRAY_POINTER 0x8456
+#define GL_FOG_COORD_ARRAY 0x8457
+#define GL_FOG_COORD_ARRAY_BUFFER_BINDING 0x889D
+#define GL_SRC0_RGB 0x8580
+#define GL_SRC1_RGB 0x8581
+#define GL_SRC2_RGB 0x8582
+#define GL_SRC0_ALPHA 0x8588
+#define GL_SRC1_ALPHA 0x8589
+#define GL_SRC2_ALPHA 0x858A
+GLAPI void APIENTRY glBindBuffer(GLenum target, GLuint buffer);
+GLAPI void APIENTRY glDeleteBuffers(GLsizei n, const GLuint *buffers);
+GLAPI void APIENTRY glGenBuffers(GLsizei n, GLuint *buffers);
+GLAPI GLboolean APIENTRY glIsBuffer(GLuint buffer);
+GLAPI void APIENTRY glBufferData(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+GLAPI void APIENTRY glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+GLAPI void APIENTRY glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+GLAPI void *APIENTRY glMapBuffer(GLenum target, GLenum access);
+GLAPI GLboolean APIENTRY glUnmapBuffer(GLenum target);
+GLAPI void APIENTRY glGetBufferParameteriv(GLenum target, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params);
+GLAPI void APIENTRY glGenQueries(GLsizei n, GLuint *ids);
+GLAPI void APIENTRY glDeleteQueries(GLsizei n, const GLuint *ids);
+GLAPI GLboolean APIENTRY glIsQuery(GLuint id);
+GLAPI void APIENTRY glBeginQuery(GLenum target, GLuint id);
+GLAPI void APIENTRY glEndQuery(GLenum target);
+GLAPI void APIENTRY glGetQueryiv(GLenum target, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params);
+#endif /* GL_VERSION_1_5 */
+
+#ifndef GL_ARB_vertex_buffer_object
+#define GL_ARB_vertex_buffer_object 1
+typedef ptrdiff_t GLsizeiptrARB;
+typedef ptrdiff_t GLintptrARB;
+#define GL_BUFFER_SIZE_ARB 0x8764
+#define GL_BUFFER_USAGE_ARB 0x8765
+#define GL_ARRAY_BUFFER_ARB 0x8892
+#define GL_ELEMENT_ARRAY_BUFFER_ARB 0x8893
+#define GL_ARRAY_BUFFER_BINDING_ARB 0x8894
+#define GL_ELEMENT_ARRAY_BUFFER_BINDING_ARB 0x8895
+#define GL_VERTEX_ARRAY_BUFFER_BINDING_ARB 0x8896
+#define GL_NORMAL_ARRAY_BUFFER_BINDING_ARB 0x8897
+#define GL_COLOR_ARRAY_BUFFER_BINDING_ARB 0x8898
+#define GL_INDEX_ARRAY_BUFFER_BINDING_ARB 0x8899
+#define GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING_ARB 0x889A
+#define GL_EDGE_FLAG_ARRAY_BUFFER_BINDING_ARB 0x889B
+#define GL_SECONDARY_COLOR_ARRAY_BUFFER_BINDING_ARB 0x889C
+#define GL_FOG_COORDINATE_ARRAY_BUFFER_BINDING_ARB 0x889D
+#define GL_WEIGHT_ARRAY_BUFFER_BINDING_ARB 0x889E
+#define GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING_ARB 0x889F
+#define GL_READ_ONLY_ARB 0x88B8
+#define GL_WRITE_ONLY_ARB 0x88B9
+#define GL_READ_WRITE_ARB 0x88BA
+#define GL_BUFFER_ACCESS_ARB 0x88BB
+#define GL_BUFFER_MAPPED_ARB 0x88BC
+#define GL_BUFFER_MAP_POINTER_ARB 0x88BD
+#define GL_STREAM_DRAW_ARB 0x88E0
+#define GL_STREAM_READ_ARB 0x88E1
+#define GL_STREAM_COPY_ARB 0x88E2
+#define GL_STATIC_DRAW_ARB 0x88E4
+#define GL_STATIC_READ_ARB 0x88E5
+#define GL_STATIC_COPY_ARB 0x88E6
+#define GL_DYNAMIC_DRAW_ARB 0x88E8
+#define GL_DYNAMIC_READ_ARB 0x88E9
+#define GL_DYNAMIC_COPY_ARB 0x88EA
+GLAPI void APIENTRY glBindBufferARB(GLenum target, GLuint buffer);
+GLAPI void APIENTRY glDeleteBuffersARB(GLsizei n, const GLuint *buffers);
+GLAPI void APIENTRY glGenBuffersARB(GLsizei n, GLuint *buffers);
+GLAPI GLboolean APIENTRY glIsBufferARB(GLuint buffer);
+GLAPI void APIENTRY glBufferDataARB(GLenum target, GLsizeiptrARB size, const void *data, GLenum usage);
+GLAPI void APIENTRY glBufferSubDataARB(GLenum target, GLintptrARB offset, GLsizeiptrARB size, const void *data);
+GLAPI void APIENTRY glGetBufferSubDataARB(GLenum target, GLintptrARB offset, GLsizeiptrARB size, void *data);
+GLAPI void *APIENTRY glMapBufferARB(GLenum target, GLenum access);
+GLAPI GLboolean APIENTRY glUnmapBufferARB(GLenum target);
+GLAPI void APIENTRY glGetBufferParameterivARB(GLenum target, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetBufferPointervARB(GLenum target, GLenum pname, void **params);
+#endif /* GL_ARB_vertex_buffer_object */
+
+#ifndef GL_ARB_occlusion_query
+#define GL_ARB_occlusion_query 1
+#define GL_QUERY_COUNTER_BITS_ARB 0x8864
+#define GL_CURRENT_QUERY_ARB 0x8865
+#define GL_QUERY_RESULT_ARB 0x8866
+#define GL_QUERY_RESULT_AVAILABLE_ARB 0x8867
+#define GL_SAMPLES_PASSED_ARB 0x8914
+GLAPI void APIENTRY glGenQueriesARB(GLsizei n, GLuint *ids);
+GLAPI void APIENTRY glDeleteQueriesARB(GLsizei n, const GLuint *ids);
+GLAPI GLboolean APIENTRY glIsQueryARB(GLuint id);
+GLAPI void APIENTRY glBeginQueryARB(GLenum target, GLuint id);
+GLAPI void APIENTRY glEndQueryARB(GLenum target);
+GLAPI void APIENTRY glGetQueryivARB(GLenum target, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetQueryObjectivARB(GLuint id, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGetQueryObjectuivARB(GLuint id, GLenum pname, GLuint *params);
+#endif /* GL_ARB_occlusion_query */
 
 #ifndef GL_EXT_texture_compression_s3tc
 #define GL_EXT_texture_compression_s3tc 1

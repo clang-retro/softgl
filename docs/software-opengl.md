@@ -28,11 +28,11 @@ To remove the generic implementation, compile with
 
 ## What the renderer does
 
-The renderer gives all of OpenGL 1.4 (without the optional imaging
-subset of OpenGL 1.2). It exports the OpenGL 1.1 functions,
+The renderer gives all of OpenGL 1.5 (without the optional imaging
+subset of OpenGL 1.2). It stops at OpenGL 1.5: there is no GLSL. It exports the OpenGL 1.1 functions,
 as `opengl32.dll` of Windows NT 4.0 exports them:
 
-- `glGetString(GL_VERSION)` gives `1.4.0`.
+- `glGetString(GL_VERSION)` gives `1.5.0`.
   `glGetString(GL_RENDERER)` gives `clang-retro Generic`.
 - These extensions are available. `wglGetProcAddress` gives their
   functions:
@@ -79,13 +79,19 @@ as `opengl32.dll` of Windows NT 4.0 exports them:
   - `GL_EXT_secondary_color` (`glSecondaryColor3*EXT` and
     `glSecondaryColorPointerEXT`)
   - `GL_EXT_fog_coord` (`glFogCoord*EXT` and `glFogCoordPointerEXT`)
+  - `GL_ARB_vertex_buffer_object` (`glGenBuffersARB` and the related
+    functions)
+  - `GL_ARB_occlusion_query` (`glGenQueriesARB` and the related
+    functions)
+  - `GL_EXT_shadow_funcs`
 - `wglGetProcAddress` also gives the functions of these extensions by
-  their OpenGL 1.2, 1.3 and 1.4 names, without the `ARB` or `EXT`
+  their OpenGL 1.2 to 1.5 names, without the `ARB` or `EXT`
   suffix (for example `glActiveTexture`, `glDrawRangeElements`,
   `glTexImage3D`, `glCompressedTexImage2D`, `glBlendFuncSeparate` and
-  `glWindowPos2i`).
-- Vertices: immediate mode, vertex arrays, display lists, evaluators
-  (`glMap1`, `glMap2`, `glEvalMesh`) and rectangles.
+  `glWindowPos2i`, `glBindBuffer` and `glBeginQuery`).
+- Vertices: immediate mode, vertex arrays, buffer objects (OpenGL
+  1.5), display lists, evaluators (`glMap1`, `glMap2`, `glEvalMesh`)
+  and rectangles.
 - Transformation: the modelview and projection matrix stacks, one
   texture matrix stack for each texture unit, the viewport, the depth
   range and six user clip planes.
@@ -226,6 +232,39 @@ four nearest texels: the edge of a shadow is soft.
 The comparison needs the r coordinate for each pixel. Thus a shadow
 texture takes approximately the time of a 3D texture with the nearest
 filter.
+
+### Buffer objects
+
+A buffer object (OpenGL 1.5) is a block of memory from `malloc`. While
+a buffer is bound to `GL_ARRAY_BUFFER`, the pointer of `glVertexPointer`
+and the other array functions is an offset in that buffer. While a
+buffer is bound to `GL_ELEMENT_ARRAY_BUFFER`, the indices of
+`glDrawElements` and `glDrawRangeElements` are an offset in it.
+`glMapBuffer` gives the address of the memory: there is no copy. The
+renderer reads the buffer when it draws, thus a buffer is not faster
+than an array in the memory of the program.
+
+The buffers are shared with the display lists and the textures
+(`wglShareLists`). The name table and each binding hold a reference to
+a buffer. `glDeleteBuffers` removes the name and the bindings of the
+current context; a binding that remains (in an other context, or in
+the state that `glPushClientAttrib` saved) keeps the buffer until it
+is changed.
+
+A display list keeps the vertices that an array command gives, not
+the buffer.
+
+### Occlusion queries
+
+An occlusion query (OpenGL 1.5) counts the samples that pass the
+depth test between `glBeginQuery` and `glEndQuery`. Each pixel is one
+sample. The renderer draws before each call returns, thus the result
+is available at once. The query objects are not shared between
+contexts. The count costs one test for each pixel that passes.
+
+The stencil and depth tests come after the alpha test, as the
+specification tells. Without the alpha test, they come before the
+texture: a pixel that fails them gets no texture, which is faster.
 
 ### Generated mipmaps
 
@@ -397,6 +436,11 @@ values that OpenGL gives back:
   coordinate, the depth textures (from pixels and from the depth
   buffer) and the shadow comparison. The output is
   `PASS softgl gl14`.
+- `tests/gl15.c`: the buffer objects (arrays and elements, the map,
+  the sub data, the deletion, display lists, `glPushClientAttrib` and
+  a shared context), the occlusion queries (also with the depth test,
+  the alpha test and in a display list) and the eight shadow
+  functions. The output is `PASS softgl gl15`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
 Atari TOS (68000) with the clang-retro toolchain.

@@ -99,6 +99,10 @@ typedef struct frag {
   int unit[SGL_MAX_TEXTURE_UNITS]; /* the texture unit of each */
   tunit tu[SGL_MAX_TEXTURE_UNITS];
   int combine;                  /* a texture uses GL_COMBINE */
+  int late_z;                   /* the alpha test is on: the stencil and depth
+                                 * tests come after it */
+  GLuint *count;                /* OpenGL 1.5: the counter of the active
+                                 * occlusion query, or NULL */
 } frag;
 
 /* Fills the state of texture unit u (the k-th unit that is on) for a
@@ -275,6 +279,7 @@ static void setup_frag(frag *f, sgl_context *c) {
   f->write_color = f->keep != 0xFFFFFFFFu && a->draw_buffer != GL_NONE;
   f->ntex = 0;
   f->combine = 0;
+  f->count = c->query ? &c->query->result : NULL;
   f->stipple = a->enabled[SGL_POLYGON_STIPPLE];
   f->index_mode = c->index_mode;
   f->logic_op = a->logic_op;
@@ -292,6 +297,10 @@ static void setup_frag(frag *f, sgl_context *c) {
     /* The logical operation replaces blending. */
     if (f->logic) f->blend = 0;
   }
+  /* The stencil and the depth tests come after the alpha test. Without
+   * the alpha test, they come first: a fragment that fails them gets
+   * no texture. */
+  f->late_z = f->alpha_test;
 }
 
 /* Gives the logical operation op of the source value s and the
@@ -776,6 +785,22 @@ static int stencil_depth(const frag *f, size_t i, uint32_t z) {
   return zpass;
 }
 
+/* Runs the stencil and depth tests of a fragment with window z z at
+ * index i of the depth buffer, and counts it for the occlusion query.
+ * Gives 1 when the fragment passes. */
+static inline int test_z(const frag *f, size_t i, uint32_t z) {
+  sgl_context *c = f->c;
+  if (f->stencil) {
+    if (!stencil_depth(f, i, z)) return 0;
+  } else if (f->depth_test) {
+    uint32_t zz = z >> SGL_DEPTH_SHIFT;
+    if (!compare(f->depth_func, zz, (uint32_t)c->depth[i])) return 0;
+    if (f->depth_write) c->depth[i] = (sgl_depth_t)zz;
+  }
+  if (f->count) (*f->count)++;
+  return 1;
+}
+
 /* Runs the operations after the texture on a fragment and writes it to
  * the pixel px. rgba is 0 to 255; fogf is the fog factor 0 to 255. */
 static inline void finish(const frag *f, uint32_t *px, int rgba[4], int fogf) {
@@ -927,7 +952,6 @@ static void span_index(const frag *f, const tri *t, int y, int xs, int xe) {
   int row = c->height - 1 - y;
   uint32_t *cp = c->color + SGL_MUL16(row, c->rowpixels) + xs;
   size_t di = (size_t)SGL_MUL16(row, c->width) + (size_t)xs;
-  sgl_depth_t *zp = c->depth + di;
   int32_t z = fplane_at(&t->fz, xs, y), dz = t->fz.dx;
   int32_t r = 0, dr = 0, fg = 0xFF0000, dfg = 0;
   int x, n = xe - xs;
@@ -939,15 +963,9 @@ static void span_index(const frag *f, const tri *t, int y, int xs, int xe) {
     fg = fplane_at(&t->ffog, xs, y);
     dfg = t->ffog.dx;
   }
-  for (x = 0; x < n; x++, cp++, zp++, di++, z += dz, r += dr, fg += dfg) {
+  for (x = 0; x < n; x++, cp++, di++, z += dz, r += dr, fg += dfg) {
     if (f->stipple && !((c->a.stipple[y & 31] >> ((xs + x) & 31)) & 1)) continue;
-    if (c->stencil && f->stencil) {
-      if (!stencil_depth(f, di, (uint32_t)z)) continue;
-    } else if (f->depth_test) {
-      uint32_t zz = (uint32_t)z >> SGL_DEPTH_SHIFT;
-      if (!compare(f->depth_func, zz, (uint32_t)*zp)) continue;
-      if (f->depth_write) *zp = (sgl_depth_t)zz;
-    }
+    if (!test_z(f, di, (uint32_t)z)) continue;
     if (f->write_color) finish_index(f, cp, t->smooth ? index_of(r) : t->flat[0], col(fg));
   }
 }
@@ -958,7 +976,6 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
   int row = c->height - 1 - y;
   uint32_t *cp = c->color + SGL_MUL16(row, c->rowpixels) + xs;
   size_t di = (size_t)SGL_MUL16(row, c->width) + (size_t)xs;
-  sgl_depth_t *zp = c->depth + di;
   int32_t z = fplane_at(&t->fz, xs, y), dz = t->fz.dx;
   int32_t r = 0, g = 0, b = 0, al = 0, dr = 0, dg = 0, db = 0, dal = 0;
   int32_t fg = 0xFF0000, dfg = 0;
@@ -1014,7 +1031,7 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       if (three) rw[k] = t->p[k].a0 + t->p[k].dx * px + t->p[k].dy * py;
     }
   }
-  for (x = 0; x < n; x++, cp++, zp++, di++) {
+  for (x = 0; x < n; x++, cp++, di++) {
     int rgba[4];
     if (t->persp && left == 0) {
       /* The exact coordinates here and PERSP_STEP pixels on; linear
@@ -1044,13 +1061,7 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       left = m;
     }
     if (f->stipple && !((c->a.stipple[y & 31] >> ((xs + x) & 31)) & 1)) goto next;
-    if (c->stencil && f->stencil) {
-      if (!stencil_depth(f, di, (uint32_t)z)) goto next;
-    } else if (f->depth_test) {
-      uint32_t zz = (uint32_t)z >> SGL_DEPTH_SHIFT;
-      if (!compare(f->depth_func, zz, (uint32_t)*zp)) goto next;
-      if (f->depth_write) *zp = (sgl_depth_t)zz;
-    }
+    if (!f->late_z && !test_z(f, di, (uint32_t)z)) goto next;
     if (t->smooth) {
       rgba[0] = col(r);
       rgba[1] = col(g);
@@ -1079,6 +1090,7 @@ static void span(const frag *f, const tri *t, int y, int xs, int xe) {
       rgba[2] = add255(rgba[2], t->flat_sec[2]);
     }
     if (f->alpha_test && !compare(f->afunc, (uint32_t)rgba[3], (uint32_t)f->aref)) goto next;
+    if (f->late_z && !test_z(f, di, (uint32_t)z)) goto next;
     if (f->write_color) finish(f, cp, rgba, col(fg));
   next:
     z += dz;
@@ -1359,13 +1371,7 @@ static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const in
   if (x < f->x0 || x >= f->x1 || y < f->y0 || y >= f->y1) return;
   row = (long)(c->height - 1 - y);
   di = (size_t)row * (size_t)c->width + (size_t)x;
-  if (c->stencil && f->stencil) {
-    if (!stencil_depth(f, di, z)) return;
-  } else if (f->depth_test) {
-    uint32_t zz = z >> SGL_DEPTH_SHIFT;
-    if (!compare(f->depth_func, zz, (uint32_t)c->depth[di])) return;
-    if (f->depth_write) c->depth[di] = (sgl_depth_t)zz;
-  }
+  if (!f->late_z && !test_z(f, di, z)) return;
   if (f->index_mode) {
     if (f->write_color) finish_index(f, c->color + row * c->rowpixels + x, rgba_in[0], fogf);
     return;
@@ -1392,6 +1398,7 @@ static void plot(const frag *f, const tri *t, int x, int y, uint32_t z, const in
     rgba[2] = add255(rgba[2], t->flat_sec[2]);
   }
   if (f->alpha_test && !compare(f->afunc, (uint32_t)rgba[3], (uint32_t)f->aref)) return;
+  if (f->late_z && !test_z(f, di, z)) return;
   if (f->write_color) finish(f, c->color + row * c->rowpixels + x, rgba, fogf);
 }
 

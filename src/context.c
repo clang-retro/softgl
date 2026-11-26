@@ -16,7 +16,7 @@ SGL_THREAD const struct sgl_dispatch *sgl_cur = &sgl_nop_table;
  * programs of the Windows SDK look for it. */
 static const char kVendor[] = "clang-retro";
 static const char kRenderer[] = "clang-retro Generic";
-static const char kVersion[] = "1.4.0";
+static const char kVersion[] = "1.5.0";
 static const char kExtensions[] =
     "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
     "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
@@ -28,7 +28,8 @@ static const char kExtensions[] =
     "GL_EXT_blend_color GL_EXT_blend_minmax GL_EXT_blend_subtract GL_EXT_blend_func_separate "
     "GL_NV_blend_square GL_EXT_stencil_wrap GL_EXT_texture_lod_bias GL_SGIS_generate_mipmap "
     "GL_ARB_depth_texture GL_ARB_shadow GL_ARB_window_pos GL_EXT_multi_draw_arrays "
-    "GL_ARB_point_parameters GL_EXT_point_parameters GL_EXT_secondary_color GL_EXT_fog_coord";
+    "GL_ARB_point_parameters GL_EXT_point_parameters GL_EXT_secondary_color GL_EXT_fog_coord "
+    "GL_ARB_vertex_buffer_object GL_ARB_occlusion_query GL_EXT_shadow_funcs";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -286,6 +287,7 @@ static sgl_shared *new_shared(void) {
   s->refs = 1;
   s->next_list = 1;
   s->next_texture = 1;
+  s->next_buffer = 1;
   return s;
 }
 
@@ -294,6 +296,7 @@ static void release_shared(sgl_shared *s) {
   if (!s || --s->refs > 0) return;
   sgl_list_free_all(s);
   sgl_texture_free_all(s);
+  sgl_buffer_free_all(s);
   free(s);
 }
 
@@ -357,6 +360,9 @@ void sgl_destroy_context(sgl_context *c) {
   if (!c) return;
   if (sgl_ctx == c) sgl_make_current(NULL);
   sgl_texture_release(c);
+  sgl_client_refs(&c->c, -1);
+  for (i = 0; i < c->client_depth; i++) sgl_client_refs(&c->client_stack[i], -1);
+  sgl_query_free_all(c);
   release_shared(c->shared);
   sgl_stack_free(&c->modelview);
   sgl_stack_free(&c->projection);
@@ -1208,6 +1214,8 @@ void APIENTRY sgl_PushClientAttrib(GLbitfield mask) {
   }
   c->client_stack[c->client_depth] = c->c;
   c->client_stack[c->client_depth++].mask = mask;
+  /* The copy holds references to the buffers of the arrays. */
+  sgl_client_refs(&c->c, 1);
 }
 
 /* glPopClientAttrib: restores what the last glPushClientAttrib saved. */
@@ -1224,6 +1232,11 @@ void APIENTRY sgl_PopClientAttrib(void) {
     c->c.unpack = s->unpack;
   }
   if (s->mask & GL_CLIENT_VERTEX_ARRAY_BIT) {
+    /* The saved state takes the place of the current one, with the
+     * references to the buffers. */
+    sgl_client_refs(&c->c, -1);
+    c->c.array_buffer = s->array_buffer;
+    c->c.element_buffer = s->element_buffer;
     c->c.vertex = s->vertex;
     c->c.normal = s->normal;
     c->c.color = s->color;
@@ -1233,6 +1246,8 @@ void APIENTRY sgl_PopClientAttrib(void) {
     c->c.edge = s->edge;
     c->c.color2 = s->color2;
     c->c.fog = s->fog;
+  } else {
+    sgl_client_refs(s, -1);
   }
 }
 
@@ -1418,6 +1433,25 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_SECONDARY_COLOR_ARRAY_SIZE: v[0] = c->c.color2.size; return 1;
     case GL_SECONDARY_COLOR_ARRAY_TYPE: v[0] = c->c.color2.type; *kind = Q_ENUM; return 1;
     case GL_SECONDARY_COLOR_ARRAY_STRIDE: v[0] = c->c.color2.stride; return 1;
+    case GL_ARRAY_BUFFER_BINDING: v[0] = c->c.array_buffer ? c->c.array_buffer->name : 0; return 1;
+    case GL_ELEMENT_ARRAY_BUFFER_BINDING:
+      v[0] = c->c.element_buffer ? c->c.element_buffer->name : 0;
+      return 1;
+    case GL_VERTEX_ARRAY_BUFFER_BINDING: case GL_NORMAL_ARRAY_BUFFER_BINDING:
+    case GL_COLOR_ARRAY_BUFFER_BINDING: case GL_INDEX_ARRAY_BUFFER_BINDING:
+    case GL_TEXTURE_COORD_ARRAY_BUFFER_BINDING: case GL_EDGE_FLAG_ARRAY_BUFFER_BINDING:
+    case GL_SECONDARY_COLOR_ARRAY_BUFFER_BINDING: case GL_FOG_COORD_ARRAY_BUFFER_BINDING: {
+      const sgl_array *arr = pname == GL_VERTEX_ARRAY_BUFFER_BINDING ? &c->c.vertex
+                             : pname == GL_NORMAL_ARRAY_BUFFER_BINDING ? &c->c.normal
+                             : pname == GL_COLOR_ARRAY_BUFFER_BINDING ? &c->c.color
+                             : pname == GL_INDEX_ARRAY_BUFFER_BINDING ? &c->c.index
+                             : pname == GL_EDGE_FLAG_ARRAY_BUFFER_BINDING ? &c->c.edge
+                             : pname == GL_SECONDARY_COLOR_ARRAY_BUFFER_BINDING ? &c->c.color2
+                             : pname == GL_FOG_COORD_ARRAY_BUFFER_BINDING ? &c->c.fog
+                                                                          : ta;
+      v[0] = arr->buf ? arr->buf->name : 0;
+      return 1;
+    }
     case GL_FOG_COORDINATE_ARRAY_TYPE: v[0] = c->c.fog.type; *kind = Q_ENUM; return 1;
     case GL_FOG_COORDINATE_ARRAY_STRIDE: v[0] = c->c.fog.stride; return 1;
     case GL_LOGIC_OP_MODE: v[0] = a->logic_op; *kind = Q_ENUM; return 1;

@@ -152,7 +152,27 @@ EXTENSIONS += [
     ("void", "PointParameteriv", "GLenum pname, const GLint *params"),
 ] + secondarycolor() + [
     ("void", "SecondaryColorPointer", "GLint size, GLenum type, GLsizei stride, const void *pointer"),
-] + windowpos()
+] + windowpos() + [
+    ("void", "BindBuffer", "GLenum target, GLuint buffer"),
+    ("void", "DeleteBuffers", "GLsizei n, const GLuint *buffers"),
+    ("void", "GenBuffers", "GLsizei n, GLuint *buffers"),
+    ("GLboolean", "IsBuffer", "GLuint buffer"),
+    ("void", "BufferData", "GLenum target, GLsizeiptr size, const void *data, GLenum usage"),
+    ("void", "BufferSubData", "GLenum target, GLintptr offset, GLsizeiptr size, const void *data"),
+    ("void", "GetBufferSubData", "GLenum target, GLintptr offset, GLsizeiptr size, void *data"),
+    ("void *", "MapBuffer", "GLenum target, GLenum access"),
+    ("GLboolean", "UnmapBuffer", "GLenum target"),
+    ("void", "GetBufferParameteriv", "GLenum target, GLenum pname, GLint *params"),
+    ("void", "GetBufferPointerv", "GLenum target, GLenum pname, void **params"),
+    ("void", "GenQueries", "GLsizei n, GLuint *ids"),
+    ("void", "DeleteQueries", "GLsizei n, const GLuint *ids"),
+    ("GLboolean", "IsQuery", "GLuint id"),
+    ("void", "BeginQuery", "GLenum target, GLuint id"),
+    ("void", "EndQuery", "GLenum target"),
+    ("void", "GetQueryiv", "GLenum target, GLenum pname, GLint *params"),
+    ("void", "GetQueryObjectiv", "GLuint id, GLenum pname, GLint *params"),
+    ("void", "GetQueryObjectuiv", "GLuint id, GLenum pname, GLuint *params"),
+]
 
 # Other names of the functions: the names of the ARB and EXT extensions
 # that became part of OpenGL. Each is exported and given by
@@ -172,7 +192,12 @@ ALIASES = dict(
                                 "MultiDrawArrays", "MultiDrawElements", "PointParameterf",
                                 "PointParameterfv", "SecondaryColorPointer")]
     + [(name + "EXT", name) for _, name, _ in secondarycolor()]
-    + [(name + "ARB", name) for _, name, _ in windowpos()])
+    + [(name + "ARB", name) for _, name, _ in windowpos()]
+    + [(n + "ARB", n) for n in ("BindBuffer", "DeleteBuffers", "GenBuffers", "IsBuffer", "BufferData",
+                                "BufferSubData", "GetBufferSubData", "MapBuffer", "UnmapBuffer",
+                                "GetBufferParameteriv", "GetBufferPointerv", "GenQueries",
+                                "DeleteQueries", "IsQuery", "BeginQuery", "EndQuery", "GetQueryiv",
+                                "GetQueryObjectiv", "GetQueryObjectuiv")])
 
 # Functions that the specification does not put in display lists: they
 # run at once, also while a list is compiled.
@@ -187,7 +212,8 @@ GetColorTableEXT GetColorTableParameterivEXT GetColorTableParameterfvEXT
 ColorPointerEXT EdgeFlagPointerEXT GetPointervEXT IndexPointerEXT
 NormalPointerEXT TexCoordPointerEXT VertexPointerEXT GetCompressedTexImage
 CompressedTexImage1D CompressedTexImage3D CompressedTexSubImage1D CompressedTexSubImage3D
-FogCoordPointer SecondaryColorPointer
+FogCoordPointer SecondaryColorPointer BindBuffer DeleteBuffers GenBuffers BufferData
+BufferSubData MapBuffer UnmapBuffer GenQueries DeleteQueries
 """.split())
 
 # Functions that call the canonical functions through the current table.
