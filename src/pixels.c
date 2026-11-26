@@ -18,7 +18,7 @@ const sgl_pixelstore sgl_tight_store = {GL_FALSE, GL_FALSE, 0, 0, 0, 1};
  * sufficient memory. */
 int sgl_need_stencil(sgl_context *c) {
   if (c->stencil) return 1;
-  c->stencil = (uint8_t *)calloc(c->depth_size ? c->depth_size : 1, 1);
+  c->stencil = (uint8_t *)sgl_be_alloc(c, c->depth_size, 1);
   return c->stencil != NULL;
 }
 
@@ -634,13 +634,15 @@ void sgl_pack_texels(sgl_context *c, int w, int h, const uint32_t *texels, GLenu
 }
 
 /* Gives the current context, or NULL (with GL_INVALID_OPERATION) between
- * glBegin and glEnd. */
+ * glBegin and glEnd. The work of the back end is then finished, so that
+ * the pixel operation can use the buffers. */
 static sgl_context *outside(void) {
   sgl_context *c = sgl_ctx;
   if (c->prim != SGL_NO_PRIM) {
     sgl_error(GL_INVALID_OPERATION);
     return NULL;
   }
+  sgl_be_wait(c);
   return c;
 }
 
@@ -823,6 +825,62 @@ void APIENTRY sgl_GetPixelMapusv(GLenum map, GLushort *values) {
   for (k = 0; k < c->pixel_map_size[i]; k++) values[k] = (GLushort)(c->pixel_map[i][k] * 65535.0f);
 }
 
+/* Gives the value of the color buffer for glClear, and in *keep the bits
+ * of each pixel that the color mask or the index mask keeps. */
+static uint32_t clear_value(sgl_context *c, uint32_t *keep) {
+  const GLfloat *cc = c->a.clear_color;
+  if (c->index_mode) {
+    *keep = c->index_max & ~c->a.index_mask;
+    return (uint32_t)(int32_t)(c->a.clear_index + 0.5f) & c->index_max;
+  }
+  *keep = (c->a.color_mask[3] ? 0 : 0xFF000000u) | (c->a.color_mask[0] ? 0 : 0xFF0000u) |
+          (c->a.color_mask[1] ? 0 : 0xFF00u) | (c->a.color_mask[2] ? 0 : 0xFFu);
+  return ((uint32_t)to_byte(cc[3]) << 24) | ((uint32_t)to_byte(cc[0]) << 16) |
+         ((uint32_t)to_byte(cc[1]) << 8) | to_byte(cc[2]);
+}
+
+/* Gives the value of the depth buffer for glClear. */
+static uint32_t clear_depth(sgl_context *c) {
+  return (uint32_t)(c->a.clear_depth * (GLdouble)SGL_Z_MAX) >> SGL_DEPTH_SHIFT;
+}
+
+/* Gives the buffers of mask that the clear entry of the back end can do
+ * to the rectangle [x0, x1) x [y0, y1): those without a mask that keeps
+ * bits. Gives the buffers that the back end cleared. */
+static unsigned backend_clear(sgl_context *c, GLbitfield mask, int x0, int y0, int x1, int y1) {
+  sgl_clear_rect r;
+  uint32_t keep;
+  long top = (long)c->height - y1; /* the first row from the top */
+  memset(&r, 0, sizeof r);
+  r.width = x1 - x0;
+  r.height = y1 - y0;
+  if (mask & GL_COLOR_BUFFER_BIT) {
+    r.color_value = clear_value(c, &keep);
+    if (keep == 0) {
+      r.mask |= GL_COLOR_BUFFER_BIT;
+      r.color = c->color + top * c->rowpixels + x0;
+      r.color_pitch = c->rowpixels;
+    }
+  }
+  if ((mask & GL_DEPTH_BUFFER_BIT) && c->a.depth_mask && c->depth) {
+    r.mask |= GL_DEPTH_BUFFER_BIT;
+    r.depth = c->depth + top * c->width + x0;
+    r.depth_bytes = (int)sizeof(sgl_depth_t);
+    r.depth_pitch = c->width;
+    r.depth_value = clear_depth(c);
+  }
+  if ((mask & GL_STENCIL_BUFFER_BIT) && (c->a.stencil_writemask & 0xFFu) == 0xFFu) {
+    r.mask |= GL_STENCIL_BUFFER_BIT;
+    r.stencil = c->stencil + top * c->width + x0;
+    r.stencil_pitch = c->width;
+    r.stencil_value = (uint8_t)c->a.stencil_clear;
+  }
+  if (!r.mask) return 0;
+  keep = c->be->clear(c->be_user, &r) & r.mask;
+  if (keep) c->be_pending |= SGL_BE_ASYNC;
+  return keep;
+}
+
 /* glClear: sets the buffers in mask to their clear values, in the
  * scissor box. */
 void APIENTRY sgl_Clear(GLbitfield mask) {
@@ -834,18 +892,10 @@ void APIENTRY sgl_Clear(GLbitfield mask) {
   y1 = c->height;
   if (c->a.enabled[SGL_SCISSOR_TEST]) sgl_clip_rect(c, &x0, &y0, &x1, &y1);
   if (x0 >= x1 || y0 >= y1) return;
+  if ((mask & GL_STENCIL_BUFFER_BIT) && !sgl_need_stencil(c)) mask &= ~(GLbitfield)GL_STENCIL_BUFFER_BIT;
+  if (c->be && c->be->clear) mask &= ~(GLbitfield)backend_clear(c, mask, x0, y0, x1, y1);
   if (mask & GL_COLOR_BUFFER_BIT) {
-    const GLfloat *cc = c->a.clear_color;
-    uint32_t v, keep;
-    if (c->index_mode) {
-      v = (uint32_t)(int32_t)(c->a.clear_index + 0.5f) & c->index_max;
-      keep = c->index_max & ~c->a.index_mask;
-    } else {
-      v = ((uint32_t)to_byte(cc[3]) << 24) | ((uint32_t)to_byte(cc[0]) << 16) |
-          ((uint32_t)to_byte(cc[1]) << 8) | to_byte(cc[2]);
-      keep = (c->a.color_mask[3] ? 0 : 0xFF000000u) | (c->a.color_mask[0] ? 0 : 0xFF0000u) |
-             (c->a.color_mask[1] ? 0 : 0xFF00u) | (c->a.color_mask[2] ? 0 : 0xFFu);
-    }
+    uint32_t keep, v = clear_value(c, &keep);
     for (y = y0; y < y1; y++) {
       uint32_t *row = c->color + (long)(c->height - 1 - y) * c->rowpixels;
       if (keep == 0)
@@ -857,13 +907,13 @@ void APIENTRY sgl_Clear(GLbitfield mask) {
     }
   }
   if ((mask & GL_DEPTH_BUFFER_BIT) && c->a.depth_mask && c->depth) {
-    uint32_t z = (uint32_t)(c->a.clear_depth * (GLdouble)SGL_Z_MAX) >> SGL_DEPTH_SHIFT;
+    uint32_t z = clear_depth(c);
     for (y = y0; y < y1; y++) {
       sgl_depth_t *row = c->depth + (size_t)(c->height - 1 - y) * c->width;
       for (x = x0; x < x1; x++) row[x] = (sgl_depth_t)z;
     }
   }
-  if ((mask & GL_STENCIL_BUFFER_BIT) && sgl_need_stencil(c)) {
+  if (mask & GL_STENCIL_BUFFER_BIT) {
     for (y = y0; y < y1; y++) {
       uint8_t *row = c->stencil + (size_t)(c->height - 1 - y) * c->width;
       for (x = x0; x < x1; x++)
@@ -1088,6 +1138,7 @@ static void read_stencil(sgl_context *c, int x, int y, int w, int h, int32_t *ou
  * far plane. */
 void sgl_read_depth(sgl_context *c, int x, int y, int w, int h, int32_t *out) {
   int i, j;
+  sgl_be_wait(c);
   for (j = 0; j < h; j++)
     for (i = 0; i < w; i++) {
       int px = x + i, py = y + j;

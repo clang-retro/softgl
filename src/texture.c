@@ -285,6 +285,7 @@ static int chain_complete(const sgl_level *lv, int b, int max) {
  * map, on all the faces. */
 static void check_complete(sgl_texture *t) {
   int f;
+  sgl_texture_touch(t);
   t->complete = chain_complete(t->level, t->base_level, t->max_level);
   if (t->target != GL_TEXTURE_CUBE_MAP || !t->complete) return;
   if (!t->faces) {
@@ -332,6 +333,7 @@ static void unpack_index_images(const sgl_pixelstore *ps, int three, int W, int 
 static void generate_mipmaps(sgl_texture *t, int face) {
   sgl_level *lv = sgl_face_levels(t, face);
   int i;
+  sgl_texture_touch(t);
   if (!lv || t->base_level >= SGL_MAX_TEXTURE_LEVELS || !lv[t->base_level].texels) return;
   for (i = t->base_level; i + 1 < SGL_MAX_TEXTURE_LEVELS && i < t->max_level; i++) {
     const sgl_level *src = &lv[i];
@@ -586,6 +588,7 @@ static void sub_image(sgl_context *c, GLenum target, GLint level, int x, int y, 
                       const sgl_pixelstore *ps) {
   sgl_texture *t = bound(c, target);
   sgl_level *lv;
+  if (t) sgl_texture_touch(t);
   int i, j, k, three = is_3d(target);
   if (!t) {
     sgl_error(GL_INVALID_ENUM);
@@ -683,6 +686,7 @@ static uint8_t *read_color(sgl_context *c, int x, int y, int w, int h) {
   uint8_t *p = (uint8_t *)malloc((size_t)w * h * 4 + 4);
   int i, j;
   if (!p) return NULL;
+  sgl_be_wait(c);
   for (j = 0; j < h; j++)
     for (i = 0; i < w; i++) {
       int px = x + i, py = y + j;
@@ -922,6 +926,7 @@ void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *par
     sgl_error(GL_INVALID_ENUM);
     return;
   }
+  sgl_texture_touch(t);
   switch (pname) {
     case GL_TEXTURE_MIN_FILTER:
       if (v != GL_NEAREST && v != GL_LINEAR && v != GL_NEAREST_MIPMAP_NEAREST &&
@@ -1374,6 +1379,7 @@ void APIENTRY sgl_DeleteTextures(GLsizei n, const GLuint *textures) {
       if (c->tex_3d[u] == t) c->tex_3d[u] = &c->default_3d;
       if (c->tex_cube[u] == t) c->tex_cube[u] = &c->default_cube;
     }
+    if (t->id && c->be && c->be->texture_deleted) c->be->texture_deleted(c->be_user, t->id);
     free_levels(t);
     free(t);
   }
@@ -1407,6 +1413,7 @@ static void set_palette(sgl_texture *t, int start, int count, GLenum format, GLe
                         const void *data) {
   uint8_t rgba[256 * 4];
   int i;
+  sgl_texture_touch(t);
   if (start < 0 || count < 0 || start + count > 256) {
     sgl_error(GL_INVALID_VALUE);
     return;
