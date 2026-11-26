@@ -53,11 +53,12 @@ jobs:
       - uses: actions/checkout@v4
       # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
       - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      # Also the Amiga back ends and the examples, which link the renderer.
       - name: Build for AmigaOS
         run: |
           make -j"$(nproc)" OUT=build-amiga AR="$CLANG_DOS/bin/llvm-ar" \
             CC="$CLANG_DOS/bin/clang --config=amiga.cfg" \
-            CXX="$CLANG_DOS/bin/clang++ --config=amiga.cfg" CFLAGS="-O2 -Werror"
+            CXX="$CLANG_DOS/bin/clang++ --config=amiga.cfg" CFLAGS="-O2 -Werror" all amiga
       - name: Build for Atari TOS
         run: |
           make -j"$(nproc)" OUT=build-atari AR="$CLANG_DOS/bin/llvm-ar" \

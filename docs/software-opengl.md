@@ -456,9 +456,13 @@ values that OpenGL gives back:
   values, that softgl waits for the work of the back end before it
   uses the buffers, and that the texture serials change. The output is
   `PASS softgl backend`.
+- `tests/c2p.c`: the parts of the Amiga back end that have no hardware
+  code: the pens, the palette and the bit planes (compared with a
+  conversion of one bit at a time). The output is `PASS softgl c2p`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
-Atari TOS (68000) with the clang-retro toolchain.
+Atari TOS (68000) with the clang-retro toolchain. For AmigaOS, it also
+builds the Amiga back end and links `examples/amiga/cube.c`.
 
 In clang-retro MFC:
 
