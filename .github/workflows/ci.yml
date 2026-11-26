@@ -125,11 +125,11 @@ jobs:
         if: steps.dos32.outputs.ok == '1'
         run: sh tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe
 
-  # The Glide back end with the ViRGE, Matrox, ATI and Voodoo drivers
-  # for 32-bit DOS in 86Box: a Pentium computer with FreeDOS and an S3
-  # ViRGE/DX, an S3 ViRGE, a Matrox Mystique, Millennium II or
+  # The Glide back end with the ViRGE, Matrox, ATI, PowerVR and Voodoo
+  # drivers for 32-bit DOS in 86Box: a Pentium computer with FreeDOS and
+  # an S3 ViRGE/DX, an S3 ViRGE, a Matrox Mystique, Millennium II or
   # Productiva G100 (on an AGP board), an ATI 3D Rage Pro or Rage II+,
-  # or a Voodoo Graphics card. The job builds 86Box from a fixed commit
+  # a PowerVR PCX2 with a Mystique, or a Voodoo Graphics card. The job builds 86Box from a fixed commit
   # (tools/setup-86box.sh) and keeps the build in the cache. A nightly
   # without dos32.cfg cannot build the test; then the job only writes a
   # notice.
@@ -188,6 +188,11 @@ jobs:
       - name: Run the test on the ATI 3D Rage II+
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --card mach64_rage2p ~/86box build-dos32/tests/dos/glidetest.exe ati
+      # The VBE BIOS of the ViRGE in 86Box has no linear frame buffer,
+      # thus the 2D card for the PowerVR is the Mystique.
+      - name: Run the test on the PowerVR PCX2
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --powervr --card mystique ~/86box build-dos32/tests/dos/glidetest.exe powervr
       - name: Run the test on the Voodoo Graphics
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --voodoo ~/86box build-dos32/tests/dos/glidetest.exe voodoo

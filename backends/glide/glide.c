@@ -636,6 +636,34 @@ static int one_alpha(const sgl_context *c, const sgl_texture *t0, const sgl_hw_v
   return 1;
 }
 
+/* Gives 1 when the vertex colors of a primitive are one color times an
+ * intensity, for a driver with SGL_GLIDE_LIMIT_ONE_HUE (a card that
+ * shades one color with an intensity). The test is needed only with a
+ * texture that the color modulates, or with a blend. h has the n
+ * vertices; t0 and t1 are the textures. */
+static int one_hue(const sgl_context *c, const sgl_texture *t0, const sgl_texture *t1, const sgl_hw_vertex *const *h,
+                   int n) {
+  float v[3][3], s[3] = {0, 0, 0}, st;
+  int i, k, tex = t0 || t1;
+  if (tex && t0 && c->a.unit[0].env_mode == GL_REPLACE) return 1;
+  if (!tex && !c->a.enabled[SGL_BLEND]) return 1;
+  for (i = 0; i < n; i++)
+    for (k = 0; k < 3; k++) {
+      v[i][k] = channel(h[i]->color[k] + (c->sec_on && !tex ? h[i]->spec[k] : 0.0f));
+      s[k] += v[i][k];
+    }
+  st = s[0] + s[1] + s[2];
+  if (st <= 0.0f) return 1;
+  for (i = 0; i < n; i++) {
+    float vi = v[i][0] + v[i][1] + v[i][2];
+    for (k = 0; k < 3; k++) {
+      float d = v[i][k] - s[k] * vi / st;
+      if (d > 6.0f || d < -6.0f) return 0;
+    }
+  }
+  return 1;
+}
+
 /* Draws a quad of four Glide vertices as two triangles. */
 static void quad(gr_state *s, const sgl_gr_vertex *q) {
   s->gr->DrawTriangle(&q[0], &q[1], &q[2]);
@@ -655,6 +683,7 @@ static int draw(gr_state *s, sgl_context *c, int kind, const sgl_hw_vertex *cons
   t0 = usable_texture(s, c, 0);
   t1 = usable_texture(s, c, 1);
   if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_ALPHA) && !one_alpha(c, t0, h, n)) return 0;
+  if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_HUE) && !one_hue(c, t0, t1, h, n)) return 0;
   to_hardware(s);
   if (t1 && !(e1 = card_texture(s, c, t1, 1))) return 0;
   if (t0 && !(e0 = card_texture(s, c, t0, 0))) return 0;

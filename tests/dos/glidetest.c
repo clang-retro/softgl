@@ -5,11 +5,11 @@
  * It writes "PASS" when all checks are correct.
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
- * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a ViRGE, a
- * Matrox or an ATI Rage card (tools/test-glide-86box.py), or on a
+ * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a PowerVR, a
+ * ViRGE, a Matrox or an ATI Rage card (tools/test-glide-86box.py), or on a
  * computer with one of the cards.
  *
- *     glidetest [voodoo | virge | matrox | ati]
+ *     glidetest [voodoo | powervr | virge | matrox | ati]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
