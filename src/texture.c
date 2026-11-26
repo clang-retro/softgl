@@ -38,12 +38,21 @@ static void free_levels(sgl_texture *t) {
   }
 }
 
-/* Sets up the default textures of a new context. */
+/* Binds the default textures to all the texture units. */
+static void bind_defaults(sgl_context *c) {
+  int u;
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+    c->tex_1d[u] = &c->default_1d;
+    c->tex_2d[u] = &c->default_2d;
+  }
+}
+
+/* Sets up the default textures of a new context. All the texture units
+ * share them, as the specification tells. */
 void sgl_texture_init(sgl_context *c) {
   init_texture(&c->default_1d, 0, GL_TEXTURE_1D);
   init_texture(&c->default_2d, 0, GL_TEXTURE_2D);
-  c->tex_1d = &c->default_1d;
-  c->tex_2d = &c->default_2d;
+  bind_defaults(c);
 }
 
 /* Lets go of the textures that a context holds: its default textures
@@ -51,8 +60,7 @@ void sgl_texture_init(sgl_context *c) {
 void sgl_texture_release(sgl_context *c) {
   free_levels(&c->default_1d);
   free_levels(&c->default_2d);
-  c->tex_1d = &c->default_1d;
-  c->tex_2d = &c->default_2d;
+  bind_defaults(c);
 }
 
 /* Frees all the texture objects of a set of shared objects. */
@@ -77,18 +85,32 @@ static sgl_texture *find_texture(sgl_shared *s, GLuint name) {
   return t;
 }
 
-/* Gives the texture of the primitives: the 2D texture when it is on,
- * else the 1D texture, or NULL. */
-sgl_texture *sgl_current_texture(sgl_context *c) {
-  if (c->a.enabled[SGL_TEXTURE_2D]) return c->tex_2d;
-  if (c->a.enabled[SGL_TEXTURE_1D]) return c->tex_1d;
+/* Gives the texture of texture unit u for the primitives: the 2D
+ * texture when it is on, else the 1D texture, or NULL. */
+sgl_texture *sgl_unit_texture(sgl_context *c, int u) {
+  if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)]) return c->tex_2d[u];
+  if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)]) return c->tex_1d[u];
   return NULL;
 }
 
-/* Gives the bound texture of a target, or NULL for an invalid target. */
+/* Gives the texture units that have a texture on, as bits (bit u for
+ * unit u). In color index mode there are no textures. */
+unsigned sgl_texture_units(const sgl_context *c) {
+  unsigned m = 0;
+  int u;
+  if (c->index_mode) return 0;
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++)
+    if (c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_1D)] || c->a.enabled[SGL_UCAP(u, SGL_U_TEXTURE_2D)])
+      m |= 1u << u;
+  return m;
+}
+
+/* Gives the bound texture of a target in the active texture unit, or
+ * NULL for an invalid target. */
 static sgl_texture *bound(sgl_context *c, GLenum target) {
-  if (target == GL_TEXTURE_2D) return c->tex_2d;
-  if (target == GL_TEXTURE_1D) return c->tex_1d;
+  int u = c->a.active_texture;
+  if (target == GL_TEXTURE_2D) return c->tex_2d[u];
+  if (target == GL_TEXTURE_1D) return c->tex_1d[u];
   return NULL;
 }
 
@@ -458,10 +480,34 @@ void APIENTRY sgl_TexParameterfv(GLenum target, GLenum pname, const GLfloat *par
     return;
   }
   switch (pname) {
-    case GL_TEXTURE_MIN_FILTER: t->min_filter = v; break;
-    case GL_TEXTURE_MAG_FILTER: t->mag_filter = v; break;
-    case GL_TEXTURE_WRAP_S: t->wrap_s = v; break;
-    case GL_TEXTURE_WRAP_T: t->wrap_t = v; break;
+    case GL_TEXTURE_MIN_FILTER:
+      if (v != GL_NEAREST && v != GL_LINEAR && v != GL_NEAREST_MIPMAP_NEAREST &&
+          v != GL_LINEAR_MIPMAP_NEAREST && v != GL_NEAREST_MIPMAP_LINEAR && v != GL_LINEAR_MIPMAP_LINEAR) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      t->min_filter = v;
+      break;
+    case GL_TEXTURE_MAG_FILTER:
+      if (v != GL_NEAREST && v != GL_LINEAR) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      t->mag_filter = v;
+      break;
+    case GL_TEXTURE_WRAP_S:
+    case GL_TEXTURE_WRAP_T:
+      /* GL_CLAMP_TO_EDGE (OpenGL 1.2) is also the way that GL_CLAMP
+       * works here: the border texels are not kept. */
+      if (v != GL_REPEAT && v != GL_CLAMP && v != GL_CLAMP_TO_EDGE) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      if (pname == GL_TEXTURE_WRAP_S)
+        t->wrap_s = v;
+      else
+        t->wrap_t = v;
+      break;
     case GL_TEXTURE_BORDER_COLOR: memcpy(t->border_color, params, sizeof t->border_color); break;
     case GL_TEXTURE_PRIORITY: t->priority = sgl_clamp01(params[0]); break;
     default: sgl_error(GL_INVALID_ENUM); break;
@@ -536,15 +582,21 @@ void APIENTRY sgl_GetTexLevelParameteriv(GLenum target, GLint level, GLenum pnam
 /* glTexEnvfv: sets a parameter of the texture environment. */
 void APIENTRY sgl_TexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {
   sgl_context *c = sgl_ctx;
+  sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   if (target != GL_TEXTURE_ENV) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
-  if (pname == GL_TEXTURE_ENV_MODE)
-    c->a.tex_env_mode = (GLenum)params[0];
-  else if (pname == GL_TEXTURE_ENV_COLOR) {
+  if (pname == GL_TEXTURE_ENV_MODE) {
+    GLenum m = (GLenum)params[0];
+    if (m != GL_MODULATE && m != GL_DECAL && m != GL_BLEND && m != GL_REPLACE && m != GL_ADD) {
+      sgl_error(GL_INVALID_ENUM);
+      return;
+    }
+    u->env_mode = m;
+  } else if (pname == GL_TEXTURE_ENV_COLOR) {
     int i;
-    for (i = 0; i < 4; i++) c->a.tex_env_color[i] = sgl_clamp01(params[i]);
+    for (i = 0; i < 4; i++) u->env_color[i] = sgl_clamp01(params[i]);
   } else
     sgl_error(GL_INVALID_ENUM);
 }
@@ -553,10 +605,11 @@ void APIENTRY sgl_TexEnvfv(GLenum target, GLenum pname, const GLfloat *params) {
 void APIENTRY sgl_GetTexEnvfv(GLenum target, GLenum pname, GLfloat *params) {
   sgl_context *c = sgl_ctx;
   (void)target;
+  const sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   if (pname == GL_TEXTURE_ENV_MODE)
-    params[0] = (GLfloat)c->a.tex_env_mode;
+    params[0] = (GLfloat)u->env_mode;
   else if (pname == GL_TEXTURE_ENV_COLOR)
-    memcpy(params, c->a.tex_env_color, sizeof c->a.tex_env_color);
+    memcpy(params, u->env_color, sizeof u->env_color);
   else
     sgl_error(GL_INVALID_ENUM);
 }
@@ -565,11 +618,12 @@ void APIENTRY sgl_GetTexEnvfv(GLenum target, GLenum pname, GLfloat *params) {
 void APIENTRY sgl_GetTexEnviv(GLenum target, GLenum pname, GLint *params) {
   sgl_context *c = sgl_ctx;
   (void)target;
+  const sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   if (pname == GL_TEXTURE_ENV_MODE)
-    params[0] = (GLint)c->a.tex_env_mode;
+    params[0] = (GLint)u->env_mode;
   else if (pname == GL_TEXTURE_ENV_COLOR) {
     int i;
-    for (i = 0; i < 4; i++) params[i] = (GLint)(c->a.tex_env_color[i] * 2147483647.0f);
+    for (i = 0; i < 4; i++) params[i] = (GLint)(u->env_color[i] * 2147483647.0f);
   } else
     sgl_error(GL_INVALID_ENUM);
 }
@@ -578,17 +632,26 @@ void APIENTRY sgl_GetTexEnviv(GLenum target, GLenum pname, GLint *params) {
  * coordinate. An eye plane is kept in eye coordinates. */
 void APIENTRY sgl_TexGenfv(GLenum coord, GLenum pname, const GLfloat *params) {
   sgl_context *c = sgl_ctx;
+  sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   int i = (int)coord - GL_S;
   if (i < 0 || i > 3) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
   switch (pname) {
-    case GL_TEXTURE_GEN_MODE: c->a.gen_mode[i] = (GLenum)params[0]; break;
-    case GL_OBJECT_PLANE: memcpy(c->a.gen_object[i], params, 4 * sizeof(GLfloat)); break;
+    case GL_TEXTURE_GEN_MODE: {
+      GLenum m = (GLenum)params[0];
+      if (m != GL_OBJECT_LINEAR && m != GL_EYE_LINEAR && (m != GL_SPHERE_MAP || i > 1)) {
+        sgl_error(GL_INVALID_ENUM);
+        return;
+      }
+      u->gen_mode[i] = m;
+      break;
+    }
+    case GL_OBJECT_PLANE: memcpy(u->gen_object[i], params, 4 * sizeof(GLfloat)); break;
     case GL_EYE_PLANE: {
       const GLfloat *m;
-      GLfloat *p = c->a.gen_eye[i];
+      GLfloat *p = u->gen_eye[i];
       sgl_update_inverse(c);
       m = c->inv_modelview.m;
       p[0] = params[0] * m[0] + params[1] * m[1] + params[2] * m[2] + params[3] * m[3];
@@ -604,15 +667,16 @@ void APIENTRY sgl_TexGenfv(GLenum coord, GLenum pname, const GLfloat *params) {
 /* glGetTexGenfv: gives a parameter of the generation of a coordinate. */
 void APIENTRY sgl_GetTexGenfv(GLenum coord, GLenum pname, GLfloat *params) {
   sgl_context *c = sgl_ctx;
+  const sgl_unit_attrib *u = &c->a.unit[c->a.active_texture];
   int i = (int)coord - GL_S;
   if (i < 0 || i > 3) {
     sgl_error(GL_INVALID_ENUM);
     return;
   }
   switch (pname) {
-    case GL_TEXTURE_GEN_MODE: params[0] = (GLfloat)c->a.gen_mode[i]; break;
-    case GL_OBJECT_PLANE: memcpy(params, c->a.gen_object[i], 4 * sizeof(GLfloat)); break;
-    case GL_EYE_PLANE: memcpy(params, c->a.gen_eye[i], 4 * sizeof(GLfloat)); break;
+    case GL_TEXTURE_GEN_MODE: params[0] = (GLfloat)u->gen_mode[i]; break;
+    case GL_OBJECT_PLANE: memcpy(params, u->gen_object[i], 4 * sizeof(GLfloat)); break;
+    case GL_EYE_PLANE: memcpy(params, u->gen_eye[i], 4 * sizeof(GLfloat)); break;
     default: sgl_error(GL_INVALID_ENUM); break;
   }
 }
@@ -676,16 +740,16 @@ void APIENTRY sgl_BindTexture(GLenum target, GLuint name) {
     }
   }
   if (target == GL_TEXTURE_2D)
-    c->tex_2d = t;
+    c->tex_2d[c->a.active_texture] = t;
   else
-    c->tex_1d = t;
+    c->tex_1d[c->a.active_texture] = t;
 }
 
 /* glDeleteTextures: deletes texture objects. A bound one is unbound. */
 void APIENTRY sgl_DeleteTextures(GLsizei n, const GLuint *textures) {
   sgl_context *c = sgl_ctx;
   sgl_shared *s = c->shared;
-  int i;
+  int i, u;
   for (i = 0; i < n; i++) {
     GLuint name = textures[i];
     sgl_texture **pp, *t;
@@ -695,8 +759,10 @@ void APIENTRY sgl_DeleteTextures(GLsizei n, const GLuint *textures) {
     t = *pp;
     if (!t) continue;
     *pp = t->next;
-    if (c->tex_2d == t) c->tex_2d = &c->default_2d;
-    if (c->tex_1d == t) c->tex_1d = &c->default_1d;
+    for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+      if (c->tex_2d[u] == t) c->tex_2d[u] = &c->default_2d;
+      if (c->tex_1d[u] == t) c->tex_1d[u] = &c->default_1d;
+    }
     free_levels(t);
     free(t);
   }
@@ -828,4 +894,44 @@ void APIENTRY sgl_GetColorTableParameterfvEXT(GLenum target, GLenum pname, GLflo
   GLint i = 0;
   sgl_GetColorTableParameterivEXT(target, pname, &i);
   params[0] = (GLfloat)i;
+}
+
+/* Gives the texture unit of a name GL_TEXTURE0 + i, or -1 (with
+ * GL_INVALID_ENUM) for a unit that the renderer does not have. */
+static int unit_of(GLenum texture) {
+  if (texture < GL_TEXTURE0 || texture >= GL_TEXTURE0 + SGL_MAX_TEXTURE_UNITS) {
+    sgl_error(GL_INVALID_ENUM);
+    return -1;
+  }
+  return (int)(texture - GL_TEXTURE0);
+}
+
+/* glActiveTexture: sets the texture unit that the texture state
+ * functions change. The texture matrix stack follows it. */
+void APIENTRY sgl_ActiveTexture(GLenum texture) {
+  sgl_context *c = sgl_ctx;
+  int u = unit_of(texture);
+  if (u < 0) return;
+  if (c->stack == &c->texture[c->a.active_texture]) c->stack = &c->texture[u];
+  c->a.active_texture = u;
+}
+
+/* glClientActiveTexture: sets the texture unit of the texture
+ * coordinate array functions. */
+void APIENTRY sgl_ClientActiveTexture(GLenum texture) {
+  int u = unit_of(texture);
+  if (u >= 0) sgl_ctx->c.client_active = u;
+}
+
+/* glMultiTexCoord4f: sets the current texture coordinates of a texture
+ * unit. */
+void APIENTRY sgl_MultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) {
+  int u = unit_of(target);
+  GLfloat *v;
+  if (u < 0) return;
+  v = sgl_ctx->a.tex[u];
+  v[0] = s;
+  v[1] = t;
+  v[2] = r;
+  v[3] = q;
 }

@@ -116,9 +116,9 @@ void sgl_update_inverse(sgl_context *c) {
 
 /* Marks the values that depend on the top of the current stack. */
 static void changed(sgl_context *c) {
-  if (c->stack == &c->texture) {
-    const GLfloat *m = c->texture.top->m;
-    c->texture_identity = m[0] == 1 && m[1] == 0 && m[2] == 0 && m[3] == 0 && m[4] == 0 &&
+  if (c->stack >= &c->texture[0] && c->stack < &c->texture[SGL_MAX_TEXTURE_UNITS]) {
+    const GLfloat *m = c->stack->top->m;
+    c->texture_identity[c->stack - c->texture] = m[0] == 1 && m[1] == 0 && m[2] == 0 && m[3] == 0 && m[4] == 0 &&
                           m[5] == 1 && m[6] == 0 && m[7] == 0 && m[8] == 0 && m[9] == 0 &&
                           m[10] == 1 && m[11] == 0 && m[12] == 0 && m[13] == 0 &&
                           m[14] == 0 && m[15] == 1;
@@ -154,7 +154,7 @@ void APIENTRY sgl_MatrixMode(GLenum mode) {
   switch (mode) {
     case GL_MODELVIEW: c->stack = &c->modelview; break;
     case GL_PROJECTION: c->stack = &c->projection; break;
-    case GL_TEXTURE: c->stack = &c->texture; break;
+    case GL_TEXTURE: c->stack = &c->texture[c->a.active_texture]; break;
     default: sgl_error(GL_INVALID_ENUM); return;
   }
   c->a.matrix_mode = mode;
@@ -180,6 +180,29 @@ void APIENTRY sgl_LoadMatrixf(const GLfloat *m) {
 void APIENTRY sgl_MultMatrixf(const GLfloat *m) {
   sgl_matrix t;
   memcpy(t.m, m, sizeof t.m);
+  mult(&t);
+}
+
+/* Gives the transpose of the matrix m (rows first) in t. */
+static void transpose(sgl_matrix *t, const GLfloat *m) {
+  int i, j;
+  for (i = 0; i < 4; i++)
+    for (j = 0; j < 4; j++) t->m[i * 4 + j] = m[j * 4 + i];
+}
+
+/* glLoadTransposeMatrixf: sets the top of the stack to m, which has
+ * the rows first. */
+void APIENTRY sgl_LoadTransposeMatrixf(const GLfloat *m) {
+  sgl_matrix t;
+  transpose(&t, m);
+  sgl_LoadMatrixf(t.m);
+}
+
+/* glMultTransposeMatrixf: multiplies the top of the stack by m, which
+ * has the rows first. */
+void APIENTRY sgl_MultTransposeMatrixf(const GLfloat *m) {
+  sgl_matrix t;
+  transpose(&t, m);
   mult(&t);
 }
 

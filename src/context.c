@@ -18,7 +18,9 @@ static const char kVendor[] = "clang-retro";
 static const char kRenderer[] = "clang-retro Generic";
 static const char kVersion[] = "1.1.0";
 static const char kExtensions[] =
-    "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array";
+    "GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture GL_EXT_vertex_array "
+    "GL_ARB_multitexture GL_ARB_transpose_matrix GL_ARB_texture_env_add GL_EXT_texture_env_add "
+    "GL_SGIS_texture_edge_clamp GL_EXT_texture_edge_clamp";
 
 /* Records error e, if no error is recorded yet. */
 void sgl_error(GLenum e) {
@@ -70,7 +72,8 @@ int sgl_pname_is_color(GLenum pname) {
   }
 }
 
-/* Gives the index in sgl_cap of a capability of glEnable, or -1. */
+/* Gives the index in sgl_cap of a capability of glEnable, or -1. The
+ * texture capabilities are those of the active texture unit. */
 int sgl_cap_index(GLenum cap) {
   if (cap >= GL_LIGHT0 && cap < GL_LIGHT0 + SGL_MAX_LIGHTS) return SGL_LIGHT0 + (int)(cap - GL_LIGHT0);
   if (cap >= GL_CLIP_PLANE0 && cap < GL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES)
@@ -95,12 +98,12 @@ int sgl_cap_index(GLenum cap) {
     case GL_POLYGON_STIPPLE: return SGL_POLYGON_STIPPLE;
     case GL_SCISSOR_TEST: return SGL_SCISSOR_TEST;
     case GL_STENCIL_TEST: return SGL_STENCIL_TEST;
-    case GL_TEXTURE_1D: return SGL_TEXTURE_1D;
-    case GL_TEXTURE_2D: return SGL_TEXTURE_2D;
-    case GL_TEXTURE_GEN_S: return SGL_TEXTURE_GEN_S;
-    case GL_TEXTURE_GEN_T: return SGL_TEXTURE_GEN_T;
-    case GL_TEXTURE_GEN_R: return SGL_TEXTURE_GEN_R;
-    case GL_TEXTURE_GEN_Q: return SGL_TEXTURE_GEN_Q;
+    case GL_TEXTURE_1D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_1D);
+    case GL_TEXTURE_2D: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_TEXTURE_2D);
+    case GL_TEXTURE_GEN_S: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_S);
+    case GL_TEXTURE_GEN_T: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_T);
+    case GL_TEXTURE_GEN_R: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_R);
+    case GL_TEXTURE_GEN_Q: return SGL_UCAP(sgl_ctx->a.active_texture, SGL_U_GEN_Q);
     case GL_POLYGON_OFFSET_FILL: return SGL_POLYGON_OFFSET_FILL;
     case GL_POLYGON_OFFSET_LINE: return SGL_POLYGON_OFFSET_LINE;
     case GL_POLYGON_OFFSET_POINT: return SGL_POLYGON_OFFSET_POINT;
@@ -134,11 +137,19 @@ static void init_attrib(sgl_attrib *a) {
   a->enabled[SGL_DITHER] = 1;
   a->color[0] = a->color[1] = a->color[2] = a->color[3] = 1.0f;
   a->normal[2] = 1.0f;
-  a->tex[3] = 1.0f;
   a->index = 1.0f;
   a->raster_pos[3] = 1.0f;
   a->raster_color[0] = a->raster_color[1] = a->raster_color[2] = a->raster_color[3] = 1.0f;
-  a->raster_tex[3] = 1.0f;
+  for (i = 0; i < SGL_MAX_TEXTURE_UNITS; i++) {
+    sgl_unit_attrib *u = &a->unit[i];
+    int k;
+    a->tex[i][3] = 1.0f;
+    a->raster_tex[i][3] = 1.0f;
+    u->env_mode = GL_MODULATE;
+    for (k = 0; k < 4; k++) u->gen_mode[k] = GL_EYE_LINEAR;
+    u->gen_object[0][0] = u->gen_eye[0][0] = 1.0f;
+    u->gen_object[1][1] = u->gen_eye[1][1] = 1.0f;
+  }
   a->raster_valid = GL_TRUE;
   a->edge = GL_TRUE;
   a->point_size = 1.0f;
@@ -205,12 +216,6 @@ static void init_attrib(sgl_attrib *a) {
   a->stencil_mask = a->stencil_writemask = 0xFFFFFFFFu;
   a->depth_far = 1.0;
   a->matrix_mode = GL_MODELVIEW;
-  a->tex_env_mode = GL_MODULATE;
-  for (i = 0; i < 4; i++) {
-    a->gen_mode[i] = GL_EYE_LINEAR;
-  }
-  a->gen_object[0][0] = a->gen_eye[0][0] = 1.0f;
-  a->gen_object[1][1] = a->gen_eye[1][1] = 1.0f;
   a->hint_perspective = a->hint_point = a->hint_line = a->hint_polygon = a->hint_fog = GL_DONT_CARE;
   a->grid1_n = a->grid2_un = a->grid2_vn = 1;
   a->grid1_u2 = a->grid2_u2 = a->grid2_v2 = 1.0f;
@@ -219,9 +224,14 @@ static void init_attrib(sgl_attrib *a) {
 /* Sets the client state of a new context to the values of the
  * specification. */
 static void init_client(sgl_client *c) {
+  int u;
   memset(c, 0, sizeof *c);
-  c->vertex.size = c->color.size = c->tex.size = 4;
-  c->vertex.type = c->normal.type = c->color.type = c->tex.type = GL_FLOAT;
+  c->vertex.size = c->color.size = 4;
+  c->vertex.type = c->normal.type = c->color.type = GL_FLOAT;
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+    c->tex[u].size = 4;
+    c->tex[u].type = GL_FLOAT;
+  }
   c->normal.size = 3;
   c->index.type = GL_FLOAT;
   c->index.size = 1;
@@ -249,6 +259,7 @@ static void release_shared(sgl_shared *s) {
 /* Makes a rendering context (see softgl.h). */
 sgl_context *sgl_create_context(sgl_context *share) {
   sgl_context *c = (sgl_context *)calloc(1, sizeof *c);
+  int u, ok;
   if (!c) return NULL;
   if (share) {
     c->shared = share->shared;
@@ -266,14 +277,18 @@ sgl_context *sgl_create_context(sgl_context *share) {
   init_client(&c->c);
   sgl_stack_init(&c->modelview, SGL_MODELVIEW_DEPTH);
   sgl_stack_init(&c->projection, SGL_PROJECTION_DEPTH);
-  sgl_stack_init(&c->texture, SGL_TEXTURE_DEPTH);
-  if (!c->modelview.base || !c->projection.base || !c->texture.base) {
+  ok = c->modelview.base && c->projection.base;
+  for (u = 0; u < SGL_MAX_TEXTURE_UNITS; u++) {
+    sgl_stack_init(&c->texture[u], SGL_TEXTURE_DEPTH);
+    if (!c->texture[u].base) ok = 0;
+    c->texture_identity[u] = 1;
+  }
+  if (!ok) {
     sgl_destroy_context(c);
     return NULL;
   }
   c->stack = &c->modelview;
   c->mvp_dirty = c->inv_dirty = 1;
-  c->texture_identity = 1;
   c->prim = SGL_NO_PRIM;
   c->render_mode = GL_RENDER;
   sgl_vertex_init(c);
@@ -304,7 +319,7 @@ void sgl_destroy_context(sgl_context *c) {
   release_shared(c->shared);
   sgl_stack_free(&c->modelview);
   sgl_stack_free(&c->projection);
-  sgl_stack_free(&c->texture);
+  for (i = 0; i < SGL_MAX_TEXTURE_UNITS; i++) sgl_stack_free(&c->texture[i]);
   sgl_eval_free(c);
   for (i = 0; i < 10; i++) free(c->pixel_map[i]);
   free(c->verts);
@@ -437,7 +452,7 @@ static sgl_array *client_array(GLenum cap) {
     case GL_NORMAL_ARRAY: return &c->c.normal;
     case GL_COLOR_ARRAY: return &c->c.color;
     case GL_INDEX_ARRAY: return &c->c.index;
-    case GL_TEXTURE_COORD_ARRAY: return &c->c.tex;
+    case GL_TEXTURE_COORD_ARRAY: return &c->c.tex[c->c.client_active];
     case GL_EDGE_FLAG_ARRAY: return &c->c.edge;
     default: return NULL;
   }
@@ -827,6 +842,7 @@ void APIENTRY sgl_Accum(GLenum op, GLfloat value) {
  * than GL_ENABLE_BIT. */
 static GLbitfield cap_group(int cap) {
   if (cap >= SGL_LIGHT0 && cap < SGL_LIGHT0 + SGL_MAX_LIGHTS) return GL_LIGHTING_BIT;
+  if (cap >= SGL_UNIT_CAPS) return GL_TEXTURE_BIT;
   if (cap >= SGL_CLIP_PLANE0) return GL_TRANSFORM_BIT;
   if (cap >= SGL_MAP1_VERTEX_3 && cap <= SGL_MAP2_INDEX) return GL_EVAL_BIT;
   switch (cap) {
@@ -853,6 +869,7 @@ static GLbitfield cap_group(int cap) {
 void APIENTRY sgl_PushAttrib(GLbitfield mask) {
   sgl_context *c = outside();
   sgl_attrib *s;
+  int i;
   if (!c) return;
   if (c->attrib_depth >= SGL_ATTRIB_DEPTH) {
     sgl_error(GL_STACK_OVERFLOW);
@@ -861,8 +878,10 @@ void APIENTRY sgl_PushAttrib(GLbitfield mask) {
   s = &c->attrib_stack[c->attrib_depth++];
   *s = c->a;
   s->mask = mask;
-  s->bound_1d = c->tex_1d->name;
-  s->bound_2d = c->tex_2d->name;
+  for (i = 0; i < SGL_MAX_TEXTURE_UNITS; i++) {
+    s->unit[i].bound_1d = c->tex_1d[i]->name;
+    s->unit[i].bound_2d = c->tex_2d[i]->name;
+  }
 }
 
 /* Copies a member of the saved state back when the group is in mask. */
@@ -969,11 +988,8 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_VIEWPORT_BIT, depth_far);
   RESTORE(GL_TRANSFORM_BIT, matrix_mode);
   RESTORE_ARRAY(GL_TRANSFORM_BIT, clip_plane);
-  RESTORE(GL_TEXTURE_BIT, tex_env_mode);
-  RESTORE_ARRAY(GL_TEXTURE_BIT, tex_env_color);
-  RESTORE_ARRAY(GL_TEXTURE_BIT, gen_mode);
-  RESTORE_ARRAY(GL_TEXTURE_BIT, gen_object);
-  RESTORE_ARRAY(GL_TEXTURE_BIT, gen_eye);
+  RESTORE_ARRAY(GL_TEXTURE_BIT, unit);
+  RESTORE(GL_TEXTURE_BIT, active_texture);
   RESTORE(GL_HINT_BIT, hint_perspective);
   RESTORE(GL_HINT_BIT, hint_point);
   RESTORE(GL_HINT_BIT, hint_line);
@@ -991,14 +1007,19 @@ void APIENTRY sgl_PopAttrib(void) {
   RESTORE(GL_EVAL_BIT, grid2_v2);
   RESTORE(GL_LIST_BIT, list_base);
   RESTORE_ARRAY(GL_ACCUM_BUFFER_BIT, clear_accum);
-  if (m & GL_TRANSFORM_BIT)
-    c->stack = a->matrix_mode == GL_PROJECTION ? &c->projection
-               : a->matrix_mode == GL_TEXTURE  ? &c->texture
-                                               : &c->modelview;
   if (m & GL_TEXTURE_BIT) {
-    sgl_BindTexture(GL_TEXTURE_1D, s->bound_1d);
-    sgl_BindTexture(GL_TEXTURE_2D, s->bound_2d);
+    int active = a->active_texture;
+    for (i = 0; i < SGL_MAX_TEXTURE_UNITS; i++) {
+      a->active_texture = i;
+      sgl_BindTexture(GL_TEXTURE_1D, s->unit[i].bound_1d);
+      sgl_BindTexture(GL_TEXTURE_2D, s->unit[i].bound_2d);
+    }
+    a->active_texture = active;
   }
+  if (m & (GL_TRANSFORM_BIT | GL_TEXTURE_BIT))
+    c->stack = a->matrix_mode == GL_PROJECTION ? &c->projection
+               : a->matrix_mode == GL_TEXTURE  ? &c->texture[a->active_texture]
+                                               : &c->modelview;
 }
 
 /* glPushClientAttrib: saves the arrays and the pixel store. */
@@ -1030,7 +1051,8 @@ void APIENTRY sgl_PopClientAttrib(void) {
     c->c.normal = s->normal;
     c->c.color = s->color;
     c->c.index = s->index;
-    c->c.tex = s->tex;
+    memcpy(c->c.tex, s->tex, sizeof c->c.tex);
+    c->c.client_active = s->client_active;
     c->c.edge = s->edge;
   }
 }
@@ -1043,7 +1065,7 @@ void APIENTRY sgl_GetPointerv(GLenum pname, void **params) {
     case GL_NORMAL_ARRAY_POINTER: *params = (void *)c->c.normal.pointer; break;
     case GL_COLOR_ARRAY_POINTER: *params = (void *)c->c.color.pointer; break;
     case GL_INDEX_ARRAY_POINTER: *params = (void *)c->c.index.pointer; break;
-    case GL_TEXTURE_COORD_ARRAY_POINTER: *params = (void *)c->c.tex.pointer; break;
+    case GL_TEXTURE_COORD_ARRAY_POINTER: *params = (void *)c->c.tex[c->c.client_active].pointer; break;
     case GL_EDGE_FLAG_ARRAY_POINTER: *params = (void *)c->c.edge.pointer; break;
     case GL_SELECTION_BUFFER_POINTER: *params = (void *)c->select_buffer; break;
     case GL_FEEDBACK_BUFFER_POINTER: *params = (void *)c->feedback_buffer; break;
@@ -1061,7 +1083,8 @@ enum { Q_INT, Q_FLOAT, Q_BOOL, Q_COLOR, Q_ENUM };
  * kind (a Q_ value) in *kind, or gives 0 for an unknown pname. */
 static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
   const sgl_attrib *a = &c->a;
-  int i, n = 1;
+  const sgl_array *ta = &c->c.tex[c->c.client_active];
+  int i, n = 1, u = a->active_texture;
   *kind = Q_INT;
   switch (pname) {
     case GL_CURRENT_COLOR:
@@ -1073,11 +1096,15 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
       *kind = Q_FLOAT;
       return 3;
     case GL_CURRENT_TEXTURE_COORDS:
-      for (i = 0; i < 4; i++) v[i] = a->tex[i];
+      for (i = 0; i < 4; i++) v[i] = a->tex[u][i];
       *kind = Q_FLOAT;
       return 4;
     case GL_CURRENT_RASTER_POSITION:
       for (i = 0; i < 4; i++) v[i] = a->raster_pos[i];
+      *kind = Q_FLOAT;
+      return 4;
+    case GL_CURRENT_RASTER_TEXTURE_COORDS:
+      for (i = 0; i < 4; i++) v[i] = a->raster_tex[u][i];
       *kind = Q_FLOAT;
       return 4;
     case GL_CURRENT_RASTER_COLOR:
@@ -1102,14 +1129,26 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_PROJECTION_MATRIX:
     case GL_TEXTURE_MATRIX: {
       const sgl_stack *s = pname == GL_MODELVIEW_MATRIX ? &c->modelview
-                           : pname == GL_PROJECTION_MATRIX ? &c->projection : &c->texture;
+                           : pname == GL_PROJECTION_MATRIX ? &c->projection : &c->texture[u];
       for (i = 0; i < 16; i++) v[i] = s->top->m[i];
       *kind = Q_FLOAT;
       return 16;
     }
+    case GL_TRANSPOSE_MODELVIEW_MATRIX:
+    case GL_TRANSPOSE_PROJECTION_MATRIX:
+    case GL_TRANSPOSE_TEXTURE_MATRIX: {
+      const sgl_stack *s = pname == GL_TRANSPOSE_MODELVIEW_MATRIX ? &c->modelview
+                           : pname == GL_TRANSPOSE_PROJECTION_MATRIX ? &c->projection : &c->texture[u];
+      for (i = 0; i < 16; i++) v[i] = s->top->m[(i % 4) * 4 + i / 4];
+      *kind = Q_FLOAT;
+      return 16;
+    }
+    case GL_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + u; *kind = Q_ENUM; return 1;
+    case GL_CLIENT_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + c->c.client_active; *kind = Q_ENUM; return 1;
+    case GL_MAX_TEXTURE_UNITS: v[0] = SGL_MAX_TEXTURE_UNITS; return 1;
     case GL_MODELVIEW_STACK_DEPTH: v[0] = c->modelview.depth + 1; return 1;
     case GL_PROJECTION_STACK_DEPTH: v[0] = c->projection.depth + 1; return 1;
-    case GL_TEXTURE_STACK_DEPTH: v[0] = c->texture.depth + 1; return 1;
+    case GL_TEXTURE_STACK_DEPTH: v[0] = c->texture[u].depth + 1; return 1;
     case GL_ATTRIB_STACK_DEPTH: v[0] = c->attrib_depth; return 1;
     case GL_CLIENT_ATTRIB_STACK_DEPTH: v[0] = c->client_depth; return 1;
     case GL_NAME_STACK_DEPTH: v[0] = c->name_depth; return 1;
@@ -1200,8 +1239,8 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
       for (i = 0; i < 4; i++) v[i] = a->fog_color[i];
       *kind = Q_COLOR;
       return 4;
-    case GL_TEXTURE_BINDING_1D: v[0] = c->tex_1d->name; return 1;
-    case GL_TEXTURE_BINDING_2D: v[0] = c->tex_2d->name; return 1;
+    case GL_TEXTURE_BINDING_1D: v[0] = c->tex_1d[u]->name; return 1;
+    case GL_TEXTURE_BINDING_2D: v[0] = c->tex_2d[u]->name; return 1;
     case GL_PERSPECTIVE_CORRECTION_HINT: v[0] = a->hint_perspective; *kind = Q_ENUM; return 1;
     case GL_POINT_SMOOTH_HINT: v[0] = a->hint_point; *kind = Q_ENUM; return 1;
     case GL_LINE_SMOOTH_HINT: v[0] = a->hint_line; *kind = Q_ENUM; return 1;
@@ -1232,7 +1271,7 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_PACK_SKIP_PIXELS: v[0] = c->c.pack.skip_pixels; return 1;
     case GL_PACK_SWAP_BYTES: v[0] = c->c.pack.swap_bytes; *kind = Q_BOOL; return 1;
     case GL_PACK_LSB_FIRST: v[0] = c->c.pack.lsb_first; *kind = Q_BOOL; return 1;
-    case GL_TEXTURE_ENV_MODE: v[0] = a->tex_env_mode; *kind = Q_ENUM; return 1;
+    case GL_TEXTURE_ENV_MODE: v[0] = a->unit[u].env_mode; *kind = Q_ENUM; return 1;
     case GL_VERTEX_ARRAY_SIZE: v[0] = c->c.vertex.size; return 1;
     case GL_VERTEX_ARRAY_TYPE: v[0] = c->c.vertex.type; *kind = Q_ENUM; return 1;
     case GL_VERTEX_ARRAY_STRIDE: v[0] = c->c.vertex.stride; return 1;
@@ -1241,9 +1280,9 @@ static int query(sgl_context *c, GLenum pname, GLdouble *v, int *kind) {
     case GL_COLOR_ARRAY_SIZE: v[0] = c->c.color.size; return 1;
     case GL_COLOR_ARRAY_TYPE: v[0] = c->c.color.type; *kind = Q_ENUM; return 1;
     case GL_COLOR_ARRAY_STRIDE: v[0] = c->c.color.stride; return 1;
-    case GL_TEXTURE_COORD_ARRAY_SIZE: v[0] = c->c.tex.size; return 1;
-    case GL_TEXTURE_COORD_ARRAY_TYPE: v[0] = c->c.tex.type; *kind = Q_ENUM; return 1;
-    case GL_TEXTURE_COORD_ARRAY_STRIDE: v[0] = c->c.tex.stride; return 1;
+    case GL_TEXTURE_COORD_ARRAY_SIZE: v[0] = ta->size; return 1;
+    case GL_TEXTURE_COORD_ARRAY_TYPE: v[0] = ta->type; *kind = Q_ENUM; return 1;
+    case GL_TEXTURE_COORD_ARRAY_STRIDE: v[0] = ta->stride; return 1;
     case GL_EDGE_FLAG: v[0] = a->edge; *kind = Q_BOOL; return 1;
     case GL_CURRENT_INDEX: v[0] = a->index; *kind = Q_FLOAT; return 1;
     case GL_AUX_BUFFERS: v[0] = 0; return 1;

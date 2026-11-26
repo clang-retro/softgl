@@ -88,7 +88,7 @@ void sgl_feedback_vertex(sgl_context *c, const sgl_vertex *v, const GLfloat *col
       for (i = 0; i < 4; i++) sgl_feedback_token(c, color[i]);
   }
   if (type == GL_3D_COLOR_TEXTURE || type == GL_4D_COLOR_TEXTURE)
-    for (i = 0; i < 4; i++) sgl_feedback_token(c, v->tex[i]);
+    for (i = 0; i < 4; i++) sgl_feedback_token(c, v->tex[0][i]);
 }
 
 /* Records a polygon (after clipping and culling) in selection or
@@ -148,7 +148,7 @@ void sgl_feedback_raster(sgl_context *c, GLfloat token) {
   }
   for (i = 0; i < 3; i++) v.win[i] = c->a.raster_pos[i];
   v.clip[3] = c->a.raster_pos[3];
-  for (i = 0; i < 4; i++) v.tex[i] = c->a.raster_tex[i];
+  for (i = 0; i < 4; i++) v.tex[0][i] = c->a.raster_tex[0][i];
   sgl_feedback_token(c, token);
   sgl_feedback_vertex(c, &v, c->index_mode ? &c->a.raster_index : c->a.raster_color);
 }

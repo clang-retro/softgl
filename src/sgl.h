@@ -96,6 +96,15 @@ typedef uint32_t sgl_depth_t;
 #define SGL_MAX_EVAL_ORDER 16
 #define SGL_SHINE_TABLE 256
 #define SGL_SHINE_CACHE 4
+/* The texture units (GL_ARB_multitexture). Each unit costs memory in
+ * each vertex and time in each textured pixel: a build for a small
+ * machine can set 1. */
+#ifndef SGL_MAX_TEXTURE_UNITS
+#define SGL_MAX_TEXTURE_UNITS 2
+#endif
+#if SGL_MAX_TEXTURE_UNITS < 1 || SGL_MAX_TEXTURE_UNITS > 32
+#error "SGL_MAX_TEXTURE_UNITS must be 1 to 32"
+#endif
 
 /* One argument of a command in a display list. */
 typedef union sgl_cell {
@@ -132,7 +141,8 @@ typedef struct sgl_vertex {
   GLfloat clip[4];     /* clip coordinates */
   GLfloat win[4];      /* window x, y and z (0 to 1), and 1 / w */
   GLfloat color[2][4]; /* front and back color, 0 to 1 */
-  GLfloat tex[4];      /* texture coordinates, after the texture matrix */
+  GLfloat tex[SGL_MAX_TEXTURE_UNITS][4]; /* texture coordinates of each unit,
+                                          * after the texture matrix */
   GLfloat fog;         /* fog factor: 1 is no fog */
   GLfloat eye[4];      /* eye coordinates (for clipping by the user planes) */
   unsigned clipmask;   /* the planes that it is outside of */
@@ -226,15 +236,19 @@ typedef struct sgl_map {
   GLfloat *points;         /* order_u * order_v * k values */
 } sgl_map;
 
+/* The capabilities of each texture unit, in the order of their bits. */
+enum sgl_unit_cap {
+  SGL_U_TEXTURE_1D, SGL_U_TEXTURE_2D, SGL_U_GEN_S, SGL_U_GEN_T, SGL_U_GEN_R, SGL_U_GEN_Q,
+  SGL_UNIT_CAP_COUNT
+};
+
 /* The bits of the enables, by capability. */
 enum sgl_cap {
   SGL_ALPHA_TEST, SGL_AUTO_NORMAL, SGL_BLEND, SGL_COLOR_MATERIAL,
   SGL_CULL_FACE, SGL_DEPTH_TEST, SGL_DITHER, SGL_FOG, SGL_LIGHTING,
   SGL_LINE_SMOOTH, SGL_LINE_STIPPLE, SGL_COLOR_LOGIC_OP, SGL_NORMALIZE,
   SGL_POINT_SMOOTH, SGL_POLYGON_SMOOTH, SGL_POLYGON_STIPPLE,
-  SGL_SCISSOR_TEST, SGL_STENCIL_TEST, SGL_TEXTURE_1D, SGL_TEXTURE_2D,
-  SGL_TEXTURE_GEN_S, SGL_TEXTURE_GEN_T, SGL_TEXTURE_GEN_R,
-  SGL_TEXTURE_GEN_Q, SGL_POLYGON_OFFSET_FILL, SGL_POLYGON_OFFSET_LINE,
+  SGL_SCISSOR_TEST, SGL_STENCIL_TEST, SGL_POLYGON_OFFSET_FILL, SGL_POLYGON_OFFSET_LINE,
   SGL_POLYGON_OFFSET_POINT, SGL_MAP1_VERTEX_3, SGL_MAP1_VERTEX_4,
   SGL_MAP1_NORMAL, SGL_MAP1_COLOR_4, SGL_MAP1_TEXTURE_COORD_1,
   SGL_MAP1_TEXTURE_COORD_2, SGL_MAP1_TEXTURE_COORD_3,
@@ -245,8 +259,23 @@ enum sgl_cap {
   SGL_INDEX_LOGIC_OP,
   SGL_LIGHT0, /* to SGL_LIGHT0 + 7 */
   SGL_CLIP_PLANE0 = SGL_LIGHT0 + SGL_MAX_LIGHTS, /* to + 5 */
-  SGL_CAP_COUNT = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES
+  SGL_UNIT_CAPS = SGL_CLIP_PLANE0 + SGL_MAX_CLIP_PLANES, /* the caps of the texture units */
+  SGL_CAP_COUNT = SGL_UNIT_CAPS + SGL_MAX_TEXTURE_UNITS * SGL_UNIT_CAP_COUNT
 };
+
+/* Gives the index in sgl_attrib.enabled of capability k of texture
+ * unit u. */
+#define SGL_UCAP(u, k) (SGL_UNIT_CAPS + (u) * SGL_UNIT_CAP_COUNT + (k))
+
+/* The state of one texture unit that glPushAttrib saves with
+ * GL_TEXTURE_BIT. */
+typedef struct sgl_unit_attrib {
+  GLenum env_mode;
+  GLfloat env_color[4];
+  GLenum gen_mode[4];
+  GLfloat gen_object[4][4], gen_eye[4][4];
+  GLuint bound_1d, bound_2d; /* the bound names, at glPushAttrib */
+} sgl_unit_attrib;
 
 /* The evaluator maps, in the order of the SGL_MAP1_ and SGL_MAP2_ caps. */
 #define SGL_MAP_TYPES 9
@@ -256,8 +285,10 @@ typedef struct sgl_attrib {
   GLbitfield mask;         /* the groups that are saved */
   uint8_t enabled[SGL_CAP_COUNT];
   /* GL_CURRENT_BIT */
-  GLfloat color[4], normal[3], tex[4], index;
-  GLfloat raster_pos[4], raster_color[4], raster_tex[4];
+  GLfloat color[4], normal[3], index;
+  GLfloat tex[SGL_MAX_TEXTURE_UNITS][4];
+  GLfloat raster_pos[4], raster_color[4];
+  GLfloat raster_tex[SGL_MAX_TEXTURE_UNITS][4];
   GLfloat raster_distance, raster_index;
   GLboolean raster_valid, edge;
   /* GL_POINT_BIT, GL_LINE_BIT */
@@ -307,11 +338,8 @@ typedef struct sgl_attrib {
   GLenum matrix_mode;
   GLdouble clip_plane[SGL_MAX_CLIP_PLANES][4]; /* in eye coordinates */
   /* GL_TEXTURE_BIT */
-  GLenum tex_env_mode;
-  GLfloat tex_env_color[4];
-  GLenum gen_mode[4];
-  GLfloat gen_object[4][4], gen_eye[4][4];
-  GLuint bound_1d, bound_2d;
+  sgl_unit_attrib unit[SGL_MAX_TEXTURE_UNITS];
+  int active_texture;      /* the unit of glActiveTexture, from 0 */
   /* GL_HINT_BIT */
   GLenum hint_perspective, hint_point, hint_line, hint_polygon, hint_fog;
   /* GL_SCISSOR_BIT */
@@ -344,7 +372,9 @@ typedef struct sgl_pixelstore {
  * glPushClientAttrib saves. */
 typedef struct sgl_client {
   GLbitfield mask;
-  sgl_array vertex, normal, color, index, tex, edge;
+  sgl_array vertex, normal, color, index, edge;
+  sgl_array tex[SGL_MAX_TEXTURE_UNITS];
+  int client_active;       /* the unit of glClientActiveTexture, from 0 */
   sgl_pixelstore pack, unpack;
 } sgl_client;
 
@@ -374,12 +404,13 @@ struct sgl_context {
   int client_depth;
 
   /* The matrices. */
-  sgl_stack modelview, projection, texture;
+  sgl_stack modelview, projection;
+  sgl_stack texture[SGL_MAX_TEXTURE_UNITS];
   sgl_stack *stack;        /* the stack of the matrix mode */
   sgl_matrix mvp;          /* projection * modelview */
   sgl_matrix inv_modelview;/* for the normals and the eye planes */
   int mvp_dirty, inv_dirty;
-  int texture_identity;    /* the texture matrix is the identity */
+  int texture_identity[SGL_MAX_TEXTURE_UNITS]; /* the texture matrix is the identity */
 
   /* glBegin and glEnd. */
   GLenum prim;             /* the primitive, or SGL_NO_PRIM outside glBegin */
@@ -389,6 +420,8 @@ struct sgl_context {
   int need_eye;            /* the vertices need eye coordinates */
   int need_normal;         /* the vertices need eye normals (texgen) */
   int clip_user;           /* the user clip planes that are on (bits) */
+  unsigned tex_units;      /* the texture units that are on (bits) */
+  unsigned tex_coords;     /* the units whose coordinates the vertices have */
   sgl_vertex *clipverts;   /* the vertices that clipping makes */
   int nclip, maxclip;
 
@@ -409,7 +442,7 @@ struct sgl_context {
 
   /* Textures. */
   sgl_texture default_1d, default_2d;
-  sgl_texture *tex_1d, *tex_2d;
+  sgl_texture *tex_1d[SGL_MAX_TEXTURE_UNITS], *tex_2d[SGL_MAX_TEXTURE_UNITS];
 
   /* Evaluators. */
   sgl_map map1[SGL_MAP_TYPES], map2[SGL_MAP_TYPES];
@@ -476,15 +509,15 @@ void sgl_raster_triangle(sgl_context *c, const sgl_vertex *a, const sgl_vertex *
 void sgl_raster_line(sgl_context *c, const sgl_vertex *a, const sgl_vertex *b, int side,
                      const GLfloat *flat, GLfloat zoffset);
 void sgl_raster_point(sgl_context *c, const sgl_vertex *a, int side, GLfloat zoffset);
-void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat rgba[4],
-                        const GLfloat *tex);
+void sgl_write_fragment(sgl_context *c, int x, int y, uint32_t z, const GLfloat rgba[4]);
 void sgl_clip_rect(sgl_context *c, int *x0, int *y0, int *x1, int *y1);
 
 /* texture.c */
 void sgl_texture_init(sgl_context *c);
 void sgl_texture_free_all(sgl_shared *s);
 void sgl_texture_release(sgl_context *c);
-sgl_texture *sgl_current_texture(sgl_context *c);
+sgl_texture *sgl_unit_texture(sgl_context *c, int u);
+unsigned sgl_texture_units(const sgl_context *c);
 
 /* pixels.c */
 size_t sgl_image_bytes(const sgl_pixelstore *ps, int w, int h, GLenum format, GLenum type);

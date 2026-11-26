@@ -749,20 +749,20 @@ static void rect_pixel(sgl_context *c, int kind, int x, int y, uint32_t z, const
       col[1] = rgba[1] / 255.0f;
       col[2] = rgba[2] / 255.0f;
       col[3] = rgba[3] / 255.0f;
-      sgl_write_fragment(c, x, y, z, col, NULL);
+      sgl_write_fragment(c, x, y, z, col);
       break;
     case RECT_INDEX:
       col[0] = (GLfloat)value;
       col[1] = col[2] = col[3] = 0.0f;
-      sgl_write_fragment(c, x, y, z, col, NULL);
+      sgl_write_fragment(c, x, y, z, col);
       break;
     case RECT_DEPTH:
       /* A depth image takes the color of the raster position. */
       if (c->index_mode) {
         col[0] = c->a.raster_index;
-        sgl_write_fragment(c, x, y, (uint32_t)value, col, NULL);
+        sgl_write_fragment(c, x, y, (uint32_t)value, col);
       } else {
-        sgl_write_fragment(c, x, y, (uint32_t)value, c->a.raster_color, NULL);
+        sgl_write_fragment(c, x, y, (uint32_t)value, c->a.raster_color);
       }
       break;
     default: {
@@ -1134,7 +1134,7 @@ void APIENTRY sgl_Bitmap(GLsizei w, GLsizei h, GLfloat xorig, GLfloat yorig, GLf
     sgl_unpack_index(&c->c.unpack, w, h, GL_BITMAP, bitmap, bits);
     for (y = 0; y < h; y++)
       for (x = 0; x < w; x++)
-        if (bits[(size_t)y * w + x]) sgl_write_fragment(c, x0 + x, y0 + y, z, color, NULL);
+        if (bits[(size_t)y * w + x]) sgl_write_fragment(c, x0 + x, y0 + y, z, color);
     free(bits);
   }
   c->a.raster_pos[0] += xmove;

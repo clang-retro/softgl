@@ -281,14 +281,14 @@ typedef struct saved {
 static void save_current(const sgl_context *c, saved *s) {
   memcpy(s->color, c->a.color, sizeof s->color);
   memcpy(s->normal, c->a.normal, sizeof s->normal);
-  memcpy(s->tex, c->a.tex, sizeof s->tex);
+  memcpy(s->tex, c->a.tex[0], sizeof s->tex);
 }
 
 /* Restores the current color, normal and texture coordinates. */
 static void restore_current(sgl_context *c, const saved *s) {
   memcpy(c->a.color, s->color, sizeof s->color);
   memcpy(c->a.normal, s->normal, sizeof s->normal);
-  memcpy(c->a.tex, s->tex, sizeof s->tex);
+  memcpy(c->a.tex[0], s->tex, sizeof s->tex);
 }
 
 /* glEvalCoord1f: evaluates the one-dimensional maps that are on at u. */

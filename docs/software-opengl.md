@@ -41,20 +41,35 @@ Windows NT 4.0 gives them:
     functions)
   - `GL_EXT_vertex_array` (`glVertexPointerEXT` and the related
     functions)
+  - `GL_ARB_multitexture` (`glActiveTextureARB`,
+    `glClientActiveTextureARB` and `glMultiTexCoord*ARB`)
+  - `GL_ARB_transpose_matrix` (`glLoadTransposeMatrix*ARB` and
+    `glMultTransposeMatrix*ARB`)
+  - `GL_ARB_texture_env_add` and `GL_EXT_texture_env_add`
+  - `GL_SGIS_texture_edge_clamp` and `GL_EXT_texture_edge_clamp`
+- `wglGetProcAddress` also gives the functions of these extensions by
+  their OpenGL 1.3 names, without the `ARB` suffix (for example
+  `glActiveTexture`). `GL_VERSION` stays `1.1.0` until all of
+  OpenGL 1.2 and 1.3 is available.
 - Vertices: immediate mode, vertex arrays, display lists, evaluators
   (`glMap1`, `glMap2`, `glEvalMesh`) and rectangles.
-- Transformation: the three matrix stacks, the viewport, the depth
+- Transformation: the modelview and projection matrix stacks, one
+  texture matrix stack for each texture unit, the viewport, the depth
   range and six user clip planes.
 - Lighting: eight lights, two-sided lighting, local viewer, spot
   lights, attenuation and `glColorMaterial`.
 - Texture coordinate generation: object linear, eye linear and sphere
-  map.
+  map, for each texture unit.
 - Rasterization: points, lines (width and stipple), polygons (fill,
   line and point modes, polygon stipple, culling, polygon offset), flat
   and smooth shading.
-- Textures: 1D and 2D, mipmaps, nearest and linear filters, repeat and
-  clamp, texture objects, the four texture environments and
-  perspective correction.
+- Textures: 1D and 2D, mipmaps, nearest and linear filters, repeat,
+  clamp and clamp to edge, texture objects, the texture environments
+  (`GL_MODULATE`, `GL_DECAL`, `GL_BLEND`, `GL_REPLACE` and `GL_ADD`)
+  and perspective correction.
+- Multitexture: 2 texture units (see below). Each unit has its own
+  enables, binding, environment, coordinate generation, texture
+  matrix, current coordinates and coordinate array.
 - Per-fragment operations: fog, scissor, alpha test, stencil, depth
   test, blending, the logical operation (`glLogicOp`) and color mask.
 - Pixels: `glDrawPixels`, `glReadPixels`, `glCopyPixels`, `glBitmap`,
@@ -69,6 +84,25 @@ Windows NT 4.0 gives them:
   and the tokens of points, lines, polygons, bitmaps and pixel
   rectangles.
 - Color index mode (see below).
+
+### Texture units
+
+The number of texture units is `SGL_MAX_TEXTURE_UNITS` (default 2,
+maximum 32). Each unit adds 16 bytes to each vertex and some time to
+each textured pixel. A build for a small machine can set 1:
+
+```sh
+make CFLAGS="-O2 -DSGL_MAX_TEXTURE_UNITS=1"
+```
+
+The units apply in order: unit 0 uses the primary color, and each
+next unit uses the result of the unit before it. The rasterizer does
+the work only for the units that have a texture on. Thus a program
+that uses one unit is not slower with 2 units in the build.
+
+`GL_CLAMP` operates as `GL_CLAMP_TO_EDGE`: the renderer does not keep
+the border texels, and the linear filter does not use the border
+color.
 
 ### Color index mode
 
@@ -213,6 +247,11 @@ values that OpenGL gives back:
   the polygon stipple, color index images through the pixel maps,
   stencil and depth images, GLU NURBS (drawn and tessellated), and
   color index mode. The output is `PASS softgl gl11`.
+- `tests/gl13.c`: two texture units (immediate mode, vertex arrays and
+  a display list), a texture matrix for one unit, `glPushAttrib` of
+  the units, `GL_ADD`, `GL_CLAMP_TO_EDGE`, the transpose matrices and
+  the names that `wglGetProcAddress` gives. The output is
+  `PASS softgl gl13`.
 
 CI also compiles the renderer, GLU and the NURBS for AmigaOS and for
 Atari TOS (68000) with the clang-retro toolchain.
@@ -232,8 +271,10 @@ In clang-retro MFC:
 - Dithering has no effect. The buffer has 8 bits for each component.
 - Smooth points, lines and polygons are drawn without antialiasing.
 - The width and the height of a texture must be powers of two.
-- The OpenGL 1.2 functions are not available. `glTexImage3D` is a stub
-  for GLU only.
+- Of OpenGL 1.2 and 1.3, only multitexture, the transpose matrices,
+  `GL_ADD` and `GL_CLAMP_TO_EDGE` are available. `glTexImage3D` is a
+  stub for GLU only.
+- Pixel rectangles (`glDrawPixels`, `glBitmap`) are not textured.
 - The pixel format tells 32 depth bits. On the 68k, the depth buffer
   has 16 bits (`glGetIntegerv(GL_DEPTH_BITS)` gives 16).
 
