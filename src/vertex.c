@@ -2,7 +2,7 @@
  * the current values, lighting, texture coordinate generation, fog,
  * primitive assembly, clipping and culling.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <math.h>

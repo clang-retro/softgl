@@ -6,7 +6,7 @@
  * table. Thus in a display list they are recorded as the vertices that
  * they give, as the specification tells.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include "sgl.h"

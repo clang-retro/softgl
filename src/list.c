@@ -7,7 +7,7 @@
  * argument. Memory that a node needs (copies of the program's arrays)
  * is a chain of blocks that the node owns.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <stdlib.h>

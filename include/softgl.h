@@ -11,7 +11,7 @@
  * The functions here are for that layer. A program calls the gl
  * functions and the wgl functions only.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #ifndef SOFTGL_H

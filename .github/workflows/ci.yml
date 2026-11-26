@@ -1,0 +1,45 @@
+# Builds softgl and runs the render test with the runner's compilers.
+# It also makes sure that src/dispatch.c and src/dispatch.h agree with
+# tools/gen-dispatch.py.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the generated dispatch code
+        run: |
+          python3 tools/gen-dispatch.py
+          git diff --exit-code src/dispatch.c src/dispatch.h
+      - name: Build and test
+        run: make -j"$(nproc)" check CC=${{ matrix.cc }} CFLAGS="-O2 -Werror"
+      # 32-bit pointers and a 16-bit depth buffer, as on the 68k.
+      - name: Build and test (32-bit, 16-bit depth)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-multilib
+          make -j"$(nproc)" check CC=${{ matrix.cc }} OUT=build32 \
+            CFLAGS="-O2 -m32 -Werror -DSGL_DEPTH_BITS=16"
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: make -j"$(sysctl -n hw.ncpu)" check CFLAGS="-O2 -Werror"

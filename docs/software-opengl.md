@@ -1,10 +1,11 @@
 # Software OpenGL (the generic implementation)
 
 Some systems have no OpenGL of their own. On these systems, the `wgl`
-functions use a software renderer in `port/softgl`. Windows has a
+functions of clang-retro MFC use softgl, a software renderer. MFC has
+softgl as a submodule in `port/softgl`. Windows has a
 renderer of the same type: the "generic implementation" of
 `opengl32.dll`, which GDI uses when there is no graphics driver for
-OpenGL. The renderer in `port/softgl` copies the design of that
+OpenGL. softgl copies the design of that
 implementation, so that OpenGL programs for Windows NT and Windows 95
 operate without changes.
 
@@ -62,20 +63,34 @@ Windows NT 4.0 gives them:
 
 GLU 1.3 is also available: the SGI reference GLU (matrices, mipmaps,
 image scale, quadrics and tessellation). Its license is the SGI Free
-Software License B 2.0. See `port/softgl/glu/README.md`.
+Software License B 2.0. See [glu/README.md](../glu/README.md).
 
 ## How the renderer is built
 
-The renderer is in C (C99). The makefile compiles it with the portable
-layer and puts the objects in `libwinport.a`:
+The renderer is in C (C99). The folders are:
 
-- `port/softgl/src`: the renderer.
-- `port/softgl/glu`: GLU (`libtess` and `libutil`).
-- `port/softgl/include/GL`: `gl.h`, `glext.h` and `glu.h`.
+- `src`: the renderer.
+- `glu`: GLU (`libtess` and `libutil`).
+- `include/GL`: `gl.h`, `glext.h` and `glu.h`.
+- `include/softgl.h`: the interface to the window layer.
 
-A program links only with `libwinport.a`. It does not need other
-libraries for OpenGL. Add `-Iport/softgl/include` after
-`-Iport/include`, so that `<GL/gl.h>` finds the headers.
+To build `build/libsoftgl.a` (the renderer and GLU) and run the tests:
+
+```sh
+make check
+```
+
+For a cross compiler, set `CC`, `CFLAGS` and `AR`:
+
+```sh
+make CC="clang --target=m68k-apple-macos" AR=llvm-ar
+```
+
+In clang-retro MFC, the MFC makefile compiles the same files from
+`port/softgl` and puts the objects in `libwinport.a`. A program links
+only with `libwinport.a`. It does not need other libraries for OpenGL.
+Add `-Iport/softgl/include` after `-Iport/include`, so that
+`<GL/gl.h>` finds the headers.
 
 `libglaux.a` gives the `aux` functions of the Windows SDK
 (`GL/glaux.h`) on these systems too.
@@ -90,23 +105,23 @@ Each `gl` function calls the entry of the current dispatch table, as
 - The table that compiles a display list.
 
 `glNewList` and `glEndList` change the table.
-`port/softgl/tools/gen-dispatch.py` makes `src/dispatch.c` and
+`tools/gen-dispatch.py` makes `src/dispatch.c` and
 `src/dispatch.h` from `include/GL/gl.h`. Do not edit the generated
 files. Change the script and run it again:
 
 ```sh
-python3 port/softgl/tools/gen-dispatch.py
+make dispatch
 ```
 
-The portable layer defines `glFlush` and `glFinish` itself: for a
-single-buffered pixel format, they copy the picture to the window. Thus
-the makefile compiles the renderer with `-DSGL_LAYER_FLUSH`, which
+The portable layer of MFC defines `glFlush` and `glFinish` itself: for
+a single-buffered pixel format, they copy the picture to the window.
+Thus the MFC makefile compiles the renderer with `-DSGL_LAYER_FLUSH`, which
 removes these two functions from `dispatch.c`.
 
 ### The interface to the window layer
 
-`port/softgl/include/softgl.h` gives the functions that
-`port/src/opengl_soft.cpp` uses:
+`include/softgl.h` gives the functions that
+`port/src/opengl_soft.cpp` of MFC uses:
 
 | Function | Purpose |
 | --- | --- |
@@ -154,29 +169,21 @@ makes the renderer faster without changes to the renderer.
 
 ## Tests
 
-- `port/softgl/tests/render.c` draws scenes into a 64 x 64 buffer and
+- `tests/render.c` draws scenes into a 64 x 64 buffer and
   examines pixels: flat and smooth shading, depth, a lit sphere in a
   display list, a texture with perspective, vertex arrays, an evaluator
-  mesh, blending and the scissor.
+  mesh, blending and the scissor. `make check` builds and runs it. The
+  output is `PASS softgl render`.
 
-  ```sh
-  cd port/softgl
-  cc -std=c99 -Iinclude -Isrc src/*.c tests/render.c \
-    glu/libtess/dict.c glu/libtess/geom.c glu/libtess/memalloc.c \
-    glu/libtess/mesh.c glu/libtess/normal.c glu/libtess/priorityq.c \
-    glu/libtess/render.c glu/libtess/sweep.c glu/libtess/tess.c \
-    glu/libtess/tessmono.c glu/libutil/*.c -Iglu/include -lm -o render
-  ./render
-  ```
+In clang-retro MFC:
 
-  The output is `PASS softgl render`.
-- `tests/gltest.cpp` uses the `wgl` functions. With the generic
+- MFC's `tests/gltest.cpp` uses the `wgl` functions. With the generic
   implementation, it also draws a triangle and examines its pixels.
   `make check` runs it on Linux. `make check TARGET=m68k-apple-macos`
   runs it in the 68000 and 68020 simulators of mac-sdk.
-- `tools/build-sdk-samples.py` builds the OpenGL screen savers of the
+- MFC's `tools/build-sdk-samples.py` builds the OpenGL screen savers of the
   Win32 SDK for Linux and for the 68k Mac. See
-  [sdk-samples.md](sdk-samples.md).
+  `docs/sdk-samples.md` in MFC.
 
 ## Limits
 

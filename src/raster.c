@@ -6,7 +6,7 @@
  * the spans are in integers: colors, fog and texture coordinates in
  * 16.16 fixed point, and z in 31 bits.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <math.h>

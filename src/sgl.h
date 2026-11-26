@@ -5,7 +5,7 @@
  * window system gives (see softgl.h). All the arithmetic of the geometry
  * is in float. The rasterizer steps in integers (16.16 fixed point).
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #ifndef SGL_H

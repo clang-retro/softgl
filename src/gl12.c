@@ -1,7 +1,7 @@
 /* gl12.c - the functions of OpenGL 1.2 that GLU calls. The renderer is
  * OpenGL 1.1: they record GL_INVALID_OPERATION.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include "sgl.h"

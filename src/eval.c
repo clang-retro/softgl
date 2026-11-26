@@ -5,7 +5,7 @@
  * others) directly, not through the dispatch table: glEvalMesh in a
  * display list is played back as itself.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <math.h>

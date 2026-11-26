@@ -5,7 +5,7 @@
  * Texels are kept as 0xAARRGGBB. A luminance texel has the luminance in
  * red, green and blue; an intensity texel has it in all four.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <math.h>
@@ -825,7 +825,7 @@ void APIENTRY sgl_GetColorTableParameterivEXT(GLenum target, GLenum pname, GLint
 
 /* glGetColorTableParameterfvEXT: as glGetColorTableParameterivEXT. */
 void APIENTRY sgl_GetColorTableParameterfvEXT(GLenum target, GLenum pname, GLfloat *params) {
-  GLint i;
+  GLint i = 0;
   sgl_GetColorTableParameterivEXT(target, pname, &i);
   params[0] = (GLfloat)i;
 }

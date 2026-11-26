@@ -1,7 +1,7 @@
 /* context.c - the contexts of the software OpenGL, the enables, the
  * simple state, the queries and the attribute stacks.
  *
- * Part of clang-retro MFC, an independent implementation of the MFC API.
+ * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 #include <math.h>
