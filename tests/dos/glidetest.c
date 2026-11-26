@@ -5,11 +5,11 @@
  * It writes "PASS" when all checks are correct.
  *
  * Run it in DOSBox-X with "[voodoo] voodoo_card=software"
- * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a ViRGE or a
- * Matrox card
- * (tools/test-glide-86box.py), or on a computer with one of the cards.
+ * (tools/test-glide-dosbox.sh), in 86Box with a Voodoo, a ViRGE, a
+ * Matrox or an ATI Rage Pro card (tools/test-glide-86box.py), or on a
+ * computer with one of the cards.
  *
- *     glidetest [voodoo | virge | matrox]
+ *     glidetest [voodoo | virge | matrox | ati]
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -100,7 +100,7 @@ static void texture(void) {
 }
 
 /* Opens the card, draws each test scene, reads it back and closes all.
- * The argument can name the driver (voodoo, virge or matrox). */
+ * The argument can name the driver (voodoo, virge, matrox or ati). */
 int main(int argc, char **argv) {
   static uint32_t color[WIDTH * HEIGHT];
   sgl_glide g = {0};
@@ -158,7 +158,8 @@ int main(int argc, char **argv) {
   expect("smooth green corner", 590, 2, 3, 250, 1, 12);
   expect("smooth middle", 200, 200, 85, 85, 85, 16);
 
-  /* 3: the depth buffer. The far quad comes last, and must be hidden. */
+  /* 3: the depth buffer. The far quad comes after the middle quad, and
+   * must be hidden; the near quad comes last, and must be in front. */
   glEnable(GL_DEPTH_TEST);
   glClearDepth(1);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -166,10 +167,13 @@ int main(int argc, char **argv) {
   quad(100, 100, 300, 300, 0.5f);
   glColor3f(1, 1, 1);
   quad(200, 200, 400, 400, -0.5f);
+  glColor3f(1, 0, 0);
+  quad(120, 120, 180, 180, 0.9f);
   sgl_present(ctx);
   glDisable(GL_DEPTH_TEST);
-  expect("depth near", 250, 250, 0, 255, 0, 8);
+  expect("depth middle", 250, 250, 0, 255, 0, 8);
   expect("depth far", 350, 350, 255, 255, 255, 8);
+  expect("depth near", 150, 150, 255, 0, 0, 8);
 
   /* 4: a texture. */
   glClear(GL_COLOR_BUFFER_BIT);
@@ -191,6 +195,19 @@ int main(int argc, char **argv) {
   sgl_present(ctx);
   glDisable(GL_BLEND);
   expect("blend", 200, 200, 128, 128, 128, 12);
+
+  /* 6: the alpha test: the quad with the small alpha is not drawn. */
+  glClear(GL_COLOR_BUFFER_BIT);
+  glEnable(GL_ALPHA_TEST);
+  glAlphaFunc(GL_GREATER, 0.5f);
+  glColor4f(1, 1, 0, 0.25f);
+  quad(100, 100, 200, 200, 0);
+  glColor4f(0, 1, 1, 0.75f);
+  quad(300, 100, 400, 200, 0);
+  sgl_present(ctx);
+  glDisable(GL_ALPHA_TEST);
+  expect("alpha test fail", 150, 150, 0, 0, 0, 8);
+  expect("alpha test pass", 350, 150, 0, 255, 255, 8);
 
   sgl_make_current(NULL);
   sgl_destroy_context(ctx);

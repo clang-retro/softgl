@@ -197,8 +197,15 @@ int sgl_glide_virge(sgl_glide_api *api);
  * backends/glide/glide_mga.c. */
 int sgl_glide_mga(sgl_glide_api *api);
 
+/* Fills api with the built-in driver for an ATI Rage Pro, Rage LT Pro,
+ * Rage XL or Rage Mobility card, for 32-bit DOS. The driver uses the
+ * setup engine and the 3D engine of the card and the VBE BIOS, and sets
+ * the limits of api. Gives 1 on success. The code is in
+ * backends/glide/glide_ati.c. */
+int sgl_glide_ati(sgl_glide_api *api);
+
 /* Fills api with the built-in driver of the first 3D card that is in
- * the computer (32-bit DOS). With name ("voodoo", "virge" or "matrox"),
+ * the computer (32-bit DOS). With name ("voodoo", "virge", "matrox" or "ati"),
  * only that
  * driver is tried. Gives the name of the driver, or NULL when there is
  * no card. The code is in backends/glide/glide_dos.c. */
