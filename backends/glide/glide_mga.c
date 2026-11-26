@@ -2,7 +2,9 @@
  * drawing engine of a Matrox card, for 32-bit DOS. sgl_glide_mga fills
  * an sgl_glide_api, and the Glide back end (glide.c) uses it as it uses
  * a Voodoo. The cards are the Mystique (MGA-1064SG), Mystique 220
- * (MGA-1164SG), Millennium II (MGA-2164W) and Productiva G100.
+ * (MGA-1164SG), Millennium II (MGA-2164W) and Productiva G100. The
+ * driver also accepts the G200, G400, G450 and G550, whose drawing
+ * engine has the registers of the G100. It is not tested on these cards.
  *
  * The engine draws trapezoids: a span of pixels on each row, between a
  * left edge and a right edge that move with a Bresenham error term. The
@@ -159,7 +161,23 @@ static struct {
 
 /* The PCI IDs of the Matrox cards. */
 static const sgl_pci_id mga_ids[] = {
-    {0x102B, 0x051A}, {0x102B, 0x051B}, {0x102B, 0x051F}, {0x102B, 0x1000}, {0x102B, 0x1001}, {0, 0}};
+    {0x102B, 0x051A}, {0x102B, 0x051B}, {0x102B, 0x051F}, {0x102B, 0x1000}, {0x102B, 0x1001},
+    {0x102B, 0x0520}, {0x102B, 0x0521}, {0x102B, 0x0525}, {0x102B, 0x2527}, {0, 0}};
+
+/* The PCI IDs of the cards with the G100 engine: the G100, G200 (PCI
+ * and AGP), G400 and G450 (0525h) and G550. These cards have fog and
+ * the bilinear filter. */
+static const sgl_pci_id g100_ids[] = {{0x102B, 0x1000}, {0x102B, 0x1001}, {0x102B, 0x0520},
+                                      {0x102B, 0x0521}, {0x102B, 0x0525}, {0x102B, 0x2527},
+                                      {0, 0}};
+
+/* Gives 1 when the PCI device ID is in g100_ids. */
+static int g100_class(uint16_t device) {
+  const sgl_pci_id *id;
+  for (id = g100_ids; id->vendor; id++)
+    if (id->device == device) return 1;
+  return 0;
+}
 
 /* Writes a 32-bit register. */
 static void wr(uint32_t reg, uint32_t value) { *(volatile uint32_t *)(mg.ctrl + reg) = value; }
@@ -196,7 +214,7 @@ static void SGL_GLIDE_CALL gr_glide_init(void) {
   int ctrl_bar;
   memset(&mg, 0, sizeof mg);
   if (!sgl_pci_find(mga_ids, 0, &mg.pci)) return;
-  mg.g100 = mg.pci.device == 0x1000 || mg.pci.device == 0x1001;
+  mg.g100 = g100_class(mg.pci.device);
   ctrl_bar = (mg.pci.device == 0x051A && mg.pci.revision < 3) ? 0 : 1;
   mg.lfb_phys = sgl_pci_bar(&mg.pci, 1 - ctrl_bar);
   if (!mg.lfb_phys || !sgl_pci_bar(&mg.pci, ctrl_bar)) return;
@@ -938,9 +956,8 @@ static int SGL_GLIDE_CALL gr_lfb_unlock(int type, int buffer) {
 }
 
 /* Fills api with the Matrox driver (see softgl_glide.h). Only the G100
- * has fog. */
+ * and the later cards have fog. */
 int sgl_glide_mga(sgl_glide_api *api) {
-  static const sgl_pci_id g100_ids[] = {{0x102B, 0x1000}, {0x102B, 0x1001}, {0, 0}};
   sgl_pci_device d;
   memset(api, 0, sizeof *api);
   api->GlideInit = gr_glide_init;
