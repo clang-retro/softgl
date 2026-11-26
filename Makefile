@@ -3,6 +3,8 @@
 #   make            builds build/libsoftgl.a (the renderer and GLU)
 #   make check      builds and runs the tests in tests/
 #   make dispatch   writes src/dispatch.c and src/dispatch.h again
+#   make amiga      builds build/libsoftgl-amiga.a (the Amiga back ends)
+#                   and the Amiga examples, with the AmigaOS compiler
 #
 # Set CC, CFLAGS and AR for a cross compiler, for example:
 #   make CC="clang --target=m68k-apple-macos" AR=llvm-ar
@@ -32,6 +34,24 @@ NURBS_CXXFLAGS := -w -fno-exceptions -fno-rtti -DNDEBUG -DLIBRARYBUILD -Iinclude
   -Iglu/libnurbs/interface -Iglu/libnurbs/nurbtess
 
 all: $(OUT)/libsoftgl.a
+
+# The back ends of the Amiga. Build them with the AmigaOS compiler.
+AMIGA_SRCS := $(wildcard backends/amiga/*.c)
+AMIGA_OBJS := $(patsubst %.c,$(OUT)/%.o,$(AMIGA_SRCS))
+
+amiga: $(OUT)/libsoftgl-amiga.a $(OUT)/examples/amiga/cube
+
+$(OUT)/examples/amiga/%: examples/amiga/%.c $(OUT)/libsoftgl-amiga.a $(OUT)/libsoftgl.a
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -std=gnu99 -Wall -Iinclude $< $(OUT)/libsoftgl-amiga.a $(OUT)/libsoftgl.a -lm -o $@
+
+$(OUT)/libsoftgl-amiga.a: $(AMIGA_OBJS)
+	rm -f $@
+	$(AR) rcs $@ $^
+
+$(OUT)/backends/%.o: backends/%.c src/sgl.h include/softgl.h include/softgl_amiga.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(SGL_CFLAGS) -c $< -o $@
 
 $(OUT)/libsoftgl.a: $(OBJS)
 	rm -f $@
@@ -65,4 +85,4 @@ dispatch:
 clean:
 	rm -rf $(OUT)
 
-.PHONY: all check dispatch clean
+.PHONY: all amiga check dispatch clean

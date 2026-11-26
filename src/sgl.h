@@ -45,9 +45,11 @@
 #define GL_COLOR_INDEX16_EXT 0x80E7
 #endif
 
-/* A thread-local variable on systems with threads. The classic Mac OS
- * has one thread for the renderer. */
-#if defined(macintosh) || defined(__MSDOS__) || defined(SGL_NO_TLS)
+/* A thread-local variable on systems with threads. The classic Mac OS,
+ * AmigaOS and Atari TOS have no thread-local storage: there, one
+ * context is current for the whole program. */
+#if defined(macintosh) || defined(__MSDOS__) || defined(__amigaos__) || defined(__TOS__) || \
+    defined(SGL_NO_TLS)
 #define SGL_THREAD
 #else
 #define SGL_THREAD _Thread_local

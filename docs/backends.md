@@ -24,6 +24,12 @@ All the back ends thus give the same GL state. Each entry of
 `sgl_backend` can be NULL. When an entry is NULL, softgl does that work
 in software, as it does without a back end.
 
+## Back ends in this repository
+
+| Back end | Systems | Document |
+| --- | --- | --- |
+| Chipset: Blitter clears and flat fills, chunky-to-planar with Akiko or the CPU | Amiga (OCS, ECS, AGA) | [amiga.md](amiga.md) |
+
 ## How to use a back end
 
 1. Make the context (`sgl_create_context`).
