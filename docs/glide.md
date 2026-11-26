@@ -6,7 +6,8 @@ Voodoo Graphics, the Voodoo Rush, the Voodoo2, the Banshee and the
 Voodoo3. On 32-bit DOS, a built-in driver gives the Glide functions on
 the Voodoo Graphics, the Voodoo2, the Banshee and the Voodoo3, and
 other built-in drivers give them on a PowerVR PCX2 card,
-on an S3 ViRGE card, on a Matrox card and on an ATI Rage card. The code is in
+on an S3 ViRGE card, on a Matrox card, on an ATI Rage card and on an ATI
+Rage 128 card. The code is in
 `backends/glide/`.
 
 softgl still does the GL state, the transform, lighting, clipping and
@@ -275,8 +276,8 @@ the registers for each trapezoid.
 `backends/glide/glide_ati.c` has the same Glide 2 functions for the 3D
 engine of an ATI mach64 card. The cards are the 3D Rage, the 3D Rage
 II, II+ and IIc, the 3D Rage Pro, the Rage LT Pro, the Rage XL and XC,
-and the Rage Mobility. The driver does not support the Rage 128 and
-later cards.
+and the Rage Mobility. The Rage 128 has a different engine and its own
+driver (see below).
 
 The driver does these steps:
 
@@ -397,10 +398,70 @@ of them to softgl:
 
 ![glidecube on the PowerVR PCX2 card of 86Box, with a Mystique](images/glidecube-powervr-dos.png)
 
+## The Rage 128 driver for DOS
+
+`backends/glide/glide_r128.c` has the same Glide 2 functions for the 3D
+engine of an ATI Rage 128 card. The cards are the Rage 128 GL and VR,
+the Rage 128 Pro, the Rage 128 Pro Ultra, the Rage 128 4X, the Rage
+Fury, the Xpert 128 and the Rage Mobility M3 and M4.
+
+The Rage 128 draws only from the command packets of its command engine
+(the CCE). The driver writes the packets with the processor (the PIO
+mode of the CCE). Each pair of dwords goes to `PM4_FIFO_DATA_EVEN`
+(1000h) and `PM4_FIFO_DATA_ODD` (1004h). Before each pair, the driver
+makes sure that the FIFO has two free entries (`PM4_STAT`, bits 0 to
+11).
+
+The driver does these steps:
+
+1. `grGlideInit` finds the first PCI function with the vendor ID 1002h
+   and the device ID of a Rage 128 chip. The driver maps the registers
+   (BAR 2, 16 KB).
+2. `grSstWinOpen` sets a VBE mode of 16-bit color (5:6:5) with the
+   linear frame buffer. Video memory holds three color buffers (two
+   when the memory is small), the 16-bit Z buffer, and then the
+   textures with their mipmaps. The driver loads the CCE microcode
+   (see below), starts the CCE in the PIO mode with 192 FIFO entries,
+   and writes the 3D state that does not change.
+3. For each triangle, the driver writes the changed 3D state with
+   type-0 packets. Then it writes one `3D_RNDR_GEN_PRIM` packet with
+   the three vertices: X, Y, Z, 1/W, the color, the fog factor, and S
+   and T. The engine calculates the edges, the gradients and the
+   perspective division. Lines and points are two triangles.
+4. `grBufferClear` fills the clip window with a `PAINT_MULTI` packet:
+   the back buffer, then the Z buffer. After a fill, the driver writes
+   the 3D state again, as the r128 DRM driver of Linux does.
+5. `grBufferSwap` waits until the CCE and the engine are idle, and
+   shows the new buffer through VBE function 4F07h, as the other
+   drivers do.
+
+**The microcode.** The CCE runs microcode, and the BIOS does not load
+it. On a real card, put the file `R128CCE.BIN` in the current
+directory, or set the environment variable `SGL_R128_CCE` to the path
+of the file. The file is `r128/r128_cce.bin` of linux-firmware: 256
+entries of two big-endian 32-bit words (2048 bytes). softgl does not
+include the file. Without the file, the driver starts the CCE without
+new microcode. 86Box does not need the microcode.
+
+The card does Gouraud shading, the texture (replace, modulate and
+decal), the alpha of the texture, of the vertex or the product of the
+two, mipmaps (the nearest level), the bilinear filter, the clamp of
+the texture, the Z buffer, the alpha test, the blend with fog, the
+color mask and the scissor box. The driver sets no limits. These
+limits stay:
+
+- One texture unit.
+- The texture formats are RGB 565 and ARGB 4444.
+- The driver is tested in 86Box only (`ati_xpert128_pci`). Test it on a
+  real card before you use it.
+
+![glidecube on the Xpert 128 card of 86Box](images/glidecube-rage128-dos.png)
+
 ## How to select a driver for DOS
 
 A DOS program calls `sgl_glide_dos(&api, name)`. The name is
-`"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"` or `NULL`. With `NULL`, the function
+`"voodoo"`, `"powervr"`, `"virge"`, `"matrox"`, `"ati"`, `"rage128"` or
+`NULL`. With `NULL`, the function
 selects the first card that it finds. `glidecube.exe` and
 `glidetest.exe` take the name as an argument:
 
@@ -419,11 +480,12 @@ glidecube 0 matrox
   the example in Wine for 30 frames. It examines the number of opened
   screens, the swaps and the bad vertices. CI runs it.
 - `tests/dos/glidetest.c` is a test of the DOS drivers. It
-  draws a clear, a flat quad, a smooth triangle, the Z buffer, a
+  draws a clear, a flat quad, a smooth triangle, the Z buffer (in two
+  frames), a
   texture, a blend and the alpha test through the back end, and reads the pixels of
   the card back through the linear frame buffer. The output is
   `PASS softgl glide on the voodoo card` (or `powervr`, `virge`,
-  `matrox` or `ati`).
+  `matrox`, `ati` or `rage128`).
   `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
   it in DOSBox-X, which emulates a Voodoo Graphics card
   (`[voodoo] voodoo_card=software`). CI runs it.
@@ -433,7 +495,7 @@ glidecube 0 matrox
   computer with FreeDOS, and examines the output. CI runs `glidetest`
   on the ViRGE/DX, the ViRGE, the Mystique, the Millennium II, the
   G100, the 3D Rage Pro (`mach64_ragepro_pci`), the 3D Rage II+
-  (`mach64_rage2p`), the PowerVR PCX2 with a Mystique (`--powervr
+  (`mach64_rage2p`), the Xpert 128 (`ati_xpert128_pci`), the PowerVR PCX2 with a Mystique (`--powervr
   --card mystique`), the Voodoo Graphics, the Voodoo Banshee
   (`voodoo_banshee_pci`) and the Voodoo3 2000 (`voodoo3_2k_pci`). The G100 is an AGP card:
   use the ASUS P5A board (`--machine p5a`):

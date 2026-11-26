@@ -189,6 +189,9 @@ jobs:
       - name: Run the test on the ATI 3D Rage II+
         if: steps.dos32.outputs.ok == '1'
         run: python3 tools/test-glide-86box.py --card mach64_rage2p ~/86box build-dos32/tests/dos/glidetest.exe ati
+      - name: Run the test on the ATI Xpert 128 (Rage 128)
+        if: steps.dos32.outputs.ok == '1'
+        run: python3 tools/test-glide-86box.py --card ati_xpert128_pci ~/86box build-dos32/tests/dos/glidetest.exe rage128
       # The VBE BIOS of the ViRGE in 86Box has no linear frame buffer,
       # thus the 2D card for the PowerVR is the Mystique.
       - name: Run the test on the PowerVR PCX2
