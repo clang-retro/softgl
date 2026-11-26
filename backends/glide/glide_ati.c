@@ -1,21 +1,32 @@
 /* glide_ati.c - the Glide 2 functions of the Glide back end, on the 3D
- * engine of an ATI Rage Pro card, for 32-bit DOS. sgl_glide_ati fills
- * an sgl_glide_api, and the Glide back end (glide.c) uses it as it uses
- * a Voodoo. The cards are the 3D Rage Pro, the Rage LT Pro, the Rage XL
- * and XC, and the Rage Mobility (the mach64 chips with the triangle
- * setup engine).
+ * engine of an ATI mach64 card, for 32-bit DOS. sgl_glide_ati fills an
+ * sgl_glide_api, and the Glide back end (glide.c) uses it as it uses a
+ * Voodoo. The cards are the 3D Rage, the 3D Rage II, II+ and IIc, the
+ * 3D Rage Pro, the Rage LT Pro, the Rage XL and XC, and the Rage
+ * Mobility.
  *
- * The setup engine draws a triangle from its three vertices: the driver
- * writes the position, Z, the color, the fog and the texture
- * coordinates (S, T and W) of each vertex, then one over the area of
- * the triangle. The engine calculates the edges and the gradients.
+ * The Rage Pro and the cards after it have a setup engine. It draws a
+ * triangle from its three vertices: the driver writes the position, Z,
+ * the color, the fog and the texture coordinates (S, T and W) of each
+ * vertex, then one over the area of the triangle. The engine
+ * calculates the edges and the gradients.
  *
- * The Rage Pro draws almost all that a Voodoo draws. The driver sets
- * the limits of the table (SGL_GLIDE_LIMIT_), and softgl then draws in
- * software what the card cannot do:
+ * The 3D Rage and the Rage II draw trapezoids, as the Matrox engine
+ * does. The driver divides each triangle into two trapezoids and
+ * calculates the edges and the gradients. These engines have no
+ * perspective division: S and T are quadratics of the screen position.
+ * The driver fits the quadratic to the perspective texture at the
+ * vertices and at the middles of the edges, and divides a large
+ * triangle with a strong perspective into smaller triangles.
+ *
+ * The driver sets the limits of the table (SGL_GLIDE_LIMIT_), and
+ * softgl then draws in software what the card cannot do:
  *
  * - The fog and the blend use the same unit: no fog with a blend.
  * - One texture unit.
+ * - The 3D Rage and the Rage II also have no alpha test and no clamp of
+ *   the texture, and the alpha is the texture alpha or the vertex
+ *   alpha, not a product.
  *
  * The screen is a VBE mode of 16-bit color (5:6:5) with its linear
  * frame buffer. Video memory holds three color buffers (two when the
@@ -47,7 +58,14 @@ enum {
   R_DST_OFF_PITCH = 0x100,
   R_DST_Y_X = 0x10C,
   R_DST_HEIGHT_WIDTH = 0x118,
+  R_DST_BRES_LNTH = 0x120,
+  R_DST_BRES_ERR = 0x124,
+  R_DST_BRES_INC = 0x128,
+  R_DST_BRES_DEC = 0x12C,
   R_DST_CNTL = 0x130,
+  R_TRAIL_BRES_ERR = 0x138,
+  R_TRAIL_BRES_INC = 0x13C,
+  R_TRAIL_BRES_DEC = 0x140,
   R_Z_OFF_PITCH = 0x148,
   R_Z_CNTL = 0x14C,
   R_ALPHA_TST_CNTL = 0x150,
@@ -66,9 +84,29 @@ enum {
   R_FIFO_STAT = 0x310,
   R_GUI_TRAJ_CNTL = 0x330,
   R_GUI_STAT = 0x338,
+  R_S_X_INC2 = 0x340, /* then S_Y_INC2, S_XY_INC2, S_XINC_START, S_Y_INC, S_START */
+  R_T_X_INC2 = 0x358, /* the same for T */
   R_TEX_SIZE_PITCH = 0x370,
-  R_TEX_CNTL = 0x374
+  R_TEX_CNTL = 0x374,
+  R_RED_X_INC = 0x3C0, /* then RED_Y_INC, RED_START */
+  R_GREEN_X_INC = 0x3CC,
+  R_BLUE_X_INC = 0x3D8,
+  R_Z_X_INC = 0x3E4,
+  R_ALPHA_X_INC = 0x3F0
 };
+
+/* The bits of DST_CNTL for a trapezoid. */
+#define DST_X_DIR 0x0001u       /* the left edge goes to larger x */
+#define DST_Y_DIR 0x0002u       /* top to bottom */
+#define DST_BRES_SIGN 0x0800u   /* the left edge steps only when its error is more than 0 */
+#define DST_TRAIL_X_DIR 0x2000u /* the right edge goes to larger x */
+#define DST_FILL_LEFT_TO_RIGHT 0x4000u
+#define DST_TRAIL_BRES_SIGN 0x8000u
+
+/* The bits of DST_BRES_LNTH for a trapezoid: the number of rows in the
+ * low bits, the x of the right edge in bits 16 to 28. */
+#define LNTH_DRAW_TRAP 0x8000u
+#define LNTH_LOAD_TRAIL 0x80000000u
 
 /* The registers of block 1, the setup engine (byte offsets in the
  * block). Vertex n (0 to 2) has 8 registers from R_VERTEX + 32 n: S,
@@ -117,6 +155,7 @@ enum { COMBINE_COLOR, COMBINE_REPLACE, COMBINE_MODULATE, COMBINE_DECAL };
 /* The state of the driver. */
 static struct {
   sgl_pci_device pci;
+  int setup;              /* 1: the setup engine (Rage Pro); 0: trapezoids (3D Rage, Rage II) */
   volatile uint8_t *lfb;  /* video memory */
   volatile uint8_t *regs; /* the register window: block 1, then block 0 */
   int regs_size;          /* the size of the mapping of regs */
@@ -152,6 +191,12 @@ static const sgl_pci_id ati_ids[] = {
     {0x1002, 0x4C44}, {0x1002, 0x4C49}, {0x1002, 0x4C50}, {0x1002, 0x4C51}, {0x1002, 0x474C}, {0x1002, 0x474D},
     {0x1002, 0x474E}, {0x1002, 0x474F}, {0x1002, 0x4752}, {0x1002, 0x4753}, {0x1002, 0x4C4D}, {0x1002, 0x4C4E},
     {0x1002, 0x4C52}, {0x1002, 0x4C53}, {0, 0}};
+
+/* The PCI IDs of the mach64 chips with the trapezoid engine: the 3D
+ * Rage and the Rage II (GT), the Rage II+ (GU) and the Rage IIc (GV,
+ * GW, GY and GZ). */
+static const sgl_pci_id gt_ids[] = {{0x1002, 0x4754}, {0x1002, 0x4755}, {0x1002, 0x4756}, {0x1002, 0x4757},
+                                    {0x1002, 0x4759}, {0x1002, 0x475A}, {0, 0}};
 
 /* Writes a 32-bit register of block 0. */
 static void wr(uint32_t reg, uint32_t value) { *(volatile uint32_t *)(at.regs + 0x400 + reg) = value; }
@@ -196,7 +241,10 @@ static float screen_y(float y) { return at.origin == GR_ORIGIN_LOWER_LEFT ? (flo
  * aperture (BAR 0), which BUS_CNTL bit 27 (BUS_EXT_REG_EN) opens. */
 static void SGL_GLIDE_CALL gr_glide_init(void) {
   memset(&at, 0, sizeof at);
-  if (!sgl_pci_find(ati_ids, 0, &at.pci)) return;
+  if (sgl_pci_find(ati_ids, 0, &at.pci))
+    at.setup = 1;
+  else if (!sgl_pci_find(gt_ids, 0, &at.pci))
+    return;
   at.lfb_phys = sgl_pci_bar(&at.pci, 0);
   if (!at.lfb_phys) return;
   sgl_pci_write16(&at.pci, 0x04, (uint16_t)(sgl_pci_read16(&at.pci, 0x04) | 0x0002));
@@ -341,7 +389,7 @@ static int SGL_GLIDE_CALL gr_sst_win_open(unsigned long hwnd, int resolution, in
   wr(R_DP_BKGD_CLR, 0);
   wr(R_GUI_TRAJ_CNTL, 3u); /* left to right, top to bottom */
   wr(R_Z_OFF_PITCH, off_pitch(at.zbuffer));
-  wr1(R_SETUP_CNTL, 0); /* a write of ONE_OVER_AREA starts the triangle */
+  if (at.setup) wr1(R_SETUP_CNTL, 0); /* a write of ONE_OVER_AREA starts the triangle */
   target();
   scissor();
   sgl_vbe_display_start(0, 0);
@@ -496,7 +544,14 @@ static uint32_t triangle_state(int textured, int blend, int fog) {
   }
   if (!at.tex_mipmap) s3d |= S3D_MIP_MAP_DISABLE;
   if (at.tex_min_linear) s3d |= S3D_BILINEAR_MIN;
-  if (at.tex_mag_linear) s3d |= S3D_BILINEAR_MAG;
+  /* The trapezoid engine draws nothing where it magnifies with the
+   * bilinear minification and without the bilinear magnification. */
+  if (at.tex_mag_linear || (!at.setup && at.tex_min_linear)) s3d |= S3D_BILINEAR_MAG;
+  if (!at.setup) {
+    wr_changed(R_DP_PIX_WIDTH, (at.tex_format << 28) | 0x01040404u, &at.last_pix);
+    at.tex_flush = 0;
+    return s3d;
+  }
   {
     uint32_t pix = (at.tex_format << 28) | 0x01040404u;
     uint32_t tex = TEX_ST_DIRECT | at.tex_clamp;
@@ -512,8 +567,323 @@ static uint32_t triangle_state(int textured, int blend, int fog) {
   return s3d;
 }
 
-/* grDrawTriangle: writes the three vertices to the setup engine, then
- * one over the area, which starts the triangle. */
+/* The values that the trapezoid engine interpolates along x and y. */
+enum { A_R, A_G, A_B, A_A, A_Z, A_COUNT };
+
+/* A vertex on the screen for the trapezoid engine: x, y and the
+ * values. */
+typedef struct {
+  float x, y, v[A_COUNT];
+} sv;
+
+/* A quadratic function of the screen position: c[0] + c[1] u + c[2] v
+ * + c[3] u^2 + c[4] u v + c[5] v^2, with u and v relative to a point. */
+typedef struct {
+  double c[6];
+} quadratic;
+
+/* A linear function of the screen position: a + b u + c v. */
+typedef struct {
+  double a, b, c;
+} linear;
+
+/* Adds k times the product of l and m to q. */
+static void add_product(quadratic *q, double k, const linear *l, const linear *m) {
+  q->c[0] += k * l->a * m->a;
+  q->c[1] += k * (l->a * m->b + l->b * m->a);
+  q->c[2] += k * (l->a * m->c + l->c * m->a);
+  q->c[3] += k * l->b * m->b;
+  q->c[4] += k * (l->b * m->c + l->c * m->b);
+  q->c[5] += k * l->c * m->c;
+}
+
+/* Gives in *q the quadratic that has the value f[i] at vertex i of the
+ * triangle p (i = 0 to 2) and the value f[3 + i] at the middle of the
+ * edge from vertex i to vertex (i + 1) % 3. u and v are relative to
+ * vertex 0. lam are the barycentric coordinates of the triangle as
+ * linear functions. */
+static void fit_quadratic(const linear *lam, const double *f, quadratic *q) {
+  linear minus;
+  int i;
+  memset(q, 0, sizeof *q);
+  for (i = 0; i < 3; i++) {
+    /* The vertex basis lambda (2 lambda - 1); the edge basis 4 lambda_i
+     * lambda_j. */
+    minus = lam[i];
+    minus.a -= 0.5;
+    add_product(q, 2.0 * f[i], &lam[i], &minus);
+    add_product(q, 4.0 * f[3 + i], &lam[i], &lam[(i + 1) % 3]);
+  }
+}
+
+/* Gives the quadratic q with u and v relative to the point (du, dv)
+ * of the old u and v, in *out. */
+static void shift_quadratic(const quadratic *q, double du, double dv, quadratic *out) {
+  const double *c = q->c;
+  out->c[0] = c[0] + c[1] * du + c[2] * dv + c[3] * du * du + c[4] * du * dv + c[5] * dv * dv;
+  out->c[1] = c[1] + 2.0 * c[3] * du + c[4] * dv;
+  out->c[2] = c[2] + c[4] * du + 2.0 * c[5] * dv;
+  out->c[3] = c[3], out->c[4] = c[4], out->c[5] = c[5];
+}
+
+/* Gives v as an int32_t, limited to the range of int32_t. */
+static int32_t fix(double v) {
+  if (v >= 2147483520.0) return 2147483647;
+  if (v <= -2147483520.0) return -2147483647;
+  return (int32_t)lrint(v);
+}
+
+/* An edge of a trapezoid for the Bresenham registers of the engine. */
+typedef struct {
+  int x;       /* the first pixel (left edge) or the pixel after the last (right edge) on the first row */
+  int32_t err; /* DST_BRES_ERR or TRAIL_BRES_ERR */
+  int32_t inc; /* added to the error on each row */
+  int32_t dec; /* added to the error at each step of x */
+  int neg;     /* x goes to smaller values */
+} edge;
+
+/* Calculates the edge from (xa, ya) to (xb, yb), with ya < yb, in units
+ * of 1 / 2^b pixel, for the rows from row. On each row the edge is at
+ * X, the x of the edge at the row center, and the pixel x is
+ * ceil(X - 0.5). After the error gets inc, the engine steps x while
+ * the error is more than 0, and adds dec at each step. */
+static void edge_setup(int32_t xa, int32_t ya, int32_t xb, int32_t yb, int b, int row, edge *e) {
+  int64_t d = yb - ya, k = xb - xa, one = (int64_t)1 << b, half = one >> 1;
+  /* n = (X - 0.5) * 2^b * d on the first row; it changes by k * 2^b on
+   * each row. x = ceil(n / step). */
+  int64_t n = (int64_t)xa * d + ((int64_t)row * one + half - ya) * k - half * d;
+  int64_t step = one * d, x;
+  x = (int64_t)ceil((double)n / (double)step);
+  e->x = (int)x;
+  e->dec = (int32_t)-step;
+  if (k >= 0) {
+    e->neg = 0;
+    e->inc = (int32_t)(k * one);
+    e->err = (int32_t)(n - x * step);
+  } else {
+    e->neg = 1;
+    e->inc = (int32_t)(-k * one);
+    e->err = (int32_t)((x - 1) * step - n + 1);
+  }
+}
+
+/* The texture of a triangle for the trapezoid engine: S and T as
+ * quadratics of the screen position, relative to vertex 0, in units of
+ * 1/1024 of the long side of the texture. */
+typedef struct {
+  quadratic s, t;
+  double x0, y0;       /* vertex 0 */
+  double wrap_s, wrap_t; /* the units of one repeat of the texture */
+} trap_tex;
+
+/* Writes the three registers of an S or T trajectory from the start
+ * register on, for the quadratic q (relative to the start pixel). The
+ * start value is reduced to one repeat of the texture. dir is the x
+ * direction of the left edge. */
+static void wr_tex(uint32_t inc2, const quadratic *q, double wrap, int dir) {
+  double start = fmod(q->c[0], wrap);
+  if (start < 0.0) start += wrap;
+  /* The engine adds the x terms for steps in the direction dir:
+   * X = dir u. */
+  wr(inc2 + 0, (uint32_t)fix(2.0 * q->c[3] * 65536.0) & 0x07FFFFFFu);
+  wr(inc2 + 4, (uint32_t)fix(2.0 * q->c[5] * 65536.0) & 0x07FFFFFFu);
+  wr(inc2 + 8, (uint32_t)fix(q->c[4] * dir * 65536.0) & 0x07FFFFFFu);
+  wr(inc2 + 12, (uint32_t)fix((q->c[1] * dir + q->c[3]) * 65536.0) & 0x0FFFFFFFu);
+  wr(inc2 + 16, (uint32_t)fix((q->c[2] + q->c[5]) * 65536.0) & 0x0FFFFFFFu);
+  wr(inc2 + 20, (uint32_t)fix(start * 65536.0) & 0x03FFFFE0u);
+}
+
+/* Draws the rows r0 to r1 - 1 of a triangle between the left edge l
+ * and the right edge r (in units of 1 / 2^b pixel). gx and gy are the
+ * gradients of the values, p0 a vertex, tex the texture or NULL. */
+static void trapezoid(const int32_t *l, const int32_t *r, int b, int r0, int r1, const sv *p0, const float *gx,
+                      const float *gy, const trap_tex *tex) {
+  /* The registers of the start, the x step and the y step of R, G, B,
+   * Z and A (start = inc + 8). */
+  static const uint32_t regs[A_COUNT] = {R_RED_X_INC, R_GREEN_X_INC, R_BLUE_X_INC, R_ALPHA_X_INC, R_Z_X_INC};
+  edge el, er;
+  float xc, yc;
+  int i, dir;
+  if (r1 <= r0) return;
+  edge_setup(l[0], l[1], l[2], l[3], b, r0, &el);
+  edge_setup(r[0], r[1], r[2], r[3], b, r0, &er);
+  dir = el.neg ? -1 : 1;
+  /* The values at the center of the first pixel of the first row. */
+  xc = (float)el.x + 0.5f;
+  yc = (float)r0 + 0.5f;
+  slots(15);
+  for (i = 0; i < A_COUNT; i++) {
+    float base = p0->v[i] + gx[i] * (xc - p0->x) + gy[i] * (yc - p0->y);
+    /* Colors and alpha are S.8.12 at bit 4 (16 bits of fraction as
+     * written), Z is S.16.12. The colors are rounded. */
+    double scale = i == A_Z ? 4096.0 : 65536.0, add = i == A_Z ? 0.0 : 0.5;
+    uint32_t mask = i == A_Z ? 0x1FFFFFFFu : 0x01FFFFF0u;
+    if (i == A_Z) base = clampf(base, 0.0f, 65535.0f);
+    wr(regs[i] + 0, (uint32_t)fix(gx[i] * dir * scale) & mask);
+    wr(regs[i] + 4, (uint32_t)fix(gy[i] * scale) & mask);
+    wr(regs[i] + 8, (uint32_t)fix((base + add) * scale) & mask);
+  }
+  if (tex) {
+    quadratic q;
+    slots(12);
+    shift_quadratic(&tex->s, xc - tex->x0, yc - tex->y0, &q);
+    wr_tex(R_S_X_INC2, &q, tex->wrap_s, dir);
+    shift_quadratic(&tex->t, xc - tex->x0, yc - tex->y0, &q);
+    wr_tex(R_T_X_INC2, &q, tex->wrap_t, dir);
+  }
+  slots(9);
+  wr(R_DST_CNTL, (el.neg ? 0u : DST_X_DIR) | DST_Y_DIR | DST_BRES_SIGN | (er.neg ? 0u : DST_TRAIL_X_DIR) |
+                     DST_FILL_LEFT_TO_RIGHT | DST_TRAIL_BRES_SIGN);
+  wr(R_DST_Y_X, ((uint32_t)(el.x & 0x1FFF) << 16) | (uint32_t)(r0 & 0x7FFF));
+  wr(R_DST_BRES_ERR, (uint32_t)el.err & 0x3FFFFu);
+  wr(R_DST_BRES_INC, (uint32_t)el.inc & 0x3FFFFu);
+  wr(R_DST_BRES_DEC, (uint32_t)el.dec & 0x3FFFFu);
+  wr(R_TRAIL_BRES_ERR, (uint32_t)er.err & 0x3FFFFu);
+  wr(R_TRAIL_BRES_INC, (uint32_t)er.inc & 0x3FFFFu);
+  wr(R_TRAIL_BRES_DEC, (uint32_t)er.dec & 0x3FFFFu);
+  wr(R_DST_BRES_LNTH, LNTH_LOAD_TRAIL | ((uint32_t)(er.x & 0x1FFF) << 16) | LNTH_DRAW_TRAP | (uint32_t)(r1 - r0));
+}
+
+/* Draws a triangle with the trapezoid engine (the 3D Rage and the Rage
+ * II): sorts the vertices by y, calculates the gradients of the
+ * values, and gives the triangle as two trapezoids, the rows above the
+ * middle vertex and the rows from it. A row is drawn when its center
+ * is in the triangle; a pixel when its center is right of the left
+ * edge, and not right of the right edge. The texture coordinates are
+ * a quadratic that agrees with the perspective texture at the vertices
+ * and at the middles of the edges. */
+static void trap_triangle(const sgl_gr_vertex *a, const sgl_gr_vertex *b, const sgl_gr_vertex *c, int textured,
+                          int fog) {
+  const sgl_gr_vertex *g[3];
+  sv p[3], tmp;
+  trap_tex tex;
+  float area, gx[A_COUNT], gy[A_COUNT], ext, xmin, xmax, x02;
+  int32_t q[3][2], longe[4], e01[4], e12[4];
+  int rows[3], sub, left, i;
+  g[0] = a, g[1] = b, g[2] = c;
+  for (i = 0; i < 3; i++) {
+    p[i].x = g[i]->x;
+    p[i].y = screen_y(g[i]->y);
+    p[i].v[A_R] = clampf(g[i]->r, 0.0f, 255.0f);
+    p[i].v[A_G] = clampf(g[i]->g, 0.0f, 255.0f);
+    p[i].v[A_B] = clampf(g[i]->b, 0.0f, 255.0f);
+    /* The fog uses the alpha of the vertex: the visibility. */
+    p[i].v[A_A] = fog ? clampf(fog_visibility(g[i]->oow), 0.0f, 255.0f) : clampf(g[i]->a, 0.0f, 255.0f);
+    p[i].v[A_Z] = clampf(g[i]->ooz, 0.0f, 65535.0f);
+  }
+  if (textured) {
+    /* Barycentric coordinates relative to vertex 0, then the texture
+     * coordinates at the vertices and at the middles of the edges. */
+    double u1 = p[1].x - p[0].x, v1 = p[1].y - p[0].y, u2 = p[2].x - p[0].x, v2 = p[2].y - p[0].y;
+    double d = u1 * v2 - u2 * v1, fs[6], ft[6], units = 4.0;
+    linear lam[3];
+    if (d == 0.0) return;
+    lam[1].a = 0.0, lam[1].b = v2 / d, lam[1].c = -u2 / d;
+    lam[2].a = 0.0, lam[2].b = -v1 / d, lam[2].c = u1 / d;
+    lam[0].a = 1.0, lam[0].b = -lam[1].b - lam[2].b, lam[0].c = -lam[1].c - lam[2].c;
+    for (i = 0; i < 3; i++) {
+      const sgl_gr_tmu_vertex *m = &g[i]->tmu[0], *n = &g[(i + 1) % 3]->tmu[0];
+      if (m->oow <= 0.0f || m->oow + n->oow <= 0.0f) return;
+      /* Glide gives 256 for the long side; the engine 1024. */
+      fs[i] = m->sow / m->oow * units;
+      ft[i] = m->tow / m->oow * units;
+      fs[3 + i] = (m->sow + n->sow) / (m->oow + n->oow) * units;
+      ft[3 + i] = (m->tow + n->tow) / (m->oow + n->oow) * units;
+    }
+    fit_quadratic(lam, fs, &tex.s);
+    fit_quadratic(lam, ft, &tex.t);
+    tex.x0 = p[0].x, tex.y0 = p[0].y;
+    tex.wrap_s = 1024.0 * (double)(1 << at.tex_wlog) / (double)(1 << at.tex_large);
+    tex.wrap_t = 1024.0 * (double)(1 << at.tex_hlog) / (double)(1 << at.tex_large);
+  }
+  /* Sort by y, the smallest (the top of the screen) first. */
+  if (p[0].y > p[1].y) tmp = p[0], p[0] = p[1], p[1] = tmp;
+  if (p[1].y > p[2].y) tmp = p[1], p[1] = p[2], p[2] = tmp;
+  if (p[0].y > p[1].y) tmp = p[0], p[0] = p[1], p[1] = tmp;
+  area = (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[2].x - p[0].x) * (p[1].y - p[0].y);
+  if (area == 0.0f) return;
+  for (i = 0; i < A_COUNT; i++) {
+    float d1 = p[1].v[i] - p[0].v[i], d2 = p[2].v[i] - p[0].v[i];
+    gx[i] = (d1 * (p[2].y - p[0].y) - d2 * (p[1].y - p[0].y)) / area;
+    gy[i] = (d2 * (p[1].x - p[0].x) - d1 * (p[2].x - p[0].x)) / area;
+  }
+  /* The vertices on a grid of 1 / 2^sub pixel. The Bresenham terms are
+   * up to 2^(2 sub) times the size; they must stay in 18 bits. */
+  xmin = xmax = p[0].x;
+  for (i = 1; i < 3; i++) {
+    if (p[i].x < xmin) xmin = p[i].x;
+    if (p[i].x > xmax) xmax = p[i].x;
+  }
+  ext = (xmax - xmin > p[2].y - p[0].y ? xmax - xmin : p[2].y - p[0].y) + 1.0f;
+  if (ext > 4096.0f || xmin < -4096.0f || xmax > 4096.0f || p[0].y < -4096.0f || p[2].y > 4096.0f) return;
+  for (sub = 4; sub > 1 && ext * (float)(1 << (2 * sub)) >= 65536.0f; sub--) {
+  }
+  for (i = 0; i < 3; i++) {
+    q[i][0] = (int32_t)lrintf(p[i].x * (float)(1 << sub));
+    q[i][1] = (int32_t)lrintf(p[i].y * (float)(1 << sub));
+    /* The first row whose center is at or below the vertex. */
+    rows[i] = (int)ceilf((float)q[i][1] / (float)(1 << sub) - 0.5f);
+  }
+  if (rows[0] >= rows[2] || q[0][1] == q[2][1]) return;
+  longe[0] = q[0][0], longe[1] = q[0][1], longe[2] = q[2][0], longe[3] = q[2][1];
+  e01[0] = q[0][0], e01[1] = q[0][1], e01[2] = q[1][0], e01[3] = q[1][1];
+  e12[0] = q[1][0], e12[1] = q[1][1], e12[2] = q[2][0], e12[3] = q[2][1];
+  /* The long edge 0-2 is on the left when it is left of vertex 1. */
+  x02 = (float)q[0][0] + (float)(q[2][0] - q[0][0]) * (float)(q[1][1] - q[0][1]) / (float)(q[2][1] - q[0][1]);
+  left = x02 >= (float)q[1][0];
+  /* The upper part, then the lower part with the new short edge. Each
+   * part has all its registers. */
+  if (rows[1] > rows[0] && q[1][1] != q[0][1])
+    trapezoid(left ? e01 : longe, left ? longe : e01, sub, rows[0], rows[1], &p[0], gx, gy, textured ? &tex : NULL);
+  if (rows[2] > rows[1] && q[2][1] != q[1][1])
+    trapezoid(left ? e12 : longe, left ? longe : e12, sub, rows[1], rows[2], &p[0], gx, gy, textured ? &tex : NULL);
+}
+
+/* Gives the vertex in the middle of a and b in *m. All the values of a
+ * Glide vertex change linearly on the screen. */
+static void middle(const sgl_gr_vertex *a, const sgl_gr_vertex *b, sgl_gr_vertex *m) {
+  const float *pa = (const float *)a, *pb = (const float *)b;
+  float *pm = (float *)m;
+  size_t i;
+  for (i = 0; i < sizeof *m / sizeof(float); i++) pm[i] = 0.5f * (pa[i] + pb[i]);
+}
+
+/* Draws a textured triangle with the trapezoid engine. A large triangle
+ * with a strong perspective is divided into four triangles (at most
+ * depth times), so that the quadratic texture stays near the
+ * perspective texture. */
+static void trap_textured(const sgl_gr_vertex *a, const sgl_gr_vertex *b, const sgl_gr_vertex *c, int fog, int depth) {
+  float wmin = a->tmu[0].oow, wmax = wmin, xmin = a->x, xmax = a->x, ymin = a->y, ymax = a->y;
+  const sgl_gr_vertex *g[3];
+  int i;
+  g[0] = a, g[1] = b, g[2] = c;
+  for (i = 1; i < 3; i++) {
+    float w = g[i]->tmu[0].oow;
+    if (w < wmin) wmin = w;
+    if (w > wmax) wmax = w;
+    if (g[i]->x < xmin) xmin = g[i]->x;
+    if (g[i]->x > xmax) xmax = g[i]->x;
+    if (g[i]->y < ymin) ymin = g[i]->y;
+    if (g[i]->y > ymax) ymax = g[i]->y;
+  }
+  if (depth > 0 && wmin > 0.0f && wmax > 1.5f * wmin && (xmax - xmin) + (ymax - ymin) > 64.0f) {
+    sgl_gr_vertex ab, bc, ca;
+    middle(a, b, &ab);
+    middle(b, c, &bc);
+    middle(c, a, &ca);
+    trap_textured(a, &ab, &ca, fog, depth - 1);
+    trap_textured(&ab, b, &bc, fog, depth - 1);
+    trap_textured(&ca, &bc, c, fog, depth - 1);
+    trap_textured(&ab, &bc, &ca, fog, depth - 1);
+    return;
+  }
+  trap_triangle(a, b, c, 1, fog);
+}
+
+/* grDrawTriangle: sets the state of the engine. On the Rage Pro, it
+ * writes the three vertices to the setup engine, then one over the
+ * area, which starts the triangle. On the other cards, it draws
+ * trapezoids (trap_triangle). */
 static void SGL_GLIDE_CALL gr_draw_triangle(const sgl_gr_vertex *a, const sgl_gr_vertex *b,
                                             const sgl_gr_vertex *c) {
   const sgl_gr_vertex *g[3];
@@ -544,6 +914,13 @@ static void SGL_GLIDE_CALL gr_draw_triangle(const sgl_gr_vertex *a, const sgl_gr
             ((uint32_t)(at.alpha_ref & 0xFF) << 16);
   wr_changed(R_SCALE_3D_CNTL, s3d, &at.last_s3d);
   wr_changed(R_Z_CNTL, zc, &at.last_z);
+  if (!at.setup) {
+    if (textured)
+      trap_textured(a, b, c, fog, 2);
+    else
+      trap_triangle(a, b, c, 0, fog);
+    return;
+  }
   wr_changed(R_ALPHA_TST_CNTL, alpha, &at.last_alpha);
   /* S and T go from 0 to 1 across the texture. In Glide, 256 is the
    * long side. */
@@ -849,8 +1226,11 @@ static int SGL_GLIDE_CALL gr_lfb_unlock(int type, int buffer) {
   return 1;
 }
 
-/* Fills api with the ATI driver (see softgl_glide.h). */
+/* Fills api with the ATI driver (see softgl_glide.h). The limits are
+ * those of the first card that is found: the Rage Pro, else the
+ * trapezoid engine. */
 int sgl_glide_ati(sgl_glide_api *api) {
+  sgl_pci_device d;
   memset(api, 0, sizeof *api);
   api->GlideInit = gr_glide_init;
   api->GlideShutdown = gr_glide_shutdown;
@@ -891,6 +1271,8 @@ int sgl_glide_ati(sgl_glide_api *api) {
   api->LfbLock = gr_lfb_lock;
   api->LfbUnlock = gr_lfb_unlock;
   api->limits = SGL_GLIDE_LIMIT_FOG_ALPHA;
+  if (!sgl_pci_find(ati_ids, 0, &d))
+    api->limits |= SGL_GLIDE_LIMIT_ALPHA_TEST | SGL_GLIDE_LIMIT_ONE_ALPHA | SGL_GLIDE_LIMIT_NO_CLAMP;
   return 1;
 }
 

@@ -123,6 +123,7 @@ typedef struct sgl_glide_api {
 #define SGL_GLIDE_LIMIT_ONE_ALPHA 0x20u   /* the alpha is the texture alpha or the vertex alpha, not a product */
 #define SGL_GLIDE_LIMIT_NO_BLEND 0x40u    /* no blend */
 #define SGL_GLIDE_LIMIT_NO_FOG 0x80u      /* no fog */
+#define SGL_GLIDE_LIMIT_NO_CLAMP 0x100u   /* the textures wrap: no clamp */
 
 /* Fills the table api from the Glide 2 functions that the program links
  * (the 3dfx SDK: glide.h and the Glide 2 library). Use it where
@@ -197,10 +198,10 @@ int sgl_glide_virge(sgl_glide_api *api);
  * backends/glide/glide_mga.c. */
 int sgl_glide_mga(sgl_glide_api *api);
 
-/* Fills api with the built-in driver for an ATI Rage Pro, Rage LT Pro,
- * Rage XL or Rage Mobility card, for 32-bit DOS. The driver uses the
- * setup engine and the 3D engine of the card and the VBE BIOS, and sets
- * the limits of api. Gives 1 on success. The code is in
+/* Fills api with the built-in driver for an ATI 3D Rage, Rage II, Rage
+ * Pro, Rage LT Pro, Rage XL or Rage Mobility card, for 32-bit DOS. The
+ * driver uses the 3D engine of the card and the VBE BIOS, and sets the
+ * limits of api for the card that it finds. Gives 1 on success. The code is in
  * backends/glide/glide_ati.c. */
 int sgl_glide_ati(sgl_glide_api *api);
 
