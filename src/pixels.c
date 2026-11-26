@@ -884,9 +884,15 @@ static unsigned backend_clear(sgl_context *c, GLbitfield mask, int x0, int y0, i
 /* glClear: sets the buffers in mask to their clear values, in the
  * scissor box. */
 void APIENTRY sgl_Clear(GLbitfield mask) {
-  sgl_context *c = outside();
+  sgl_context *c = sgl_ctx;
   int x0 = 0, y0 = 0, x1, y1, x, y;
-  if (!c || !c->color) return;
+  /* No wait for the back end yet: a buffer that the back end clears
+   * itself need not come back from the hardware first. */
+  if (c->prim != SGL_NO_PRIM) {
+    sgl_error(GL_INVALID_OPERATION);
+    return;
+  }
+  if (!c->color) return;
   if (c->render_mode != GL_RENDER) return;
   x1 = c->width;
   y1 = c->height;
@@ -894,6 +900,8 @@ void APIENTRY sgl_Clear(GLbitfield mask) {
   if (x0 >= x1 || y0 >= y1) return;
   if ((mask & GL_STENCIL_BUFFER_BIT) && !sgl_need_stencil(c)) mask &= ~(GLbitfield)GL_STENCIL_BUFFER_BIT;
   if (c->be && c->be->clear) mask &= ~(GLbitfield)backend_clear(c, mask, x0, y0, x1, y1);
+  if (!mask) return;
+  sgl_be_wait(c);
   if (mask & GL_COLOR_BUFFER_BIT) {
     uint32_t keep, v = clear_value(c, &keep);
     for (y = y0; y < y1; y++) {

@@ -215,6 +215,10 @@ static sgl_texture *usable_texture(gr_state *s, sgl_context *c, int u) {
   if (lv->wlog < 0 || lv->hlog < 0 || lv->wlog > 8 || lv->hlog > 8) return (sgl_texture *)1;
   if (lv->wlog - lv->hlog > 3 || lv->hlog - lv->wlog > 3) return (sgl_texture *)1;
   if (env != GL_MODULATE && env != GL_REPLACE && env != GL_DECAL) return (sgl_texture *)1;
+  if ((s->gr->limits & SGL_GLIDE_LIMIT_SQUARE) && lv->wlog != lv->hlog) return (sgl_texture *)1;
+  /* GL_DECAL of an RGBA texture mixes the texture and the vertex color
+   * by the texture alpha. */
+  if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_ALPHA) && env == GL_DECAL && lv->base == GL_RGBA) return (sgl_texture *)1;
   return t;
 }
 
@@ -223,6 +227,23 @@ static sgl_texture *usable_texture(gr_state *s, sgl_context *c, int u) {
 static int perspective(const sgl_context *c) {
   const GLfloat *m = c->projection.top->m;
   return m[3] == 0.0f && m[7] == 0.0f && m[11] == -1.0f && m[15] == 0.0f;
+}
+
+/* Gives 1 when the GL state of c needs none of the functions that
+ * the driver gives in its limits (SGL_GLIDE_LIMIT_). The textures are
+ * examined in usable_texture, and the vertex alpha in draw. */
+static int limits_allow(gr_state *s, const sgl_context *c) {
+  const sgl_attrib *a = &c->a;
+  unsigned l = s->gr->limits;
+  int blend = a->enabled[SGL_BLEND] && !(a->blend_src == GL_ONE && a->blend_dst == GL_ZERO);
+  if (!l) return 1;
+  if ((l & SGL_GLIDE_LIMIT_ALPHA_TEST) && a->enabled[SGL_ALPHA_TEST] && a->alpha_func != GL_ALWAYS) return 0;
+  if ((l & SGL_GLIDE_LIMIT_BLEND) && blend &&
+      !(a->blend_src == GL_SRC_ALPHA && a->blend_dst == GL_ONE_MINUS_SRC_ALPHA))
+    return 0;
+  if ((l & SGL_GLIDE_LIMIT_COLOR_MASK) && !a->color_mask[0]) return 0;
+  if ((l & SGL_GLIDE_LIMIT_FOG_ALPHA) && a->enabled[SGL_FOG] && blend) return 0;
+  return 1;
 }
 
 /* Gives 1 when the card can draw a primitive in the GL state of c.
@@ -245,6 +266,7 @@ static int can_draw(gr_state *s, sgl_context *c, int kind) {
         blend_factor(a->blend_src, 0) < 0 || blend_factor(a->blend_dst, 1) < 0)
       return 0;
   }
+  if (!limits_allow(s, c)) return 0;
   t0 = usable_texture(s, c, 0);
   t1 = usable_texture(s, c, 1);
   if (t0 == (sgl_texture *)1 || t1 == (sgl_texture *)1) return 0;
@@ -596,6 +618,20 @@ static void vertex(const sgl_hw_vertex *h, const gr_tex *e0, const gr_tex *e1, i
   }
 }
 
+/* Gives 1 when the alpha of a primitive is the texture alpha or the
+ * vertex alpha alone, for a driver with SGL_GLIDE_LIMIT_ONE_ALPHA:
+ * GL_MODULATE of an RGBA texture multiplies the two, so each vertex
+ * alpha must then be 1 when the blend or the alpha test uses the alpha. h has the n vertices; t0 is the texture of
+ * unit 0. */
+static int one_alpha(const sgl_context *c, const sgl_texture *t0, const sgl_hw_vertex *const *h, int n) {
+  int i;
+  if (!t0 || c->a.unit[0].env_mode != GL_MODULATE || sgl_base_level(t0)->base != GL_RGBA) return 1;
+  if (!c->a.enabled[SGL_BLEND] && !(c->a.enabled[SGL_ALPHA_TEST] && c->a.alpha_func != GL_ALWAYS)) return 1;
+  for (i = 0; i < n; i++)
+    if (h[i]->color[3] < 1.0f) return 0;
+  return 1;
+}
+
 /* Draws a quad of four Glide vertices as two triangles. */
 static void quad(gr_state *s, const sgl_gr_vertex *q) {
   s->gr->DrawTriangle(&q[0], &q[1], &q[2]);
@@ -614,6 +650,7 @@ static int draw(gr_state *s, sgl_context *c, int kind, const sgl_hw_vertex *cons
   if (!can_draw(s, c, kind)) return 0;
   t0 = usable_texture(s, c, 0);
   t1 = usable_texture(s, c, 1);
+  if ((s->gr->limits & SGL_GLIDE_LIMIT_ONE_ALPHA) && !one_alpha(c, t0, h, n)) return 0;
   to_hardware(s);
   if (t1 && !(e1 = card_texture(s, c, t1, 1))) return 0;
   if (t0 && !(e0 = card_texture(s, c, t0, 0))) return 0;
