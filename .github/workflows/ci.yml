@@ -90,6 +90,41 @@ jobs:
           CC="$CLANG_DOS/bin/clang --config=win95.cfg" NM="$CLANG_DOS/bin/llvm-nm" \
             WINE="xvfb-run -a wine" sh tools/test-glide-wine.sh build-win95
 
+  # The Glide back end with the Voodoo driver for 32-bit DOS: the build
+  # with clang-retro's i386-pc-msdos target, and a run of the readback
+  # test (tests/dos/glidetest.c) in DOSBox-X, which emulates a Voodoo
+  # Graphics card. A nightly without dos32.cfg cannot build it; then the
+  # job only writes a notice.
+  glide-dos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Unpacks the nightly, puts its bin on PATH and sets $CLANG_DOS.
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+      - name: Find the 32-bit DOS target
+        id: dos32
+        run: |
+          if [ -f "$CLANG_DOS/bin/dos32.cfg" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The nightly has no dos32.cfg; the 32-bit DOS build is not done"
+          fi
+      - name: Install DOSBox-X
+        if: steps.dos32.outputs.ok == '1'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dosbox-x
+      - name: Build for 32-bit DOS
+        if: steps.dos32.outputs.ok == '1'
+        run: |
+          make -j"$(nproc)" OUT=build-dos32 AR="$CLANG_DOS/bin/llvm-ar" \
+            CC="$CLANG_DOS/bin/clang --config=dos32.cfg" \
+            CXX="$CLANG_DOS/bin/clang++ --config=dos32.cfg" CFLAGS="-O2 -Werror" all glide-dos
+      - name: Run the test in DOSBox-X
+        if: steps.dos32.outputs.ok == '1'
+        run: sh tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe
+
   # The Atari back end in the Hatari emulator with EmuTOS: an ST, an STE
   # and a Falcon (tests/atari/present.c). The library is built with -O0:
   # the clang-retro nightly of 2026-11-25 and earlier miscompiles a store

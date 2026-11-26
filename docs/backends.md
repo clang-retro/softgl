@@ -30,7 +30,7 @@ in software, as it does without a back end.
 | --- | --- | --- |
 | Chipset: Blitter clears and flat fills, chunky-to-planar with Akiko or the CPU | Amiga (OCS, ECS, AGA) | [amiga.md](amiga.md) |
 | Warp3D: triangles, lines and points on a 3D card | Amiga with a 3D graphics card | [amiga.md](amiga.md#the-warp3d-back-end) |
-| Glide: triangles, lines and points on a 3dfx Voodoo card | Windows 95 and 98; DOS with a 32-bit extender | [glide.md](glide.md) |
+| Glide: triangles, lines and points on a 3dfx Voodoo card | Windows 95 and 98; 32-bit DOS (built-in Voodoo driver, or the 3dfx Glide library) | [glide.md](glide.md) |
 | Screen: bit planes or Falcon true color, Blitter clears | Atari ST, STE, TT, Falcon | [atari.md](atari.md) |
 
 ## How to use a back end

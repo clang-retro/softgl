@@ -9,6 +9,9 @@
 #                   and its example, with the Atari TOS compiler
 #   make glide      builds build/libsoftgl-glide.a (the 3dfx Glide back
 #                   end) and its example, with a Windows 9x compiler
+#   make glide-dos  builds build/libsoftgl-glide-dos.a (the Glide back
+#                   end with the built-in Voodoo driver), its example and
+#                   its test, with the 32-bit DOS compiler
 #
 # Set CC, CFLAGS and AR for a cross compiler, for example:
 #   make CC="clang --target=m68k-apple-macos" AR=llvm-ar
@@ -69,20 +72,39 @@ GLIDE_OBJS := $(patsubst %.c,$(OUT)/%.o,$(GLIDE_SRCS))
 
 glide: $(OUT)/libsoftgl-glide.a $(OUT)/examples/glide/glidecube.exe
 
-$(OUT)/examples/glide/%.exe: examples/glide/%.c $(OUT)/libsoftgl-glide.a $(OUT)/libsoftgl.a
+# The example links the Glide library of the goal: libsoftgl-glide.a for
+# "glide", libsoftgl-glide-dos.a for "glide-dos".
+GLIDE_LIB := $(OUT)/libsoftgl-glide$(if $(filter glide-dos,$(MAKECMDGOALS)),-dos).a
+
+$(OUT)/examples/glide/%.exe: examples/glide/%.c $(GLIDE_LIB) $(OUT)/libsoftgl.a
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -std=gnu99 -Wall -Iinclude $< $(OUT)/libsoftgl-glide.a $(OUT)/libsoftgl.a -lm -o $@
+	$(CC) $(CFLAGS) -std=gnu99 -Wall -Iinclude $< $(GLIDE_LIB) $(OUT)/libsoftgl.a -lm -o $@
 
 $(OUT)/libsoftgl-glide.a: $(GLIDE_OBJS)
 	rm -f $@
 	$(AR) rcs $@ $^
+
+# The Glide back end for 32-bit DOS, with the Voodoo driver of softgl in
+# place of a Glide library. Build it with the i386-pc-msdos compiler.
+GLIDE_DOS_SRCS := backends/glide/glide.c backends/glide/glide_sst1.c backends/dos/dos_hw.c
+GLIDE_DOS_OBJS := $(patsubst %.c,$(OUT)/%.o,$(GLIDE_DOS_SRCS))
+
+glide-dos: $(OUT)/libsoftgl-glide-dos.a $(OUT)/examples/glide/glidecube.exe $(OUT)/tests/dos/glidetest.exe
+
+$(OUT)/libsoftgl-glide-dos.a: $(GLIDE_DOS_OBJS)
+	rm -f $@
+	$(AR) rcs $@ $^
+
+$(OUT)/tests/dos/%.exe: tests/dos/%.c $(OUT)/libsoftgl-glide-dos.a $(OUT)/libsoftgl.a
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -std=gnu99 -Wall -Iinclude $< $(OUT)/libsoftgl-glide-dos.a $(OUT)/libsoftgl.a -lm -o $@
 
 $(OUT)/libsoftgl-amiga.a: $(AMIGA_OBJS)
 	rm -f $@
 	$(AR) rcs $@ $^
 
 $(OUT)/backends/%.o: backends/%.c src/sgl.h include/softgl.h include/softgl_amiga.h include/softgl_glide.h \
-  include/softgl_atari.h include/softgl_c2p.h \
+  include/softgl_atari.h include/softgl_c2p.h include/softgl_dos.h \
   backends/amiga/warp3d_api.h backends/glide/glide_api.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(SGL_CFLAGS) -c $< -o $@
@@ -123,4 +145,4 @@ dispatch:
 clean:
 	rm -rf $(OUT)
 
-.PHONY: all amiga atari glide check dispatch clean
+.PHONY: all amiga atari glide glide-dos check dispatch clean

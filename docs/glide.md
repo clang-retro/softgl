@@ -14,17 +14,22 @@ blending, fog, the color mask and the scissor box.
 
 The back end calls Glide through a table of functions,
 `sgl_glide_api` in `include/softgl_glide.h`. Fill the table in one of
-these two ways:
+these three ways:
 
 - **Windows 95 and 98.** `sgl_glide_load(&api)` loads `glide2x.dll`
   and gets each function. It gives 0 when the DLL is not there or when
   a function is missing. `sgl_glide_unload(&api)` frees the DLL. Link
   `libsoftgl-glide.a` (from `make glide`).
-- **A 32-bit DOS extender.** Link the Glide 2 library of the 3dfx SDK,
-  include its `glide.h`, and fill the table with `SGL_GLIDE_FILL(&api)`.
-  Compile `backends/glide/glide.c` with the program. The clang-retro
-  DOS target is 16-bit, and Glide is 32-bit. Thus this repository does
-  not build or test Glide on DOS.
+- **32-bit DOS, with the driver of softgl.** `sgl_glide_sst1(&api)`
+  fills the table with a driver that writes the registers of a Voodoo
+  Graphics card directly. A Glide library is not necessary. Use the
+  clang-retro `i386-pc-msdos` target (`--config=dos32.cfg`) and link
+  `libsoftgl-glide-dos.a` (from `make glide-dos`). Refer to
+  [The Voodoo driver for DOS](#the-voodoo-driver-for-dos).
+- **A 32-bit DOS extender, with the Glide library of 3dfx.** Link the
+  Glide 2 library of the 3dfx SDK, include its `glide.h`, and fill the
+  table with `SGL_GLIDE_FILL(&api)`. Compile `backends/glide/glide.c`
+  with the program.
 
 ## How to use it
 
@@ -99,6 +104,52 @@ scissor box.
 - Wide lines and large points are two triangles.
 - The fog of GL (linear, exp and exp2) goes to the fog table of Glide.
 
+## The Voodoo driver for DOS
+
+`backends/glide/glide_sst1.c` has the Glide 2 functions that the back
+end uses. These functions write the registers of the card. They do not
+use a Glide library. `backends/dos/dos_hw.c` has the functions for the
+hardware (`include/softgl_dos.h`):
+
+- PCI configuration mechanism 1 (ports 0CF8h and 0CFCh), to find the
+  card and to read its base address.
+- DPMI functions 0800h and 0801h, to map the 16 MB of the card into the
+  address space of the program.
+- A clock in milliseconds.
+
+The driver does these steps:
+
+1. `grGlideInit` finds the first PCI function with the IDs 121Ah:0001h
+   (Voodoo Graphics) or 121Ah:0002h (Voodoo2), sets the memory space
+   bit of its PCI command register, and maps BAR 0.
+2. `grSstWinOpen` resets the chips, sets the frame buffer and the video
+   timing, and gives the monitor to the Voodoo. The resolutions are
+   512 x 384, 640 x 400, 640 x 480 and 800 x 600.
+3. The draw functions calculate the start values and the gradients of
+   each triangle, and write them to the floating point registers.
+4. `grSstWinClose` gives the monitor back to the VGA card.
+
+The driver has these limits:
+
+- One board, one TMU, 16-bit color, a 16-bit Z buffer and two color
+  buffers.
+- The texture formats RGB 565 and ARGB 4444.
+- **The video clock is not set.** A real Voodoo Graphics card needs
+  the PLL of its DAC set for each resolution. The driver does not do
+  this yet. DOSBox-X does not need it. Test the driver on a real card
+  before you use it.
+- The Voodoo2 uses the same registers for most functions, but the
+  driver is not tested on a Voodoo2.
+
+To build the library, the example and the test:
+
+```sh
+make OUT=build-dos32 CC="clang --config=dos32.cfg" \
+  CXX="clang++ --config=dos32.cfg" AR=llvm-ar all glide-dos
+```
+
+![glidecube on the Voodoo card of DOSBox-X](images/glidecube-voodoo-dos.png)
+
 ## Tests
 
 - `tests/glide.c` runs in `make check`. It gives the back end a fake
@@ -109,11 +160,19 @@ scissor box.
   `glide2x.dll` (`tests/wine/fake_glide2x.c`) for Windows 95, and runs
   the example in Wine for 30 frames. It examines the number of opened
   screens, the swaps and the bad vertices. CI runs it.
+- `tests/dos/glidetest.c` is a test of the Voodoo driver for DOS. It
+  draws a clear, a flat quad, a smooth triangle, the Z buffer, a
+  texture and a blend through the back end, and reads the pixels of
+  the card back through the linear frame buffer. The output is
+  `PASS softgl glide on the Voodoo card`.
+  `tools/test-glide-dosbox.sh build-dos32/tests/dos/glidetest.exe` runs
+  it in DOSBox-X, which emulates a Voodoo Graphics card
+  (`[voodoo] voodoo_card=software`). CI runs it.
 
 ## Limits
 
-- **No hardware tests.** The tests use a fake Glide. A test on a real
-  Voodoo card is necessary.
+- **No hardware tests.** The tests use a fake Glide or the Voodoo of
+  DOSBox-X. A test on a real Voodoo card is necessary.
 - **One context for each back end.** The size of the color buffer must
   be the size of the screen.
 - **No alpha in the frame.** The Voodoo frame buffer has no alpha

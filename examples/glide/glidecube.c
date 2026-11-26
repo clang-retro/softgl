@@ -5,7 +5,9 @@
  *
  *     glidecube [frames]
  *
- * It needs Windows 95 or 98, a Voodoo card and its glide2x.dll.
+ * On Windows 95 and 98 it needs a Voodoo card and its glide2x.dll. On
+ * 32-bit DOS (clang-retro i386-pc-msdos) it needs a Voodoo Graphics
+ * card, and uses the built-in driver of softgl (sgl_glide_sst1).
  *
  * Part of clang-retro softgl, a software implementation of OpenGL.
  * SPDX-License-Identifier: AGPL-3.0-only
@@ -13,15 +15,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef __MSDOS__
+#include <conio.h>
+
+#include "softgl_dos.h"
+#else
 #include <windows.h>
 
 /* softgl uses the C calling convention for its GL functions; windows.h
  * sets APIENTRY to __stdcall. */
 #undef APIENTRY
 #define APIENTRY
+#endif
 #include <GL/gl.h>
 
 #include "softgl_glide.h"
+
+#ifdef __MSDOS__
+/* Gives the time in milliseconds. */
+static uint32_t ms(void) { return sgl_dos_ms(); }
+
+/* Gives 1 when the user pushed Esc. */
+static int escape(void) { return kbhit() && getch() == 27; }
+
+/* Fills api with the built-in Voodoo driver. */
+static int load(sgl_glide_api *api) { return sgl_glide_sst1(api); }
+
+/* The built-in driver has no DLL to free. */
+static void unload(sgl_glide_api *api) { (void)api; }
+#else
+/* Gives the time in milliseconds. */
+static uint32_t ms(void) { return GetTickCount(); }
+
+/* Gives 1 when the user pushes Esc. */
+static int escape(void) { return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0; }
+
+/* Fills api from glide2x.dll. */
+static int load(sgl_glide_api *api) { return sgl_glide_load(api); }
+
+/* Frees glide2x.dll. */
+static void unload(sgl_glide_api *api) { sgl_glide_unload(api); }
+#endif
 
 #define WIDTH 640
 #define HEIGHT 480
@@ -71,10 +105,10 @@ int main(int argc, char **argv) {
   sgl_glide_api api;
   sgl_glide g = {0};
   sgl_context *ctx;
-  DWORD start;
+  uint32_t start;
   int frame = 0, frames = argc > 1 ? atoi(argv[1]) : 0;
-  if (!sgl_glide_load(&api)) {
-    fprintf(stderr, "glide2x.dll is not installed\n");
+  if (!load(&api)) {
+    fprintf(stderr, "no Glide driver (glide2x.dll on Windows)\n");
     return 1;
   }
   ctx = sgl_create_context(NULL);
@@ -88,7 +122,7 @@ int main(int argc, char **argv) {
   if (!sgl_glide_attach(&g, ctx)) {
     fprintf(stderr, "no Voodoo card, or Glide does not open %d x %d\n", WIDTH, HEIGHT);
     sgl_destroy_context(ctx);
-    sgl_glide_unload(&api);
+    unload(&api);
     return 1;
   }
   glViewport(0, 0, WIDTH, HEIGHT);
@@ -108,8 +142,8 @@ int main(int argc, char **argv) {
   glFogf(GL_FOG_END, 12.0f);
   glFogfv(GL_FOG_COLOR, fog);
   glClearColor(fog[0], fog[1], fog[2], 1);
-  start = GetTickCount();
-  while (!(GetAsyncKeyState(VK_ESCAPE) & 0x8000) && GetTickCount() - start < 30000 &&
+  start = ms();
+  while (!escape() && ms() - start < 30000 &&
          (!frames || frame < frames)) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -122,7 +156,7 @@ int main(int argc, char **argv) {
   }
   sgl_make_current(NULL);
   sgl_destroy_context(ctx);
-  sgl_glide_unload(&api);
+  unload(&api);
   printf("%d frames\n", frame);
   return 0;
 }
